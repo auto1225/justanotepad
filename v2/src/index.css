@@ -5452,3 +5452,9 @@ html, body, #root {
 .jan-theme-dark .jan-ms-search-row { background: color-mix(in srgb, var(--accent, #D97757) 12%, #262626); }
 .jan-theme-dark .jan-ms-search-row .jan-ms-search { color: #e8e8e8; }
 .jan-theme-dark .jan-ms-search-clear { background: #2c2c2c; border-color: #4a4a4a; color: #bbb; }
+/* 팔레트 키보드 포커스 표시 */
+.jan-ms-sym:focus-visible {
+  outline: 2px solid var(--accent, #D97757);
+  outline-offset: 1px;
+  border-color: var(--accent, #D97757);
+}

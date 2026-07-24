@@ -146,8 +146,46 @@ export function MathStudio({ editor, onClose, initial = '', onSave }: MathStudio
   const [aiBusy, setAiBusy] = useState(false)
   const [padOpen, setPadOpen] = useState(false)
   const taRef = useRef<HTMLTextAreaElement>(null)
+  const paletteRef = useRef<HTMLDivElement>(null)
   const padRef = useRef<HTMLCanvasElement>(null)
   const padDrawing = useRef(false)
+
+  /** 팔레트 격자 키보드 내비게이션 — ←→ 한 칸, ↑↓ 줄 이동(가장 가까운 x), Esc 입력창 복귀 */
+  function paletteKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    const wrap = paletteRef.current
+    if (!wrap) return
+    const btns = [...wrap.querySelectorAll<HTMLButtonElement>('button.jan-ms-sym')]
+    if (!btns.length) return
+    const idx = btns.indexOf(document.activeElement as HTMLButtonElement)
+    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+      e.preventDefault()
+      const next = e.key === 'ArrowRight' ? idx + 1 : idx - 1
+      btns[Math.max(0, Math.min(btns.length - 1, next))].focus()
+      return
+    }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault()
+      const cur = btns[Math.max(0, idx)].getBoundingClientRect()
+      const down = e.key === 'ArrowDown'
+      let best = -1
+      let bestDist = Infinity
+      btns.forEach((b, i) => {
+        const r = b.getBoundingClientRect()
+        if (down ? r.top > cur.top + 2 : r.top < cur.top - 2) {
+          const d = Math.abs(r.top - cur.top) * 1000 + Math.abs(r.left - cur.left)
+          if (d < bestDist) { bestDist = d; best = i }
+        }
+      })
+      if (best >= 0) btns[best].focus()
+      else if (!down) taRef.current?.focus() // 첫 줄에서 ↑ 는 입력창으로
+      return
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      e.stopPropagation()
+      taRef.current?.focus()
+    }
+  }
 
   /** 이미지 dataUrl → AI 비전 → LaTeX 를 입력창에 */
   async function recognizeDataUrl(dataUrl: string) {
@@ -225,19 +263,26 @@ export function MathStudio({ editor, onClose, initial = '', onSave }: MathStudio
    * 바로 후보가 떠서 Enter 한 번에 수식으로 치환된다. */
   function updateAutocomplete(value: string, caret: number) {
     const before = value.slice(0, caret)
+    // 같은 검색어로 재계산될 때(IME 조합 확정 등)는 ↑↓로 고른 위치를 유지한다
+    const apply = (items: Sym[], word: string) => {
+      setAc((prev) => {
+        if (!items.length) return null
+        const keepSel = prev && prev.word === word ? Math.min(prev.sel, items.length - 1) : 0
+        return { items, sel: keepSel, word }
+      })
+    }
     const cmd = before.match(/\\([a-zA-Z]{1,20})$/)
     if (cmd) {
       const word = cmd[0] // 예: \fr
-      const items = AUTOCOMPLETE_COMMANDS
-        .filter((c) => c.tex.toLowerCase().startsWith(word.toLowerCase()) && c.tex !== word)
-        .slice(0, 8)
-      setAc(items.length ? { items, sel: 0, word } : null)
+      apply(
+        AUTOCOMPLETE_COMMANDS.filter((c) => c.tex.toLowerCase().startsWith(word.toLowerCase()) && c.tex !== word).slice(0, 8),
+        word
+      )
       return
     }
     const ko = before.match(/[가-힣]{2,}$/)
     if (ko) {
-      const items = searchEverything(ko[0]).slice(0, 6)
-      setAc(items.length ? { items, sel: 0, word: ko[0] } : null)
+      apply(searchEverything(ko[0]).slice(0, 6), ko[0])
       return
     }
     setAc(null)
@@ -276,6 +321,8 @@ export function MathStudio({ editor, onClose, initial = '', onSave }: MathStudio
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (acOpenRef.current) { e.stopPropagation(); window.dispatchEvent(new Event('jan-ms-close-ac')); return }
+        // 팔레트 안에 포커스가 있으면 모달을 닫지 않고 입력창으로 복귀
+        if (paletteRef.current?.contains(document.activeElement)) { e.stopPropagation(); taRef.current?.focus(); return }
         onClose()
       }
     }
@@ -304,9 +351,13 @@ export function MathStudio({ editor, onClose, initial = '', onSave }: MathStudio
   /** 자동완성 내비게이션 + Tab: 다음 □ 선택, Shift+Tab: 이전 □ */
   function onTaKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (ac) {
-      if (e.key === 'ArrowDown') { e.preventDefault(); setAc({ ...ac, sel: (ac.sel + 1) % ac.items.length }); return }
-      if (e.key === 'ArrowUp') { e.preventDefault(); setAc({ ...ac, sel: (ac.sel - 1 + ac.items.length) % ac.items.length }); return }
-      if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); acceptAutocomplete(ac.items[ac.sel]); return }
+      const composing = (e.nativeEvent as KeyboardEvent).isComposing
+      // ↑↓ 는 한글 조합 중에도 후보 이동으로 처리. 연타 유실이 없도록 함수형 갱신
+      if (e.key === 'ArrowDown') { e.preventDefault(); setAc((p) => p && { ...p, sel: (p.sel + 1) % p.items.length }); return }
+      if (e.key === 'ArrowUp') { e.preventDefault(); setAc((p) => p && { ...p, sel: (p.sel - 1 + p.items.length) % p.items.length }); return }
+      // 조합 중 Enter 는 IME 확정에 양보 — 확정 후 Enter 한 번으로 수락
+      if ((e.key === 'Enter' || e.key === 'Tab') && !composing) { e.preventDefault(); acceptAutocomplete(ac.items[ac.sel]); return }
+      if (e.key === 'Enter' && composing) return
     }
     if (e.key !== 'Tab') return
     const ta = taRef.current
@@ -377,6 +428,18 @@ export function MathStudio({ editor, onClose, initial = '', onSave }: MathStudio
               className="jan-ms-search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if ((e.nativeEvent as KeyboardEvent).isComposing) return
+                if (e.key === 'ArrowDown') {
+                  // ↓ 로 결과 팔레트에 진입해 화살표로 탐색
+                  e.preventDefault()
+                  paletteRef.current?.querySelector<HTMLButtonElement>('button.jan-ms-sym')?.focus()
+                } else if (e.key === 'Enter' && searchResults && searchResults.length > 0) {
+                  // Enter = 첫 번째 결과 바로 삽입
+                  e.preventDefault()
+                  pick(searchResults[0])
+                }
+              }}
               placeholder="무엇이든 한글로 검색 — 알파, 적분, 행렬, 베르누이, 옴, 슈뢰딩거..."
               aria-label="기호·공식 통합 검색"
             />
@@ -448,8 +511,8 @@ export function MathStudio({ editor, onClose, initial = '', onSave }: MathStudio
             </div>
           )}
 
-          {/* 팔레트 */}
-          <div className="jan-ms-palette" role="listbox" aria-label="기호 팔레트">
+          {/* 팔레트 — 화살표 4방향 이동, Enter 선택, Esc 입력창 복귀 */}
+          <div className="jan-ms-palette" role="listbox" aria-label="기호 팔레트" ref={paletteRef} onKeyDown={paletteKeyDown}>
             {shownItems.map((s, i) => (
               <button
                 key={s.tex + i}
