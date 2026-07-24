@@ -5471,3 +5471,49 @@ html, body, #root {
 /* 인쇄 미리보기 — 여러 페이지 보기 토글 */
 .jan-print-cols { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; margin-right: 10px; }
 .jan-print-cols > span { opacity: 0.7; margin-right: 2px; }
+
+/* ── 여러 쪽 보기 (줌 50% 이하 자동) ── */
+.jan-editor-main { position: relative; }
+.jan-multipage-overlay {
+  position: absolute; inset: 0; z-index: 30;
+  background: var(--jan-bg, #f2f2f2);
+  overflow: auto;
+}
+.jan-multipage-bar {
+  position: sticky; top: 0; z-index: 2;
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 16px; font-size: 12.5px;
+  background: var(--jan-bg, #f2f2f2);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+.jan-multipage-bar span { opacity: 0.65; }
+.jan-multipage-bar button {
+  padding: 5px 12px; border: 1px solid var(--accent, #D97757);
+  background: var(--accent, #D97757); color: #fff;
+  border-radius: 6px; font-size: 12px; cursor: pointer; font-family: inherit;
+}
+.jan-multipage-grid {
+  display: flex; flex-wrap: wrap; gap: 22px;
+  padding: 22px; justify-content: center; align-content: flex-start;
+}
+.jan-mp-page {
+  position: relative; overflow: hidden; padding: 0;
+  background: #fff; border: 1px solid rgba(0, 0, 0, 0.18);
+  border-radius: 2px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.16);
+  cursor: pointer; flex-shrink: 0;
+}
+.jan-mp-page:hover { outline: 2px solid var(--accent, #D97757); outline-offset: 1px; }
+.jan-mp-inner {
+  position: absolute; left: 0; top: 0; display: block;
+  transform-origin: 0 0; pointer-events: none; text-align: left;
+}
+/* 스냅샷 안 ProseMirror 의 그림자·테두리는 카드가 대신하므로 제거 */
+.jan-mp-inner .ProseMirror { box-shadow: none !important; border: 0 !important; border-radius: 0 !important; }
+.jan-mp-num {
+  position: absolute; right: 8px; bottom: 6px; z-index: 2;
+  background: rgba(0, 0, 0, 0.55); color: #fff;
+  font-size: 11px; padding: 1px 8px; border-radius: 9px;
+}
+.jan-theme-dark .jan-multipage-overlay,
+.jan-theme-dark .jan-multipage-bar { background: #1e1e1e; }
+.jan-theme-dark .jan-multipage-bar { border-color: rgba(255, 255, 255, 0.1); }

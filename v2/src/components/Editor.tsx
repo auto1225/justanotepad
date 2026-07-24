@@ -78,6 +78,7 @@ import { LinkCard } from '../extensions/LinkCard'
 import { AudioNode, VideoNode } from '../extensions/Media'
 import { PageBreak } from '../extensions/PageBreak'
 import { PaperTag, PaperBlockAttrs } from '../extensions/PaperTag'
+import { MultiPageView } from './MultiPageView'
 import { NormalHorizontalRule } from '../extensions/HorizontalRule'
 import Highlight from '@tiptap/extension-highlight'
 import { Lightbox } from './Lightbox'
@@ -278,6 +279,9 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   const paginationEnabled = viewLayout === 'print' && pageColumnCount === 1
   // 화면상 페이지 반복 주기 (페이지 높이 + 갭 32 + 머리/꼬리글 렌더 오차) — 워터마크 반복 배경용
   const pageRhythmPx = pagePx.pageHeight + 32 + 6
+  // 줌 50% 이하로 내리면 HWP 처럼 자동으로 여러 쪽 보기
+  const editorZoom = useUIStore((s) => s.zoom)
+  const multiPageAuto = paginationEnabled && editorZoom <= 0.5
 
   const commitEditorContent = useCallback((targetEditor: TiptapEditor, memoId: string | null, seq: number) => {
     if (!memoId || targetEditor.isDestroyed) return
@@ -779,6 +783,17 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
         {sidebar}
         <div className={'jan-editor-main' + (showOutline ? ' has-outline' : '')}>
         {showOutline && <OutlinePanel editor={editor} />}
+        {multiPageAuto && editor && (
+          <MultiPageView
+            editor={editor}
+            pageW={pagePx.pageWidth}
+            pageH={pagePx.pageHeight}
+            rhythmFallback={pageRhythmPx}
+            zoom={editorZoom}
+            pageStyle={pageStyle}
+            paperStyle={paperStyle}
+          />
+        )}
         <div
           className="jan-editor-pages"
           data-paper={paperStyle}
