@@ -3863,6 +3863,15 @@ html, body, #root {
 .jan-editor-pages .rm-pagination-gap {
   border-top-width: 0 !important;
   border-bottom-width: 0 !important;
+  /* HWP 처럼 페이지가 또렷이 분리돼 보이도록 경계에 안쪽 그림자 */
+  box-shadow:
+    inset 0 10px 8px -8px rgba(0, 0, 0, 0.28),
+    inset 0 -10px 8px -8px rgba(0, 0, 0, 0.28);
+}
+.jan-theme-dark .jan-editor-pages .rm-pagination-gap {
+  box-shadow:
+    inset 0 10px 8px -8px rgba(0, 0, 0, 0.65),
+    inset 0 -10px 8px -8px rgba(0, 0, 0, 0.65);
 }
 
 /* ── 페이지 번호 형식 (Word 급) ── */
@@ -5458,3 +5467,7 @@ html, body, #root {
   outline-offset: 1px;
   border-color: var(--accent, #D97757);
 }
+
+/* 인쇄 미리보기 — 여러 페이지 보기 토글 */
+.jan-print-cols { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; margin-right: 10px; }
+.jan-print-cols > span { opacity: 0.7; margin-right: 2px; }

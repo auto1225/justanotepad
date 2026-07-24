@@ -19,6 +19,38 @@ export function PrintPreview({ html, title, onClose }: PrintPreviewProps) {
     return () => { cancelled = true }
   }, [html])
   const [status, setStatus] = useState('페이지 분할 중...')
+  // 여러 페이지 나란히 보기 (HWP 스타일) — 1·2·3열
+  const [cols, setCols] = useState<1 | 2 | 3>(1)
+  const colsRef = useRef<1 | 2 | 3>(1)
+  colsRef.current = cols
+
+  /** iframe 문서에 다열 레이아웃 스타일을 주입/갱신 — 재로드 없이 전환 */
+  function applyMultiPageLayout(nextCols: 1 | 2 | 3) {
+    const doc = iframeRef.current?.contentDocument
+    if (!doc) return
+    let style = doc.getElementById('jan-multipage-style') as HTMLStyleElement | null
+    if (!style) {
+      style = doc.createElement('style')
+      style.id = 'jan-multipage-style'
+      doc.head.appendChild(style)
+    }
+    if (nextCols === 1) { style.textContent = ''; return }
+    // 페이지 실제 폭 기준으로 배율을 자동 계산해 nextCols 장이 딱 들어가게
+    const page = doc.querySelector<HTMLElement>('.pagedjs_page')
+    const frameW = iframeRef.current?.clientWidth || 1200
+    const pageW = page ? page.offsetWidth : 794
+    const gap = 14
+    const zoom = Math.min(1, (frameW - 32 - gap * (nextCols - 1)) / (pageW * nextCols))
+    style.textContent = `
+      .pagedjs_pages { display: flex !important; flex-wrap: wrap; gap: ${gap}px; justify-content: center; padding: 16px 8px; }
+      .pagedjs_page { margin: 0 !important; zoom: ${zoom.toFixed(3)}; }
+    `
+  }
+
+  function changeCols(next: 1 | 2 | 3) {
+    setCols(next)
+    applyMultiPageLayout(next)
+  }
   const paperStyle = useUIStore((s) => s.paperStyle)
   const pageSize = useUIStore((s) => s.pageSize)
   const pageOrientation = useUIStore((s) => s.pageOrientation)
@@ -65,7 +97,11 @@ export function PrintPreview({ html, title, onClose }: PrintPreviewProps) {
           const pages = doc?.querySelectorAll('.pagedjs_page')
           if (pages && pages.length > 0) {
             clearInterval(t)
-            if (!cancelled) setStatus(`${pages.length}페이지 · 인쇄/PDF 가능`)
+            if (!cancelled) {
+              setStatus(`${pages.length}페이지 · 인쇄/PDF 가능`)
+              // 재생성 후에도 선택한 다열 보기를 유지 (ref 로 최신값)
+              applyMultiPageLayout(colsRef.current)
+            }
           }
         } catch {
           // The iframe can be between navigation states while Paged.js loads.
@@ -98,6 +134,19 @@ export function PrintPreview({ html, title, onClose }: PrintPreviewProps) {
           <span className="jan-print-title">인쇄 미리보기 - {pageLabel} {orientationLabel} / 여백 {marginLabel} / {pageColumnCount}단</span>
           <span className="jan-print-status">{status}</span>
           <div style={{ flex: 1 }} />
+          <span className="jan-print-cols" role="group" aria-label="여러 페이지 보기">
+            <span>보기</span>
+            {([1, 2, 3] as const).map((n) => (
+              <button
+                key={n}
+                type="button"
+                className={'jan-print-btn' + (cols === n ? ' primary' : '')}
+                aria-pressed={cols === n}
+                title={`${n}쪽씩 나란히 보기`}
+                onClick={() => changeCols(n)}
+              >{n}쪽</button>
+            ))}
+          </span>
           <button onClick={doPrint} className="jan-print-btn primary">인쇄 / PDF</button>
           <button onClick={onClose} className="jan-print-btn">닫기 (Esc)</button>
         </div>

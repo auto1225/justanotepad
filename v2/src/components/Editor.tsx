@@ -276,8 +276,8 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   const shouldShowRulers = viewLayout === 'print' && showRulers
   // 페이지 분할은 1단 + 인쇄 보기에서만 (다단 CSS column 과 float 페이지 기구는 공존 불가)
   const paginationEnabled = viewLayout === 'print' && pageColumnCount === 1
-  // 화면상 페이지 반복 주기 (페이지 높이 + 갭 + 머리/꼬리글 렌더 오차) — 워터마크 반복 배경용
-  const pageRhythmPx = pagePx.pageHeight + 24 + 6
+  // 화면상 페이지 반복 주기 (페이지 높이 + 갭 32 + 머리/꼬리글 렌더 오차) — 워터마크 반복 배경용
+  const pageRhythmPx = pagePx.pageHeight + 32 + 6
 
   const commitEditorContent = useCallback((targetEditor: TiptapEditor, memoId: string | null, seq: number) => {
     if (!memoId || targetEditor.isDestroyed) return
@@ -391,7 +391,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
           marginBottom: pageMarginPx.bottom,
           marginLeft: pageMarginPx.left,
           marginRight: pageMarginPx.right,
-          pageGap: 24,
+          pageGap: 32,
           pageBreakBackground: 'var(--jan-bg)',
           pageGapBorderSize: 0,
           pageGapBorderColor: 'transparent',
