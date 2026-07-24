@@ -158,6 +158,8 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   const [showPostit, setShowPostit] = useState(false)
   const [showSearch, setShowSearch] = useState(false)
   const [showPaint, setShowPaint] = useState(false)
+  // 문서 이미지 주석 편집 (그림판에서 열기)
+  const [paintEdit, setPaintEdit] = useState<{ src: string; pos: number } | null>(null)
   const [showHelp, setShowHelp] = useState(false)
   const [showOutline, setShowOutline] = useState(false)
   const [showAbout, setShowAbout] = useState(false)
@@ -443,6 +445,16 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
     if (!editor) return
     editor.view.dom.setAttribute('spellcheck', spellCheck ? 'true' : 'false')
   }, [editor, spellCheck])
+
+  // 이미지 "그림판에서 편집" 이벤트 수신 → 주석 편집 모달
+  useEffect(() => {
+    const onEdit = (e: Event) => {
+      const { src, pos } = (e as CustomEvent<{ src: string; pos: number }>).detail
+      if (src) setPaintEdit({ src, pos })
+    }
+    window.addEventListener('jan-edit-image-in-paint', onEdit)
+    return () => window.removeEventListener('jan-edit-image-in-paint', onEdit)
+  }, [])
 
   useEffect(() => {
     if (!editor || !paginationEnabled) return
@@ -904,6 +916,16 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
         {showPostit && <PostitPanel onClose={() => setShowPostit(false)} />}
         {showSearch && <SearchPanel onClose={() => setShowSearch(false)} />}
         {showPaint && <PaintCanvas editor={editor} onClose={() => setShowPaint(false)} />}
+        {paintEdit && editor && (
+          <PaintCanvas
+            editor={editor}
+            initialImageSrc={paintEdit.src}
+            onReplace={(dataUrl) => {
+              editor.chain().focus().setNodeSelection(paintEdit.pos).updateAttributes('image', { src: dataUrl }).run()
+            }}
+            onClose={() => setPaintEdit(null)}
+          />
+        )}
         {showHelp && <KeyboardHelp onClose={() => setShowHelp(false)} />}
         {showAbout && <AboutModal onClose={() => setShowAbout(false)} />}
         {showVersions && <VersionsPanel onClose={() => setShowVersions(false)} />}

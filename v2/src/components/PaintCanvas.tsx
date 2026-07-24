@@ -6,6 +6,10 @@ import './paint-canvas.css'
 interface PaintCanvasProps {
   editor: Editor | null
   onClose: () => void
+  /** 문서 이미지 주석 편집 모드: 이 이미지를 캔버스에 로드하고 */
+  initialImageSrc?: string
+  /** 저장 시 새 dataURL 로 원본 이미지를 교체 */
+  onReplace?: (dataUrl: string) => void
 }
 
 type ShapeType =
@@ -362,7 +366,7 @@ function ToolIcon({ name }: { name: string }) {
 }
 
 /** 그림판 — 리본 UI + 변형/필터/자유줌/전경·배경색/선스타일/불투명도 등 확장판 */
-export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
+export function PaintCanvas({ editor, onClose, initialImageSrc, onReplace }: PaintCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const overlayRef = useRef<HTMLCanvasElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -449,6 +453,30 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
     if (!c || !ctx) return
     ctx.fillStyle = '#ffffff'
     ctx.fillRect(0, 0, c.width, c.height)
+    // 이미지 주석 편집 모드: 문서 이미지를 캔버스에 로드 (크기를 이미지에 맞춤)
+    if (initialImageSrc) {
+      const img = new Image()
+      if (!initialImageSrc.startsWith('data:')) img.crossOrigin = 'anonymous'
+      img.onload = () => {
+        const w = Math.min(1600, Math.max(200, img.width))
+        const h = Math.min(1200, Math.max(150, img.height))
+        // React 가 canvas 크기 속성을 재적용하며 내용을 지우므로,
+        // 크기 상태를 먼저 반영한 뒤 다음 프레임에 그린다
+        setDims({ w, h })
+        window.setTimeout(() => {
+          const cur = canvasRef.current
+          const cctx = getCtx()
+          const ov = overlayRef.current
+          if (!cur || !cctx) return
+          cur.width = w; cur.height = h
+          if (ov) { ov.width = w; ov.height = h }
+          cctx.fillStyle = '#ffffff'; cctx.fillRect(0, 0, w, h)
+          cctx.drawImage(img, 0, 0, w, h)
+        }, 60)
+      }
+      img.onerror = () => flash('이미지를 불러오지 못했습니다 (외부 이미지는 CORS 제한이 있을 수 있음)')
+      img.src = initialImageSrc
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -1276,7 +1304,16 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
   function insertToMemo() {
     commitText(); commitFloatingSelection()
     const c = canvasRef.current
-    if (!c || !editor) return
+    if (!c) return
+    // 이미지 주석 편집 모드면 원본 이미지를 교체
+    if (onReplace) {
+      try { onReplace(c.toDataURL('image/png')) }
+      catch { flash('이미지 저장 실패 — 외부 이미지는 CORS 제한으로 편집할 수 없습니다'); return }
+      setDirty(false)
+      onClose()
+      return
+    }
+    if (!editor) return
     editor.chain().focus().setImage({ src: c.toDataURL('image/png') }).run()
     setDirty(false)
     onClose()
@@ -1652,7 +1689,7 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
               </div>
             )}
           </div>
-          <button type="button" className="pcx-btn pcx-btn-primary" onClick={insertToMemo} disabled={!editor} aria-label="메모에 삽입" title="메모에 이미지로 삽입">메모에 삽입</button>
+          <button type="button" className="pcx-btn pcx-btn-primary" onClick={insertToMemo} disabled={!editor && !onReplace} aria-label={onReplace ? '이미지 교체' : '메모에 삽입'} title={onReplace ? '주석을 반영해 원본 이미지 교체' : '메모에 이미지로 삽입'}>{onReplace ? '이미지 교체' : '메모에 삽입'}</button>
         </div>
 
         {confirm === 'clear' && (

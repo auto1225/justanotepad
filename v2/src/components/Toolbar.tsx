@@ -353,13 +353,14 @@ export function Toolbar(p: ToolbarProps) {
     downloadLatex(editor.getHTML(), memoTitle)
     flash('LaTeX(.tex) 내보내기 — Overleaf 에서 바로 열 수 있습니다')
   }
-  const setRunningHeader = () => {
-    const header = window.prompt('머리글:', ui.runningHeader)
+  const setRunningHeader = async () => {
+    const header = await askText('머리글 ({page}/{total} 사용 가능):', ui.runningHeader)
     if (header === null) return
-    const footer = window.prompt('꼬리말:', ui.runningFooter || 'Page {page} / {total}')
+    const footer = await askText('꼬리말:', ui.runningFooter || 'Page {page} / {total}')
     if (footer === null) return
     ui.setRunningHeader(header)
     ui.setRunningFooter(footer)
+    flash('머리글·꼬리말이 적용되었습니다')
   }
 
   /* === 페이지 설정 === */
@@ -542,11 +543,12 @@ export function Toolbar(p: ToolbarProps) {
 <p><strong>결정사항:</strong> </p>
 <p><strong>액션 아이템:</strong> </p>`)
   }
-  const aiImageStub = () => {
-    const prompt = window.prompt('AI 이미지 프롬프트:', '오브젝트의 단순한 라인아트')
+  const aiImageStub = async () => {
+    const prompt = await askText('AI 이미지 프롬프트 (Pollinations 무료 생성):', '오브젝트의 단순한 라인아트')
     if (!prompt) return
     const u = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=512&height=512&nologo=true`
     editor.chain().focus().setImage({ src: u, title: prompt } as any).run()
+    flash('AI 이미지 생성 중 — 잠시 후 이미지가 나타납니다')
   }
 
   /* === 도구 === */
@@ -813,9 +815,9 @@ export function Toolbar(p: ToolbarProps) {
     /* 4. 페이지 */
     {
       label: '페이지', items: [
-        { label: `페이지 크기 설정: ${ui.pageSize} · ${orientationLabel}`, icon: 'page', onClick: () => run(openPageSettings) },
-        { label: `노트 배경 스타일: ${currentPaperLabel}`, icon: 'palette', onClick: () => run(openPageSettings) },
-        { label: `페이지 여백 설정: ${pageMarginLabel}`, icon: 'sliders', onClick: () => run(openPageSettings) },
+        { label: `페이지 크기 설정: ${ui.pageSize} · ${orientationLabel}`, icon: 'page', onClick: () => run(() => { sessionStorage.setItem('jan-page-focus', '용지'); openPageSettings() }) },
+        { label: `노트 배경 스타일: ${currentPaperLabel}`, icon: 'palette', onClick: () => run(() => { sessionStorage.setItem('jan-page-focus', '배경'); openPageSettings() }) },
+        { label: `페이지 여백 설정: ${pageMarginLabel}`, icon: 'sliders', onClick: () => run(() => { sessionStorage.setItem('jan-page-focus', '여백'); openPageSettings() }) },
         { divider: '페이지 동작', label: '' },
         { label: '페이지 구분 삽입', hint: 'Ctrl+Enter', icon: 'page-break', onClick: () => run(insertPageBreak) },
         { label: `다단 레이아웃: ${pageColumnLabel}`, icon: 'columns', onClick: () => run(cyclePageColumns) },
@@ -845,8 +847,12 @@ export function Toolbar(p: ToolbarProps) {
         { divider: '파일 / 첨부', label: '' },
         { label: '파일 첨부', icon: 'paperclip', onClick: () => run(p.onAtt) },
         { divider: '드로잉', label: '' },
-        { label: '손글씨 / 스케치', icon: 'paint', onClick: () => run(p.onPaint) },
-        { label: '그림판 (Paint)', icon: 'paint', onClick: () => run(p.onPaint) },
+        { label: '그림판 (그리기·손글씨·도형)', icon: 'paint', onClick: () => run(p.onPaint) },
+        { label: '선택한 이미지를 그림판에서 주석 편집', icon: 'paint', onClick: () => run(() => {
+          const src = editor.getAttributes('image').src as string | undefined
+          if (!src) { flash('먼저 문서에서 편집할 이미지를 클릭해 선택하세요'); return }
+          window.dispatchEvent(new CustomEvent('jan-edit-image-in-paint', { detail: { src, pos: editor.state.selection.from } }))
+        }) },
         { label: '포스트잇 (JustPin)', icon: 'pin', onClick: () => run(p.onPostit) },
         { divider: 'AI', label: '' },
         { label: 'AI 이미지 생성 (Pollinations)', icon: 'sparkle', onClick: () => run(aiImageStub) },

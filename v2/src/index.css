@@ -5538,3 +5538,11 @@ html, body, #root {
 .jan-mystyles-del:hover { border-color: #C62828; background: rgba(198,40,40,0.06); }
 .jan-theme-dark .jan-mystyles-apply,
 .jan-theme-dark .jan-mystyles-del { background: #2c2c2c; border-color: #4a4a4a; color: #e0e0e0; }
+
+/* 페이지 설정 섹션 딥링크 하이라이트 */
+.jan-page-settings-section.is-focused {
+  outline: 2px solid var(--accent, #D97757);
+  outline-offset: 4px;
+  border-radius: 8px;
+  transition: outline-color 0.4s ease;
+}

@@ -66,6 +66,15 @@ export function ImageMenu({ editor }: ImageMenuProps) {
       <button onClick={() => setAlign('center')} title="가운데">C</button>
       <button onClick={() => setAlign('right')} title="오른쪽">R</button>
       <span className="divider" />
+      <button
+        onClick={() => {
+          const src = editor.getAttributes('image').src as string | undefined
+          const pos = editor.state.selection.from
+          if (src) window.dispatchEvent(new CustomEvent('jan-edit-image-in-paint', { detail: { src, pos } }))
+        }}
+        title="그림판에서 주석 편집 (화살표·박스·텍스트)"
+      >주석</button>
+      <span className="divider" />
       <button onClick={() => editor.chain().focus().deleteSelection().run()} title="삭제">×</button>
     </div>
   )

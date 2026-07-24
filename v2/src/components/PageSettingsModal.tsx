@@ -81,6 +81,25 @@ export function PageSettingsModal({ onClose }: PageSettingsModalProps) {
     return () => document.removeEventListener('keydown', onKey, true)
   }, [onClose])
 
+  // 메뉴 딥링크: "여백 설정" 등으로 진입하면 해당 섹션으로 스크롤 + 잠깐 하이라이트
+  useEffect(() => {
+    const target = sessionStorage.getItem('jan-page-focus')
+    if (!target) return
+    sessionStorage.removeItem('jan-page-focus')
+    window.setTimeout(() => {
+      const heads = document.querySelectorAll<HTMLElement>('.jan-page-settings-section-head h4')
+      for (const h of heads) {
+        if (h.textContent?.trim() === target) {
+          const section = h.closest('.jan-page-settings-section') as HTMLElement | null
+          section?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+          section?.classList.add('is-focused')
+          window.setTimeout(() => section?.classList.remove('is-focused'), 1800)
+          break
+        }
+      }
+    }, 120)
+  }, [])
+
   function resetDraft() {
     setPaperStyle('lined')
     setPageSize('A4')
