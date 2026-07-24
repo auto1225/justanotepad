@@ -87,6 +87,78 @@ describe('pdfExport print document', () => {
     expect(out).toContain('break-inside:avoid-column')
   })
 
+  it('prints custom paper sizes', () => {
+    const out = buildPrintHtml('<p>Hello</p>', 'Memo', {
+      ...landscapeGrid,
+      pageSize: 'custom',
+      pageOrientation: 'portrait',
+      customPageWidthMm: 160,
+      customPageHeightMm: 240,
+    })
+
+    expect(out).toContain('@page { size: 160mm 240mm;')
+  })
+
+  it('adds gutter (binding margin) to the chosen side', () => {
+    const out = buildPrintHtml('<p>Hello</p>', 'Memo', {
+      ...landscapeGrid,
+      gutterMm: 10,
+      gutterPosition: 'left',
+    })
+
+    expect(out).toContain('margin: 12mm 12mm 12mm 22mm;')
+  })
+
+  it('formats page numbers and start offset like Word', () => {
+    const out = buildPrintHtml('<p>Hello</p>', 'Memo', {
+      ...landscapeGrid,
+      runningFooter: 'Page {page} / {total}',
+      pageNumberFormat: 'dash',
+      pageNumberStart: 5,
+    })
+
+    expect(out).toContain('"- " counter(page) " -"')
+    expect(out).toContain('#content{counter-reset: page 4;}')
+  })
+
+  it('supports roman numeral page numbers', () => {
+    const out = buildPrintHtml('<p>Hello</p>', 'Memo', {
+      ...landscapeGrid,
+      runningFooter: '{page}',
+      pageNumberFormat: 'lowerRoman',
+    })
+
+    expect(out).toContain('counter(page, lower-roman)')
+  })
+
+  it('hides running header and footer on the first page when requested', () => {
+    const out = buildPrintHtml('<p>Hello</p>', 'Memo', {
+      ...landscapeGrid,
+      runningFooter: 'Page {page}',
+      firstPageRunningOff: true,
+    })
+
+    expect(out).toContain('@page :first { @top-left { content: none; }')
+  })
+
+  it('stamps a diagonal watermark on every printed page', () => {
+    const out = buildPrintHtml('<p>Hello</p>', 'Memo', {
+      ...landscapeGrid,
+      watermarkText: '대외비',
+    })
+
+    expect(out).toContain('.pagedjs_page::after')
+    expect(out).toContain('data:image/svg+xml')
+  })
+
+  it('applies orphan/widow control and keep rules for print typesetting', () => {
+    const out = buildPrintHtml('<p>Hello</p>', 'Memo', landscapeGrid)
+
+    expect(out).toContain('p,li{orphans:2;widows:2;}')
+    expect(out).toContain('h1,h2,h3{break-after:avoid;}')
+    expect(out).toContain('table,figure,pre,blockquote,img{break-inside:avoid;}')
+  })
+
   it('reads current settings from uiStore', () => {
     useUIStore.setState({
       paperStyle: 'dot',

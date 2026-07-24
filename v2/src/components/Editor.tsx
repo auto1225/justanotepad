@@ -58,6 +58,8 @@ import { useSettingsStore } from '../store/settingsStore'
 import { dispatchWebhook } from '../lib/webhooks'
 import {
   DEFAULT_RUNNING_FOOTER,
+  effectiveMarginsMm,
+  formatPageNumber,
   formatRunningText,
   normalizeMemoPageSettings,
   normalizePageMarginsMm,
@@ -121,6 +123,13 @@ const BusinessCardsModal = lazy(() => import('./BusinessCardsModal').then((m) =>
 const PageSettingsModal = lazy(() => import('./PageSettingsModal').then((m) => ({ default: m.PageSettingsModal })))
 const MeetingNotesModal = lazy(() => import('./MeetingNotesModal').then((m) => ({ default: m.MeetingNotesModal })))
 const CONTENT_COMMIT_DELAY_MS = 350
+
+/** 페이지마다 반복되는 대각선 워터마크 SVG (배경 이미지용) */
+function watermarkSvg(text: string, w: number, h: number): string {
+  const safe = text.replace(/[<>&"']/g, '')
+  const fontSize = Math.max(24, Math.min(96, Math.floor((w * 1.2) / Math.max(4, safe.length))))
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" transform="rotate(-32 ${w / 2} ${h / 2})" font-family="'Malgun Gothic',sans-serif" font-weight="700" font-size="${fontSize}" fill="#8a8a8a" opacity="0.13">${safe}</text></svg>`
+}
 
 export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   const { fileHandle, fileHandleMemoId, setFileHandle, setSavedAt, setEditor } = useDocStore()
@@ -189,9 +198,22 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   const showRulers = useUIStore((s) => s.showRulers)
   const viewLayout = useUIStore((s) => s.viewLayout)
 
-  const pageMm = useMemo(() => pageDimensions(pageSize, pageOrientation), [pageSize, pageOrientation])
-  const pagePx = useMemo(() => pageDimensionsPx(pageSize, pageOrientation), [pageSize, pageOrientation])
-  const pageMargins = useMemo(() => normalizePageMarginsMm(pageMarginsMm, pageMarginMm), [pageMarginsMm, pageMarginMm])
+  const customPageWidthMm = useUIStore((s) => s.customPageWidthMm)
+  const customPageHeightMm = useUIStore((s) => s.customPageHeightMm)
+  const gutterMm = useUIStore((s) => s.gutterMm)
+  const gutterPosition = useUIStore((s) => s.gutterPosition)
+  const pageNumberFormat = useUIStore((s) => s.pageNumberFormat)
+  const pageNumberStart = useUIStore((s) => s.pageNumberStart)
+  const firstPageRunningOff = useUIStore((s) => s.firstPageRunningOff)
+  const watermarkText = useUIStore((s) => s.watermarkText)
+
+  const customMm = useMemo(() => ({ widthMm: customPageWidthMm, heightMm: customPageHeightMm }), [customPageWidthMm, customPageHeightMm])
+  const pageMm = useMemo(() => pageDimensions(pageSize, pageOrientation, customMm), [pageSize, pageOrientation, customMm])
+  const pagePx = useMemo(() => pageDimensionsPx(pageSize, pageOrientation, customMm), [pageSize, pageOrientation, customMm])
+  const pageMargins = useMemo(
+    () => effectiveMarginsMm(normalizePageMarginsMm(pageMarginsMm, pageMarginMm), gutterMm, gutterPosition),
+    [pageMarginsMm, pageMarginMm, gutterMm, gutterPosition]
+  )
   const pageMarginPx = useMemo(() => {
     const mmToPx = (mm: number) => Math.round((mm * 96) / 25.4)
     return {
@@ -253,6 +275,8 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   const shouldShowRulers = viewLayout === 'print' && showRulers
   // 페이지 분할은 1단 + 인쇄 보기에서만 (다단 CSS column 과 float 페이지 기구는 공존 불가)
   const paginationEnabled = viewLayout === 'print' && pageColumnCount === 1
+  // 화면상 페이지 반복 주기 (페이지 높이 + 갭 + 머리/꼬리글 렌더 오차) — 워터마크 반복 배경용
+  const pageRhythmPx = pagePx.pageHeight + 24 + 6
 
   const commitEditorContent = useCallback((targetEditor: TiptapEditor, memoId: string | null, seq: number) => {
     if (!memoId || targetEditor.isDestroyed) return
@@ -441,22 +465,30 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   useWheelZoom()
   useAutoSave(editor, title)
 
-  // 머리말/꼬리말의 {total} 채우기 — 페이지 수가 바뀔 때마다 실제 값으로 갱신.
+  // 머리말/꼬리말의 {total} 채우기 + 페이지 시작 번호(counter-reset) 적용.
   // (같은 값이면 쓰지 않으므로 observer 가 자기 변경에 재귀하지 않는다)
   useEffect(() => {
     if (!editor || editor.isDestroyed) return
     const root = editor.view.dom
+    const counterReset = `page-number ${pageNumberStart - 1} page-number-plus ${pageNumberStart}`
     const update = () => {
-      const total = String(root.querySelectorAll('.rm-page-break').length || 1)
+      const pageCount = root.querySelectorAll('.rm-page-break').length || 1
+      // 시작 번호를 반영한 마지막 페이지 번호를 형식에 맞춰 표시
+      const total = formatPageNumber(pageCount + pageNumberStart - 1, pageNumberFormat)
       root.querySelectorAll<HTMLElement>('.jan-total-pages').forEach((el) => {
         if (el.textContent !== total) el.textContent = total
+      })
+      if (root.style.counterReset !== counterReset) root.style.counterReset = counterReset
+      // 첫 페이지 머리글 위젯은 자체 counter-reset 스코프를 가지므로 함께 갱신
+      root.querySelectorAll<HTMLElement>('.rm-first-page-header').forEach((el) => {
+        if (el.style.counterReset !== counterReset) el.style.counterReset = counterReset
       })
     }
     update()
     const observer = new MutationObserver(update)
     observer.observe(root, { childList: true, subtree: true })
     return () => observer.disconnect()
-  }, [editor, paginationHeader, paginationFooter])
+  }, [editor, paginationHeader, paginationFooter, pageNumberStart, pageNumberFormat])
 
   const takeSnapshot = useVersionsStore((s) => s.takeSnapshot)
   const snapshotMemoId = memo?.id
@@ -752,6 +784,8 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
           data-page-columns={pageColumnCount}
           data-rulers={shouldShowRulers ? 'true' : 'false'}
           data-view-layout={viewLayout}
+          data-page-num-format={pageNumberFormat}
+          data-first-running={firstPageRunningOff ? 'off' : 'on'}
           style={pageStyle}
         >
           {shouldShowRulers && (
@@ -811,6 +845,16 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
             )}
             <div className="jan-page-shell" data-has-running-preview={hasRunningPreview ? 'true' : 'false'}>
               <EditorContent editor={editor} />
+              {viewLayout === 'print' && watermarkText && (
+                <div
+                  className="jan-page-watermark"
+                  aria-hidden="true"
+                  style={{
+                    backgroundImage: `url("data:image/svg+xml,${encodeURIComponent(watermarkSvg(watermarkText, pagePx.pageWidth, pageRhythmPx))}")`,
+                    backgroundSize: `100% ${pageRhythmPx}px`,
+                  }}
+                />
+              )}
               <div className="jan-page-margin-frame" aria-hidden="true" />
               {runningHeaderPreview && (
                 <div className="jan-page-running jan-page-running-header" aria-label="편집 화면 머리글 미리보기">

@@ -5,6 +5,7 @@ import { useMemosStore } from '../store/memosStore'
 import { useCollab } from '../hooks/useCollab'
 import { useWritingGoalStore } from '../store/writingGoalStore'
 import { PAPER_STYLES, pageMarginsSummary, useUIStore } from '../store/uiStore'
+import { askText } from '../lib/promptModal'
 import { useSettingsStore } from '../store/settingsStore'
 import { PomodoroWidget } from './PomodoroWidget'
 import { Icon } from './Icons'
@@ -97,6 +98,7 @@ export function StatusBar({ editor, onPageSettings, onSettings }: StatusBarProps
   else { saveLabel = `저장: ${new Date(savedAt).toLocaleTimeString()}`; saveClass += ' is-saved' }
 
   const goalPct = goal.dailyTarget > 0 ? Math.min(100, Math.round((goal.todayCount / goal.dailyTarget) * 100)) : 0
+  const pageInfo = getPageInfo(editor)
   const paperLabel = PAPER_STYLES.find((style) => style.value === paperStyle)?.label.replace(' (기본)', '') || '줄노트'
   const viewLayoutLabel = viewLayout === 'draft' ? '초안' : '인쇄'
   const pageSummary = [
@@ -137,6 +139,21 @@ export function StatusBar({ editor, onPageSettings, onSettings }: StatusBarProps
           >
             <Icon name={syncStatus.kind === 'error' ? 'shield' : 'sync'} size={12} />
             <span>{syncStatus.label}</span>
+          </button>
+        </>
+      )}
+      {pageInfo && (
+        <>
+          <span className="divider" />
+          <button
+            type="button"
+            className="jan-page-status-chip"
+            aria-label={`현재 ${pageInfo.current}쪽 / 전체 ${pageInfo.total}쪽 — 클릭해 페이지로 이동`}
+            title="클릭해서 특정 페이지로 이동"
+            onClick={() => void jumpToPage(editor, pageInfo.total)}
+          >
+            <Icon name="page-break" size={12} />
+            <span>{pageInfo.current}/{pageInfo.total}쪽</span>
           </button>
         </>
       )}
@@ -205,6 +222,38 @@ export function StatusBar({ editor, onPageSettings, onSettings }: StatusBarProps
       <span className="hint">Ctrl+S · Ctrl+K 링크 · Ctrl+Shift+P · F1</span>
     </div>
   )
+}
+
+/** 페이지네이션이 켜져 있을 때 현재 커서 페이지/전체 페이지 */
+function getPageInfo(editor: Editor | null): { current: number; total: number } | null {
+  if (!editor || editor.isDestroyed) return null
+  const root = editor.view.dom
+  if (!root.classList.contains('rm-with-pagination')) return null
+  const breakers = root.querySelectorAll('.rm-page-break .breaker')
+  const total = breakers.length || 1
+  let current = 1
+  try {
+    const caret = editor.view.coordsAtPos(editor.state.selection.head)
+    breakers.forEach((b) => { if (b.getBoundingClientRect().top < caret.top) current++ })
+    current = Math.max(1, Math.min(current, total))
+  } catch { /* 커서 좌표를 계산할 수 없으면 1쪽으로 */ }
+  return { current, total }
+}
+
+/** "n쪽으로 이동" — 해당 페이지 시작 지점으로 스크롤 */
+async function jumpToPage(editor: Editor | null, total: number): Promise<void> {
+  if (!editor || editor.isDestroyed) return
+  const v = await askText(`페이지로 이동 (1~${total})`, '', { placeholder: '페이지 번호' })
+  if (!v) return
+  const n = Math.max(1, Math.min(total, Math.round(Number(v)) || 1))
+  const root = editor.view.dom
+  const breakers = root.querySelectorAll('.rm-page-break .breaker')
+  if (n === 1 || breakers.length === 0) {
+    root.closest('.jan-editor-pages')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    return
+  }
+  const target = breakers[Math.min(n - 2, breakers.length - 1)]
+  target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
 function getDocumentStats(editor: Editor): TextStats {

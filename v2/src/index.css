@@ -3864,6 +3864,52 @@ html, body, #root {
   border-top-width: 0 !important;
   border-bottom-width: 0 !important;
 }
+
+/* ── 페이지 번호 형식 (Word 급) ── */
+.jan-editor-pages[data-page-num-format="dash"] .rm-page-number::before {
+  content: "- " counter(page-number) " -" !important;
+}
+.jan-editor-pages[data-page-num-format="dash"] .rm-page-number-plus::before {
+  content: "- " counter(page-number-plus) " -" !important;
+}
+.jan-editor-pages[data-page-num-format="lowerRoman"] .rm-page-number::before {
+  content: counter(page-number, lower-roman) !important;
+}
+.jan-editor-pages[data-page-num-format="lowerRoman"] .rm-page-number-plus::before {
+  content: counter(page-number-plus, lower-roman) !important;
+}
+.jan-editor-pages[data-page-num-format="upperRoman"] .rm-page-number::before {
+  content: counter(page-number, upper-roman) !important;
+}
+.jan-editor-pages[data-page-num-format="upperRoman"] .rm-page-number-plus::before {
+  content: counter(page-number-plus, upper-roman) !important;
+}
+
+/* ── 첫 페이지 머리글·꼬리말 숨김 (표지용, 공간은 유지) ── */
+.jan-editor-pages[data-first-running="off"] .rm-first-page-header {
+  visibility: hidden;
+}
+.jan-editor-pages[data-first-running="off"] .rm-pages-wrapper .rm-page-break:first-child .rm-page-footer {
+  visibility: hidden;
+}
+
+/* ── 워터마크 (페이지 리듬으로 반복) ── */
+.jan-page-watermark {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  background-repeat: repeat-y;
+  background-position: 0 0;
+}
+
+/* ── 인쇄 조판 품질: 고아·과부 줄 방지, 제목 뒤 분리 방지 ── */
+.jan-editor-pages .ProseMirror p { orphans: 2; widows: 2; }
+@media print {
+  .ProseMirror p, .ProseMirror li { orphans: 2; widows: 2; }
+  .ProseMirror h1, .ProseMirror h2, .ProseMirror h3 { break-after: avoid-page; }
+  .ProseMirror table, .ProseMirror figure, .ProseMirror pre, .ProseMirror blockquote, .ProseMirror img { break-inside: avoid-page; }
+}
 .jan-page-settings-hint {
   margin: 6px 0 0;
   font-size: 11.5px;
@@ -5044,3 +5090,120 @@ html, body, #root {
 .ProseMirror hr.jan-hr-solid { border: 0; border-top: 1px solid #888; margin: 1em 0; }
 .ProseMirror hr.jan-hr-dashed { border: 0; border-top: 1px dashed #888; margin: 1em 0; }
 .ProseMirror hr.jan-hr-double { border: 0; border-top: 3px double #888; margin: 1em 0; }
+
+/* =========================================================
+ * 페이지 설정 확장 — 사용자 지정 용지·제본 여백·페이지 번호·워터마크
+ * ========================================================= */
+.jan-page-margin-presets button.is-selected {
+  background: var(--accent, #D97757);
+  border-color: var(--accent, #D97757);
+  color: #fff;
+}
+
+.jan-page-custom-size {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 12px;
+}
+.jan-page-custom-size label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--ink-soft, #555);
+}
+.jan-page-custom-size input {
+  width: 74px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--paper-edge, #e5e5e5);
+  border-radius: 6px;
+  font-size: 12px;
+}
+.jan-page-custom-x { padding-bottom: 5px; color: var(--ink-soft, #777); }
+.jan-page-custom-unit { padding-bottom: 6px; font-size: 11px; color: var(--ink-soft, #888); }
+
+.jan-page-gutter-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+.jan-page-gutter-row > label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ink-soft, #555);
+}
+.jan-page-gutter-row input[type='number'] {
+  width: 64px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--paper-edge, #e5e5e5);
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.jan-page-number-row {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.jan-page-number-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--ink-soft, #555);
+}
+.jan-page-number-row select,
+.jan-page-number-row input {
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--paper-edge, #e5e5e5);
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-family: inherit;
+  min-width: 96px;
+}
+.jan-page-number-row input { width: 84px; }
+
+.jan-page-check-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 10px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.jan-page-watermark-row {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--ink-soft, #555);
+}
+.jan-page-watermark-row input {
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--paper-edge, #e5e5e5);
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-family: inherit;
+}
+
+.jan-theme-dark .jan-page-custom-size input,
+.jan-theme-dark .jan-page-gutter-row input[type='number'],
+.jan-theme-dark .jan-page-number-row select,
+.jan-theme-dark .jan-page-number-row input,
+.jan-theme-dark .jan-page-watermark-row input {
+  background: #2e2e2e;
+  border-color: #4a4a4a;
+  color: #e0e0e0;
+}

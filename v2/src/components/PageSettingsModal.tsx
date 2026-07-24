@@ -2,11 +2,16 @@ import { useEffect, useMemo, useState } from 'react'
 import { Icon } from './Icons'
 import {
   DEFAULT_RUNNING_FOOTER,
+  MARGIN_NAMED_PRESETS,
+  clampCustomPageMm,
   normalizePageMarginsMm,
+  normalizePageNumberStart,
   PAGE_PRESETS,
   PAPER_STYLES,
   pageDimensions,
   useUIStore,
+  type GutterPosition,
+  type PageNumberFormat,
   type PageOrientation,
   type PageColumnCount,
   type PageMarginsMm,
@@ -18,8 +23,13 @@ interface PageSettingsModalProps {
   onClose: () => void
 }
 
-const PAGE_SIZE_OPTIONS = Object.keys(PAGE_PRESETS) as PageSizePreset[]
-const MARGIN_PRESETS = [12, 16, 20, 25, 30]
+const PAGE_SIZE_OPTIONS = Object.keys(PAGE_PRESETS) as Exclude<PageSizePreset, 'custom'>[]
+const PAGE_NUMBER_FORMAT_OPTIONS: Array<{ value: PageNumberFormat; label: string }> = [
+  { value: 'arabic', label: '1, 2, 3' },
+  { value: 'dash', label: '- 1 -' },
+  { value: 'lowerRoman', label: 'i, ii, iii' },
+  { value: 'upperRoman', label: 'I, II, III' },
+]
 const COLUMN_OPTIONS: Array<{ value: PageColumnCount; label: string }> = [
   { value: 1, label: '1단' },
   { value: 2, label: '2단' },
@@ -42,9 +52,20 @@ export function PageSettingsModal({ onClose }: PageSettingsModalProps) {
   const [pageColumnCount, setPageColumnCount] = useState<PageColumnCount>(ui.pageColumnCount)
   const [runningHeader, setRunningHeader] = useState(ui.runningHeader || '')
   const [runningFooter, setRunningFooter] = useState(ui.runningFooter || DEFAULT_RUNNING_FOOTER)
+  const [customW, setCustomW] = useState(String(ui.customPageWidthMm))
+  const [customH, setCustomH] = useState(String(ui.customPageHeightMm))
+  const [gutterMm, setGutterMm] = useState(ui.gutterMm)
+  const [gutterPosition, setGutterPosition] = useState<GutterPosition>(ui.gutterPosition)
+  const [pageNumberFormat, setPageNumberFormat] = useState<PageNumberFormat>(ui.pageNumberFormat)
+  const [pageNumberStart, setPageNumberStart] = useState(ui.pageNumberStart)
+  const [firstPageRunningOff, setFirstPageRunningOff] = useState(ui.firstPageRunningOff)
+  const [watermarkText, setWatermarkText] = useState(ui.watermarkText)
 
   const paperLabel = PAPER_STYLES.find((style) => style.value === paperStyle)?.label || '줄노트'
-  const dimensions = useMemo(() => pageDimensions(pageSize, pageOrientation), [pageSize, pageOrientation])
+  const dimensions = useMemo(
+    () => pageDimensions(pageSize, pageOrientation, { widthMm: clampCustomPageMm(customW, 210), heightMm: clampCustomPageMm(customH, 297) }),
+    [pageSize, pageOrientation, customW, customH]
+  )
   const orientationLabel = pageOrientation === 'landscape' ? '가로' : '세로'
   const marginSummary = pageMarginsMm.top === pageMarginsMm.right &&
     pageMarginsMm.right === pageMarginsMm.bottom &&
@@ -69,6 +90,11 @@ export function PageSettingsModal({ onClose }: PageSettingsModalProps) {
     setPageColumnCount(1)
     setRunningHeader('')
     setRunningFooter(DEFAULT_RUNNING_FOOTER)
+    setCustomW('210'); setCustomH('297')
+    setGutterMm(0); setGutterPosition('left')
+    setPageNumberFormat('arabic'); setPageNumberStart(1)
+    setFirstPageRunningOff(false)
+    setWatermarkText('')
   }
 
   function setUniformMargin(margin: number) {
@@ -93,6 +119,14 @@ export function PageSettingsModal({ onClose }: PageSettingsModalProps) {
       pageColumnCount,
       runningHeader,
       runningFooter,
+      customPageWidthMm: clampCustomPageMm(customW, 210),
+      customPageHeightMm: clampCustomPageMm(customH, 297),
+      gutterMm,
+      gutterPosition,
+      pageNumberFormat,
+      pageNumberStart: normalizePageNumberStart(pageNumberStart),
+      firstPageRunningOff,
+      watermarkText,
     })
     onClose()
   }
@@ -166,7 +200,33 @@ export function PageSettingsModal({ onClose }: PageSettingsModalProps) {
                     </button>
                   )
                 })}
+                <button
+                  type="button"
+                  className={'jan-page-size-card' + (pageSize === 'custom' ? ' is-selected' : '')}
+                  onClick={() => setPageSize('custom')}
+                  aria-pressed={pageSize === 'custom'}
+                >
+                  <span className="jan-page-size-icon" style={{ aspectRatio: `${clampCustomPageMm(customW, 210)} / ${clampCustomPageMm(customH, 297)}` }} />
+                  <span className="jan-page-size-text">
+                    <strong>사용자 지정</strong>
+                    <small>{clampCustomPageMm(customW, 210)} × {clampCustomPageMm(customH, 297)}</small>
+                  </span>
+                </button>
               </div>
+              {pageSize === 'custom' && (
+                <div className="jan-page-custom-size">
+                  <label>
+                    <span>너비</span>
+                    <input type="number" min={50} max={1000} value={customW} onChange={(e) => setCustomW(e.target.value)} aria-label="사용자 지정 용지 너비 mm" />
+                  </label>
+                  <span className="jan-page-custom-x">×</span>
+                  <label>
+                    <span>높이</span>
+                    <input type="number" min={50} max={1000} value={customH} onChange={(e) => setCustomH(e.target.value)} aria-label="사용자 지정 용지 높이 mm" />
+                  </label>
+                  <span className="jan-page-custom-unit">mm (50~1000)</span>
+                </div>
+              )}
             </section>
 
             <section className="jan-page-settings-section">
@@ -270,11 +330,27 @@ export function PageSettingsModal({ onClose }: PageSettingsModalProps) {
                 <span>mm</span>
               </div>
               <div className="jan-page-margin-presets">
-                {MARGIN_PRESETS.map((margin) => (
-                  <button key={margin} type="button" onClick={() => setUniformMargin(margin)}>
-                    {margin}
-                  </button>
-                ))}
+                {MARGIN_NAMED_PRESETS.map((preset) => {
+                  const active = pageMarginsMm.top === preset.margins.top &&
+                    pageMarginsMm.right === preset.margins.right &&
+                    pageMarginsMm.bottom === preset.margins.bottom &&
+                    pageMarginsMm.left === preset.margins.left
+                  return (
+                    <button
+                      key={preset.key}
+                      type="button"
+                      className={active ? 'is-selected' : ''}
+                      title={`상${preset.margins.top} 우${preset.margins.right} 하${preset.margins.bottom} 좌${preset.margins.left}mm`}
+                      onClick={() => {
+                        const next = normalizePageMarginsMm(preset.margins)
+                        setPageMarginsMm(next)
+                        setPageMarginMm(Math.round((next.top + next.right + next.bottom + next.left) / 4))
+                      }}
+                    >
+                      {preset.label}
+                    </button>
+                  )
+                })}
               </div>
               <div className="jan-page-margin-fields">
                 {MARGIN_FIELDS.map((field) => (
@@ -291,6 +367,81 @@ export function PageSettingsModal({ onClose }: PageSettingsModalProps) {
                   </label>
                 ))}
               </div>
+              <div className="jan-page-gutter-row">
+                <label>
+                  <span>제본 여백</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={30}
+                    value={gutterMm}
+                    onChange={(event) => setGutterMm(Math.max(0, Math.min(30, Math.round(Number(event.target.value) || 0))))}
+                    aria-label="제본 여백 mm"
+                  />
+                  <span>mm</span>
+                </label>
+                <div className="jan-page-segmented" role="group" aria-label="제본 여백 위치">
+                  {([['left', '왼쪽'], ['top', '위쪽']] as Array<[GutterPosition, string]>).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      className={gutterPosition === value ? 'is-selected' : ''}
+                      onClick={() => setGutterPosition(value)}
+                      aria-pressed={gutterPosition === value}
+                      disabled={gutterMm === 0}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </section>
+
+            <section className="jan-page-settings-section">
+              <div className="jan-page-settings-section-head">
+                <Icon name="hash" size={15} />
+                <h4>페이지 번호 · 워터마크</h4>
+              </div>
+              <div className="jan-page-number-row">
+                <label>
+                  <span>번호 형식</span>
+                  <select value={pageNumberFormat} onChange={(event) => setPageNumberFormat(event.target.value as PageNumberFormat)} aria-label="페이지 번호 형식">
+                    {PAGE_NUMBER_FORMAT_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>시작 번호</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={9999}
+                    value={pageNumberStart}
+                    onChange={(event) => setPageNumberStart(normalizePageNumberStart(event.target.value))}
+                    aria-label="페이지 시작 번호"
+                  />
+                </label>
+              </div>
+              <label className="jan-page-check-row">
+                <input
+                  type="checkbox"
+                  checked={firstPageRunningOff}
+                  onChange={(event) => setFirstPageRunningOff(event.target.checked)}
+                />
+                <span>첫 페이지에는 머리글·꼬리말 표시 안 함 (표지)</span>
+              </label>
+              <label className="jan-page-watermark-row">
+                <span>워터마크</span>
+                <input
+                  type="text"
+                  value={watermarkText}
+                  maxLength={40}
+                  onChange={(event) => setWatermarkText(event.target.value)}
+                  placeholder="예: 대외비, DRAFT (비우면 끔)"
+                  aria-label="워터마크 텍스트"
+                />
+              </label>
             </section>
 
             <section className="jan-page-settings-section">

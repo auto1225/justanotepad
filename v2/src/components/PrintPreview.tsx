@@ -27,7 +27,7 @@ export function PrintPreview({ html, title, onClose }: PrintPreviewProps) {
   const pageColumnCount = useUIStore((s) => s.pageColumnCount)
   const runningHeader = useUIStore((s) => s.runningHeader)
   const runningFooter = useUIStore((s) => s.runningFooter)
-  const pageLabel = PAGE_PRESETS[pageSize]?.label || pageSize
+  const pageLabel = pageSize === 'custom' ? '사용자 지정' : (PAGE_PRESETS[pageSize]?.label || pageSize)
   const orientationLabel = pageOrientation === 'landscape' ? '가로' : '세로'
   const marginLabel = pageMarginsSummary(pageMarginsMm, pageMarginMm)
 

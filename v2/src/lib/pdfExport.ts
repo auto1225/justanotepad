@@ -1,9 +1,14 @@
 import { resolveBlobRefsInHtml } from './blobRefs'
 import {
   DEFAULT_RUNNING_FOOTER,
-  pageMarginsCss,
+  effectiveMarginsMm,
+  normalizePageMarginsMm,
+  normalizePageNumberFormat,
+  normalizePageNumberStart,
   pageDimensions,
   useUIStore,
+  type GutterPosition,
+  type PageNumberFormat,
   type PageOrientation,
   type PageColumnCount,
   type PageMarginsMm,
@@ -42,6 +47,14 @@ export interface PrintPageSettings {
   fontSize?: number
   lineHeight?: number
   paragraphSpacing?: number
+  customPageWidthMm?: number
+  customPageHeightMm?: number
+  gutterMm?: number
+  gutterPosition?: GutterPosition
+  pageNumberFormat?: PageNumberFormat
+  pageNumberStart?: number
+  firstPageRunningOff?: boolean
+  watermarkText?: string
 }
 
 export function currentPrintPageSettings(): PrintPageSettings {
@@ -60,14 +73,29 @@ export function currentPrintPageSettings(): PrintPageSettings {
     fontSize: typography.fontSize,
     lineHeight: typography.lineHeight,
     paragraphSpacing: typography.paragraphSpacing,
+    customPageWidthMm: ui.customPageWidthMm,
+    customPageHeightMm: ui.customPageHeightMm,
+    gutterMm: ui.gutterMm,
+    gutterPosition: ui.gutterPosition,
+    pageNumberFormat: ui.pageNumberFormat,
+    pageNumberStart: ui.pageNumberStart,
+    firstPageRunningOff: ui.firstPageRunningOff,
+    watermarkText: ui.watermarkText,
   }
+}
+
+function printPageDimensions(settings: PrintPageSettings) {
+  return pageDimensions(settings.pageSize, settings.pageOrientation, {
+    widthMm: settings.customPageWidthMm ?? 210,
+    heightMm: settings.customPageHeightMm ?? 297,
+  })
 }
 
 export async function exportToPdf(html: string, title: string): Promise<void> {
   // jan-blob:// 이미지 참조 해석 — 인쇄 iframe 은 이 스킴을 읽지 못한다
   html = await resolveBlobRefsInHtml(html)
   const settings = currentPrintPageSettings()
-  const page = pageDimensions(settings.pageSize, settings.pageOrientation)
+  const page = printPageDimensions(settings)
   const iframe = document.createElement('iframe')
   iframe.style.position = 'fixed'
   iframe.style.left = '-9999px'
@@ -115,18 +143,37 @@ export function buildPrintHtml(
 ): string {
   const titleAttr = escAttr(title)
   const titleCss = escCss(title)
-  const page = pageDimensions(settings.pageSize, settings.pageOrientation)
+  const page = printPageDimensions(settings)
   const pageSizeCss = `${page.widthMm}mm ${page.heightMm}mm`
-  const marginCss = pageMarginsCss(settings.pageMarginsMm, settings.pageMarginMm)
+  // 제본 여백(거터)을 실효 여백에 가산
+  const effMargins = effectiveMarginsMm(
+    normalizePageMarginsMm(settings.pageMarginsMm, settings.pageMarginMm),
+    settings.gutterMm ?? 0,
+    settings.gutterPosition ?? 'left'
+  )
+  const marginCss = `${effMargins.top}mm ${effMargins.right}mm ${effMargins.bottom}mm ${effMargins.left}mm`
+  const pageNumberFormat = normalizePageNumberFormat(settings.pageNumberFormat)
+  const pageNumberStart = normalizePageNumberStart(settings.pageNumberStart ?? 1)
   const runningHeader = settings.runningHeader?.trim() || ''
   const runningFooter = settings.runningFooter?.trim() || DEFAULT_RUNNING_FOOTER
   const headerCss = runningHeader
-    ? `@top-left { content: ${cssContentFromTemplate(runningHeader)}; font-size: 9pt; color:#666; }`
+    ? `@top-left { content: ${cssContentFromTemplate(runningHeader, pageNumberFormat)}; font-size: 9pt; color:#666; }`
     : options.includeHeaderTitle === false
       ? ''
       : `@top-right { content: "${titleCss}"; font-size: 9pt; color:#888; }`
   const footerCss = runningFooter
-    ? `@bottom-right { content: ${cssContentFromTemplate(runningFooter)}; font-size:9pt; color:#888; }`
+    ? `@bottom-right { content: ${cssContentFromTemplate(runningFooter, pageNumberFormat)}; font-size:9pt; color:#888; }`
+    : ''
+  // 첫 페이지(표지) 머리글·꼬리말 제거
+  const firstPageCss = settings.firstPageRunningOff
+    ? '@page :first { @top-left { content: none; } @top-right { content: none; } @bottom-left { content: none; } @bottom-right { content: none; } }'
+    : ''
+  // 시작 번호 — Paged.js 는 요소의 counter-reset: page 를 지원한다
+  const pageStartCss = pageNumberStart > 1 ? `#content{counter-reset: page ${pageNumberStart - 1};}` : ''
+  // 워터마크 — 각 페이지 박스(.pagedjs_page)의 ::after 로 반복
+  const watermark = (settings.watermarkText || '').trim().slice(0, 40)
+  const watermarkCss = watermark
+    ? `.pagedjs_page{position:relative;}.pagedjs_page::after{content:"";position:absolute;inset:0;z-index:5;pointer-events:none;background:url("data:image/svg+xml,${encodeURIComponent(printWatermarkSvg(watermark))}") center / 72% auto no-repeat;}`
     : ''
   const previewCss = options.previewChrome
     ? 'body{background:#ccc;}.pagedjs_page{margin:16px auto !important;box-shadow:0 4px 16px rgba(0,0,0,0.18);}'
@@ -147,6 +194,13 @@ export function buildPrintHtml(
   ${headerCss}
   ${footerCss}
 }
+${firstPageCss}
+${pageStartCss}
+${watermarkCss}
+/* 조판 품질 — 고아·과부 줄 방지, 제목 분리 방지, 블록 쪼개짐 방지 */
+p,li{orphans:2;widows:2;}
+h1,h2,h3{break-after:avoid;}
+table,figure,pre,blockquote,img{break-inside:avoid;}
 html,body{margin:0;padding:0;}
 body{font-family:${fontFamily};font-size:${fontSizePt}pt;line-height:${lineHeight};color:#222;}
 body,#content,.pagedjs_page,.pagedjs_page_content{
@@ -203,17 +257,34 @@ function escCss(s: string): string {
   return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
 }
 
-function cssContentFromTemplate(template: string): string {
+function pageCounterCss(counterName: 'page' | 'pages', format: PageNumberFormat): string {
+  switch (format) {
+    case 'dash': return `"- " counter(${counterName}) " -"`
+    case 'lowerRoman': return `counter(${counterName}, lower-roman)`
+    case 'upperRoman': return `counter(${counterName}, upper-roman)`
+    default: return `counter(${counterName})`
+  }
+}
+
+function cssContentFromTemplate(template: string, format: PageNumberFormat = 'arabic'): string {
   const parts: string[] = []
   const pattern = /\{page\}|\{total\}/g
   let lastIndex = 0
   for (const match of template.matchAll(pattern)) {
     if (match.index > lastIndex) parts.push(`"${escCss(template.slice(lastIndex, match.index))}"`)
-    parts.push(match[0] === '{page}' ? 'counter(page)' : 'counter(pages)')
+    parts.push(match[0] === '{page}' ? pageCounterCss('page', format) : pageCounterCss('pages', format))
     lastIndex = match.index + match[0].length
   }
   if (lastIndex < template.length) parts.push(`"${escCss(template.slice(lastIndex))}"`)
   return parts.length ? parts.join(' ') : '""'
+}
+
+/** 인쇄용 페이지 중앙 대각선 워터마크 SVG */
+function printWatermarkSvg(text: string): string {
+  const safe = text.replace(/[<>&"']/g, '')
+  const w = 800, h = 600
+  const fontSize = Math.max(28, Math.min(110, Math.floor((w * 1.15) / Math.max(4, safe.length))))
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" transform="rotate(-32 ${w / 2} ${h / 2})" font-family="'Malgun Gothic',sans-serif" font-weight="700" font-size="${fontSize}" fill="#9a9a9a" opacity="0.16">${safe}</text></svg>`
 }
 
 function pxToPt(px: number): number {

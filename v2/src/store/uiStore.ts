@@ -2,10 +2,12 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
 export type PaperStyle = 'lined' | 'grid' | 'dot' | 'blank' | 'music' | 'cornell'
-export type PageSizePreset = 'A4' | 'A3' | 'B4' | 'A5' | 'B5' | 'Letter'
+export type PageSizePreset = 'A4' | 'A3' | 'B4' | 'A5' | 'B5' | 'Letter' | 'Legal' | 'Tabloid' | 'Executive' | 'A6' | 'SinGuk' | 'Book46' | 'custom'
 export type PageOrientation = 'portrait' | 'landscape'
 export type PageColumnCount = 1 | 2 | 3
 export type ViewLayoutMode = 'print' | 'draft'
+export type PageNumberFormat = 'arabic' | 'dash' | 'lowerRoman' | 'upperRoman'
+export type GutterPosition = 'left' | 'top'
 export const DEFAULT_RUNNING_FOOTER = 'Page {page} / {total}'
 export const ZOOM_MIN = 0.35
 export const ZOOM_MAX = 2
@@ -25,6 +27,19 @@ export interface MemoPageSettings {
   pageColumnCount: PageColumnCount
   runningHeader: string
   runningFooter: string
+  /** 사용자 지정 용지 (pageSize==='custom' 일 때 사용) */
+  customPageWidthMm: number
+  customPageHeightMm: number
+  /** 제본 여백 — 해당 변 여백에 가산 */
+  gutterMm: number
+  gutterPosition: GutterPosition
+  /** 페이지 번호 */
+  pageNumberFormat: PageNumberFormat
+  pageNumberStart: number
+  /** 첫 페이지 머리글·꼬리말 표시 안 함 (표지용) */
+  firstPageRunningOff: boolean
+  /** 워터마크 텍스트 (빈 문자열 = 끔) */
+  watermarkText: string
 }
 
 export const DEFAULT_MEMO_PAGE_SETTINGS: MemoPageSettings = {
@@ -36,7 +51,23 @@ export const DEFAULT_MEMO_PAGE_SETTINGS: MemoPageSettings = {
   pageColumnCount: 1,
   runningHeader: '',
   runningFooter: DEFAULT_RUNNING_FOOTER,
+  customPageWidthMm: 210,
+  customPageHeightMm: 297,
+  gutterMm: 0,
+  gutterPosition: 'left',
+  pageNumberFormat: 'arabic',
+  pageNumberStart: 1,
+  firstPageRunningOff: false,
+  watermarkText: '',
 }
+
+/** 워드식 이름 있는 여백 프리셋 */
+export const MARGIN_NAMED_PRESETS: ReadonlyArray<{ key: string; label: string; margins: PageMarginsMm }> = [
+  { key: 'narrow', label: '좁게', margins: { top: 13, right: 13, bottom: 13, left: 13 } },
+  { key: 'normal', label: '기본', margins: { top: 20, right: 20, bottom: 20, left: 20 } },
+  { key: 'moderate', label: '보통', margins: { top: 25, right: 19, bottom: 25, left: 19 } },
+  { key: 'wide', label: '넓게', margins: { top: 25, right: 30, bottom: 25, left: 30 } },
+]
 
 export const PAPER_STYLES: Array<{ value: PaperStyle; label: string; description: string }> = [
   { value: 'lined', label: '줄노트 (기본)', description: 'v1 기본 노트 배경' },
@@ -47,27 +78,85 @@ export const PAPER_STYLES: Array<{ value: PaperStyle; label: string; description
   { value: 'cornell', label: '코넬 노트', description: '좌측 큐 영역 + 줄노트' },
 ]
 
-export const PAGE_PRESETS: Record<PageSizePreset, { label: string; widthMm: number; heightMm: number }> = {
+export const PAGE_PRESETS: Record<Exclude<PageSizePreset, 'custom'>, { label: string; widthMm: number; heightMm: number }> = {
   A4: { label: 'A4', widthMm: 210, heightMm: 297 },
   A3: { label: 'A3', widthMm: 297, heightMm: 420 },
   B4: { label: 'B4', widthMm: 250, heightMm: 353 },
   A5: { label: 'A5', widthMm: 148, heightMm: 210 },
+  A6: { label: 'A6', widthMm: 105, heightMm: 148 },
   B5: { label: 'B5', widthMm: 176, heightMm: 250 },
   Letter: { label: 'Letter', widthMm: 216, heightMm: 279 },
+  Legal: { label: 'Legal', widthMm: 216, heightMm: 356 },
+  Tabloid: { label: 'Tabloid', widthMm: 279, heightMm: 432 },
+  Executive: { label: 'Executive', widthMm: 184, heightMm: 267 },
+  SinGuk: { label: '신국판', widthMm: 152, heightMm: 225 },
+  Book46: { label: '46배판', widthMm: 188, heightMm: 257 },
 }
 
-export function pageDimensions(size: PageSizePreset, orientation: PageOrientation) {
-  const preset = PAGE_PRESETS[size] || PAGE_PRESETS.A4
-  const portrait = { widthMm: preset.widthMm, heightMm: preset.heightMm }
+export function clampCustomPageMm(value: unknown, fallback: number): number {
+  const next = Number(value)
+  const base = Number.isFinite(next) ? next : fallback
+  return Math.max(50, Math.min(1000, Math.round(base)))
+}
+
+export interface CustomPageMm { widthMm: number; heightMm: number }
+
+export function pageDimensions(size: PageSizePreset, orientation: PageOrientation, custom?: CustomPageMm) {
+  const portrait = size === 'custom'
+    ? {
+        widthMm: clampCustomPageMm(custom?.widthMm, 210),
+        heightMm: clampCustomPageMm(custom?.heightMm, 297),
+      }
+    : (() => { const p = PAGE_PRESETS[size] || PAGE_PRESETS.A4; return { widthMm: p.widthMm, heightMm: p.heightMm } })()
   return orientation === 'landscape'
     ? { widthMm: portrait.heightMm, heightMm: portrait.widthMm }
     : portrait
 }
 
-export function pageDimensionsPx(size: PageSizePreset, orientation: PageOrientation) {
-  const { widthMm, heightMm } = pageDimensions(size, orientation)
+export function pageDimensionsPx(size: PageSizePreset, orientation: PageOrientation, custom?: CustomPageMm) {
+  const { widthMm, heightMm } = pageDimensions(size, orientation, custom)
   const mmToPx = (mm: number) => Math.round((mm * 96) / 25.4)
   return { pageWidth: mmToPx(widthMm), pageHeight: mmToPx(heightMm) }
+}
+
+/** 제본 여백(거터)을 해당 변에 가산한 실효 여백 */
+export function effectiveMarginsMm(margins: PageMarginsMm, gutterMm: number, gutterPosition: GutterPosition): PageMarginsMm {
+  const g = Math.max(0, Math.min(30, Math.round(Number(gutterMm) || 0)))
+  if (g === 0) return margins
+  return gutterPosition === 'top'
+    ? { ...margins, top: margins.top + g }
+    : { ...margins, left: margins.left + g }
+}
+
+const PAGE_NUMBER_FORMATS: ReadonlyArray<PageNumberFormat> = ['arabic', 'dash', 'lowerRoman', 'upperRoman']
+
+export function normalizePageNumberFormat(value: unknown): PageNumberFormat {
+  return PAGE_NUMBER_FORMATS.includes(value as PageNumberFormat) ? (value as PageNumberFormat) : 'arabic'
+}
+
+export function normalizePageNumberStart(value: unknown): number {
+  const next = Number(value)
+  if (!Number.isFinite(next)) return 1
+  return Math.max(1, Math.min(9999, Math.round(next)))
+}
+
+function toRoman(num: number): string {
+  const table: Array<[number, string]> = [[1000, 'm'], [900, 'cm'], [500, 'd'], [400, 'cd'], [100, 'c'], [90, 'xc'], [50, 'l'], [40, 'xl'], [10, 'x'], [9, 'ix'], [5, 'v'], [4, 'iv'], [1, 'i']]
+  let n = Math.max(1, Math.round(num))
+  let out = ''
+  for (const [v, s] of table) { while (n >= v) { out += s; n -= v } }
+  return out
+}
+
+/** 페이지 번호를 지정 형식으로 */
+export function formatPageNumber(page: number, format: PageNumberFormat): string {
+  const n = Math.max(1, Math.round(page))
+  switch (format) {
+    case 'dash': return `- ${n} -`
+    case 'lowerRoman': return toRoman(n)
+    case 'upperRoman': return toRoman(n).toUpperCase()
+    default: return String(n)
+  }
 }
 
 export function normalizePageColumnCount(value: unknown): PageColumnCount {
@@ -128,7 +217,7 @@ export function normalizeViewLayout(value: unknown): ViewLayoutMode {
 
 export function normalizeMemoPageSettings(value: unknown, fallback: MemoPageSettings = DEFAULT_MEMO_PAGE_SETTINGS): MemoPageSettings {
   const raw = isRecord(value) ? value : {}
-  const pageSize = typeof raw.pageSize === 'string' && raw.pageSize in PAGE_PRESETS
+  const pageSize = typeof raw.pageSize === 'string' && (raw.pageSize === 'custom' || raw.pageSize in PAGE_PRESETS)
     ? raw.pageSize as PageSizePreset
     : fallback.pageSize
   const pageOrientation = raw.pageOrientation === 'landscape' || raw.pageOrientation === 'portrait'
@@ -148,6 +237,14 @@ export function normalizeMemoPageSettings(value: unknown, fallback: MemoPageSett
     pageColumnCount: normalizePageColumnCount(raw.pageColumnCount ?? fallback.pageColumnCount),
     runningHeader: typeof raw.runningHeader === 'string' ? raw.runningHeader.trim() : fallback.runningHeader,
     runningFooter: typeof raw.runningFooter === 'string' ? raw.runningFooter.trim() : fallback.runningFooter,
+    customPageWidthMm: clampCustomPageMm(raw.customPageWidthMm, fallback.customPageWidthMm),
+    customPageHeightMm: clampCustomPageMm(raw.customPageHeightMm, fallback.customPageHeightMm),
+    gutterMm: Math.max(0, Math.min(30, Math.round(Number(raw.gutterMm ?? fallback.gutterMm) || 0))),
+    gutterPosition: raw.gutterPosition === 'top' ? 'top' : (raw.gutterPosition === 'left' ? 'left' : fallback.gutterPosition),
+    pageNumberFormat: normalizePageNumberFormat(raw.pageNumberFormat ?? fallback.pageNumberFormat),
+    pageNumberStart: normalizePageNumberStart(raw.pageNumberStart ?? fallback.pageNumberStart),
+    firstPageRunningOff: typeof raw.firstPageRunningOff === 'boolean' ? raw.firstPageRunningOff : fallback.firstPageRunningOff,
+    watermarkText: typeof raw.watermarkText === 'string' ? raw.watermarkText.trim().slice(0, 40) : fallback.watermarkText,
   }
 }
 
@@ -161,6 +258,14 @@ export function pageSettingsFromUi(state: Pick<UIState, keyof MemoPageSettings>)
     pageColumnCount: state.pageColumnCount,
     runningHeader: state.runningHeader,
     runningFooter: state.runningFooter,
+    customPageWidthMm: state.customPageWidthMm,
+    customPageHeightMm: state.customPageHeightMm,
+    gutterMm: state.gutterMm,
+    gutterPosition: state.gutterPosition,
+    pageNumberFormat: state.pageNumberFormat,
+    pageNumberStart: state.pageNumberStart,
+    firstPageRunningOff: state.firstPageRunningOff,
+    watermarkText: state.watermarkText,
   })
 }
 
@@ -177,7 +282,15 @@ export function sameMemoPageSettings(a: unknown, b: unknown): boolean {
     left.pageMarginsMm.top === right.pageMarginsMm.top &&
     left.pageMarginsMm.right === right.pageMarginsMm.right &&
     left.pageMarginsMm.bottom === right.pageMarginsMm.bottom &&
-    left.pageMarginsMm.left === right.pageMarginsMm.left
+    left.pageMarginsMm.left === right.pageMarginsMm.left &&
+    left.customPageWidthMm === right.customPageWidthMm &&
+    left.customPageHeightMm === right.customPageHeightMm &&
+    left.gutterMm === right.gutterMm &&
+    left.gutterPosition === right.gutterPosition &&
+    left.pageNumberFormat === right.pageNumberFormat &&
+    left.pageNumberStart === right.pageNumberStart &&
+    left.firstPageRunningOff === right.firstPageRunningOff &&
+    left.watermarkText === right.watermarkText
 }
 
 export function formatRunningText(template: string, page = 1, total = 1): string {
@@ -207,6 +320,14 @@ interface UIState {
   pageColumnCount: PageColumnCount
   runningHeader: string
   runningFooter: string
+  customPageWidthMm: number
+  customPageHeightMm: number
+  gutterMm: number
+  gutterPosition: GutterPosition
+  pageNumberFormat: PageNumberFormat
+  pageNumberStart: number
+  firstPageRunningOff: boolean
+  watermarkText: string
   toggleFocus: () => void
   setFocus: (v: boolean) => void
   toggleReading: () => void
@@ -250,6 +371,14 @@ export const useUIStore = create<UIState>()(
       pageColumnCount: 1,
       runningHeader: '',
       runningFooter: DEFAULT_RUNNING_FOOTER,
+      customPageWidthMm: 210,
+      customPageHeightMm: 297,
+      gutterMm: 0,
+      gutterPosition: 'left',
+      pageNumberFormat: 'arabic',
+      pageNumberStart: 1,
+      firstPageRunningOff: false,
+      watermarkText: '',
       toggleFocus: () => set({ focusMode: !get().focusMode }),
       toggleReading: () => set({ readingMode: !get().readingMode }),
       toggleSpellCheck: () => set({ spellCheck: !get().spellCheck }),
@@ -281,7 +410,9 @@ export const useUIStore = create<UIState>()(
       setRunningHeader: (value) => set({ runningHeader: value.trim() }),
       setRunningFooter: (value) => set({ runningFooter: value.trim() }),
       applyPageSettings: (settings) => {
-        const next = normalizeMemoPageSettings(settings)
+        // Partial 병합: 지정 안 된 필드는 현재 값을 유지해야 한다 (normalize 기본값으로 덮어쓰면 안 됨)
+        const cur = get()
+        const next = normalizeMemoPageSettings(settings, pageSettingsFromUi(cur))
         set({
           paperStyle: next.paperStyle,
           pageSize: next.pageSize,
@@ -291,6 +422,14 @@ export const useUIStore = create<UIState>()(
           pageColumnCount: next.pageColumnCount,
           runningHeader: next.runningHeader,
           runningFooter: next.runningFooter,
+          customPageWidthMm: next.customPageWidthMm,
+          customPageHeightMm: next.customPageHeightMm,
+          gutterMm: next.gutterMm,
+          gutterPosition: next.gutterPosition,
+          pageNumberFormat: next.pageNumberFormat,
+          pageNumberStart: next.pageNumberStart,
+          firstPageRunningOff: next.firstPageRunningOff,
+          watermarkText: next.watermarkText,
         })
       },
     }),
