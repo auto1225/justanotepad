@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import type { Editor } from '@tiptap/react'
 import './paint-canvas.css'
 
@@ -17,142 +17,89 @@ type Tool =
   | 'rect'
   | 'ellipse'
   | 'text'
+  | 'eyedropper'
+  | 'select'
 
 const TOOLS: ReadonlyArray<{ id: Tool; label: string; title: string }> = [
   { id: 'pen', label: '펜', title: '펜 — 부드러운 자유 곡선 (필압 지원)' },
   { id: 'highlighter', label: '형광펜', title: '형광펜 — 반투명 굵은 선' },
-  { id: 'eraser', label: '지우개', title: '지우개' },
+  { id: 'eraser', label: '지우개', title: '지우개 — 원형 범위, 크기 조절 가능' },
   { id: 'fill', label: '채우기', title: '채우기 — 클릭한 영역을 현재 색으로 채우기' },
-  { id: 'line', label: '직선', title: '직선' },
+  { id: 'eyedropper', label: '스포이드', title: '스포이드 — 캔버스에서 색 추출' },
+  { id: 'line', label: '직선', title: '직선 (Shift: 수평/수직/45°)' },
   { id: 'arrow', label: '화살표', title: '화살표' },
-  { id: 'rect', label: '사각형', title: '사각형' },
-  { id: 'ellipse', label: '타원', title: '타원' },
+  { id: 'rect', label: '사각형', title: '사각형 (Shift: 정사각형)' },
+  { id: 'ellipse', label: '타원', title: '타원 (Shift: 정원)' },
   { id: 'text', label: '텍스트', title: '텍스트 — 캔버스를 클릭해 입력' },
+  { id: 'select', label: '선택', title: '선택 — 영역을 끌어 선택 후 이동·삭제·복사' },
 ]
 
 const PALETTE = [
-  '#000000',
-  '#6B7280',
-  '#E53935',
-  '#FB8C00',
-  '#FDD835',
-  '#43A047',
-  '#00897B',
-  '#1E88E5',
-  '#3949AB',
-  '#8E24AA',
-  '#D81B60',
-  '#6D4C41',
+  '#000000', '#6B7280', '#E53935', '#FB8C00', '#FDD835', '#43A047',
+  '#00897B', '#1E88E5', '#3949AB', '#8E24AA', '#D81B60', '#6D4C41',
+  '#FFFFFF', '#BDBDBD', '#FF80AB', '#FFD180', '#FFF59D', '#A5D6A7',
 ]
 
 const CANVAS_SIZES = [
   { key: 'small', label: '소', title: '캔버스 크기 소 (640×400)', w: 640, h: 400 },
-  { key: 'medium', label: '중', title: '캔버스 크기 중 (800×500)', w: 800, h: 500 },
-  { key: 'large', label: '대', title: '캔버스 크기 대 (1024×640)', w: 1024, h: 640 },
+  { key: 'medium', label: '중', title: '캔버스 크기 중 (900×560)', w: 900, h: 560 },
+  { key: 'large', label: '대', title: '캔버스 크기 대 (1200×720)', w: 1200, h: 720 },
 ] as const
 type SizeKey = (typeof CANVAS_SIZES)[number]['key']
 
-const MAX_HISTORY = 40 // undo 스택 최대 깊이
-const FILL_TOLERANCE = 32 // 채우기 색상 허용 오차(안티앨리어싱 경계 흡수용)
+const MAX_HISTORY = 50
+const FILL_TOLERANCE = 32
+const FONT_SIZES = [12, 16, 20, 28, 36, 48, 64]
 
-interface Pt {
-  x: number
-  y: number
-  p: number // 필압 (0~1, 마우스는 0.5)
-}
-
-interface TextDraft {
-  cx: number // 캔버스 좌표
-  cy: number
-  dx: number // 캔버스 박스 기준 표시 좌표(px)
-  dy: number
-  scale: number // 표시 크기 / 실제 픽셀 크기
-  value: string
-}
+interface Pt { x: number; y: number; p: number }
+interface Rect { x: number; y: number; w: number; h: number }
+interface TextDraft { cx: number; cy: number; dx: number; dy: number; scale: number; value: string }
+interface Selection { rect: Rect; data: ImageData; dragging: boolean; offsetX: number; offsetY: number; floated: boolean }
 
 function hexToRgb(hex: string): [number, number, number] {
   const v = parseInt(hex.slice(1), 16)
   return [(v >> 16) & 255, (v >> 8) & 255, v & 255]
 }
+function rgbToHex(r: number, g: number, b: number): string {
+  return '#' + [r, g, b].map((n) => n.toString(16).padStart(2, '0')).join('')
+}
 
-/**
- * 반복형(스택 기반) 스캔라인 플러드 필.
- * 재귀를 쓰지 않으므로 큰 영역에서도 스택 오버플로 없음.
- * 변화가 있었으면 true를 반환.
- */
+/** 반복형 스캔라인 플러드 필. 변화가 있으면 true. */
 function floodFill(ctx: CanvasRenderingContext2D, sx: number, sy: number, hex: string): boolean {
   const { width, height } = ctx.canvas
   if (sx < 0 || sy < 0 || sx >= width || sy >= height) return false
   const img = ctx.getImageData(0, 0, width, height)
   const d = img.data
   const startIdx = (sy * width + sx) * 4
-  const tr = d[startIdx]
-  const tg = d[startIdx + 1]
-  const tb = d[startIdx + 2]
-  const ta = d[startIdx + 3]
+  const tr = d[startIdx], tg = d[startIdx + 1], tb = d[startIdx + 2], ta = d[startIdx + 3]
   const [fr, fg, fb] = hexToRgb(hex)
-  // 대상 색이 채우기 색과 사실상 같으면 아무 것도 하지 않음
-  if (
-    Math.abs(tr - fr) <= FILL_TOLERANCE &&
-    Math.abs(tg - fg) <= FILL_TOLERANCE &&
-    Math.abs(tb - fb) <= FILL_TOLERANCE &&
-    ta === 255
-  ) {
-    return false
-  }
-
+  if (Math.abs(tr - fr) <= FILL_TOLERANCE && Math.abs(tg - fg) <= FILL_TOLERANCE && Math.abs(tb - fb) <= FILL_TOLERANCE && ta === 255) return false
   const visited = new Uint8Array(width * height)
   const matches = (i: number): boolean => {
     const j = i * 4
-    return (
-      Math.abs(d[j] - tr) <= FILL_TOLERANCE &&
-      Math.abs(d[j + 1] - tg) <= FILL_TOLERANCE &&
-      Math.abs(d[j + 2] - tb) <= FILL_TOLERANCE &&
-      Math.abs(d[j + 3] - ta) <= FILL_TOLERANCE
-    )
+    return Math.abs(d[j] - tr) <= FILL_TOLERANCE && Math.abs(d[j + 1] - tg) <= FILL_TOLERANCE && Math.abs(d[j + 2] - tb) <= FILL_TOLERANCE && Math.abs(d[j + 3] - ta) <= FILL_TOLERANCE
   }
-  const paint = (i: number): void => {
-    const j = i * 4
-    d[j] = fr
-    d[j + 1] = fg
-    d[j + 2] = fb
-    d[j + 3] = 255
-  }
-
-  // 스택에는 (x, y) 쌍을 평탄하게 저장
+  const paint = (i: number): void => { const j = i * 4; d[j] = fr; d[j + 1] = fg; d[j + 2] = fb; d[j + 3] = 255 }
   const stack: number[] = [sx, sy]
   while (stack.length > 0) {
     const y = stack.pop() as number
     const x = stack.pop() as number
-    // 스팬의 왼쪽 끝까지 이동
     let x0 = x
     while (x0 >= 0 && visited[y * width + x0] === 0 && matches(y * width + x0)) x0--
     x0++
-    let spanAbove = false
-    let spanBelow = false
+    let spanAbove = false, spanBelow = false
     for (let xi = x0; xi < width && visited[y * width + xi] === 0 && matches(y * width + xi); xi++) {
       const i = y * width + xi
-      paint(i)
-      visited[i] = 1
+      paint(i); visited[i] = 1
       if (y > 0) {
         const up = (y - 1) * width + xi
         const m = visited[up] === 0 && matches(up)
-        if (m && !spanAbove) {
-          stack.push(xi, y - 1)
-          spanAbove = true
-        } else if (!m) {
-          spanAbove = false
-        }
+        if (m && !spanAbove) { stack.push(xi, y - 1); spanAbove = true } else if (!m) spanAbove = false
       }
       if (y < height - 1) {
         const down = (y + 1) * width + xi
         const m = visited[down] === 0 && matches(down)
-        if (m && !spanBelow) {
-          stack.push(xi, y + 1)
-          spanBelow = true
-        } else if (!m) {
-          spanBelow = false
-        }
+        if (m && !spanBelow) { stack.push(xi, y + 1); spanBelow = true } else if (!m) spanBelow = false
       }
     }
   }
@@ -160,205 +107,175 @@ function floodFill(ctx: CanvasRenderingContext2D, sx: number, sy: number, hex: s
   return true
 }
 
-/** 그림판 — 펜/형광펜/도형/텍스트/채우기, undo·redo, 크기 변경, 더티 가드 지원 */
+function pad(n: number): string { return String(n).padStart(2, '0') }
+
+function drawArrow(ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number, w: number) {
+  const head = Math.max(8, w * 3)
+  const ang = Math.atan2(y2 - y1, x2 - x1)
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke()
+  ctx.beginPath()
+  ctx.moveTo(x2, y2)
+  ctx.lineTo(x2 - head * Math.cos(ang - Math.PI / 6), y2 - head * Math.sin(ang - Math.PI / 6))
+  ctx.lineTo(x2 - head * Math.cos(ang + Math.PI / 6), y2 - head * Math.sin(ang + Math.PI / 6))
+  ctx.closePath(); ctx.fill()
+}
+
+function toolHint(tool: Tool): string {
+  switch (tool) {
+    case 'select': return '영역을 끌어 선택 → 안쪽을 드래그해 이동, Delete 삭제, Ctrl+C 복사'
+    case 'text': return '캔버스를 클릭해 위치를 정하고 입력하세요 (여러 줄 가능)'
+    case 'eyedropper': return '캔버스를 클릭하면 그 지점 색을 가져옵니다'
+    case 'fill': return '닫힌 영역을 클릭해 현재 색으로 채웁니다'
+    case 'eraser': return '원형 지우개 — 굵기 슬라이더로 크기 조절'
+    default: return '이미지 붙여넣기(Ctrl+V)·파일 열기(Ctrl+O) 지원'
+  }
+}
+
+/** 그림판 — 윈도우 그림판 수준: 펜/형광펜/지우개/채우기/스포이드/도형/텍스트/선택, 파일 열기, 클립보드, undo·redo */
 export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const overlayRef = useRef<HTMLCanvasElement>(null)
+
   const [tool, setTool] = useState<Tool>('pen')
   const [color, setColor] = useState('#000000')
   const [size, setSize] = useState(4)
+  const [fontSize, setFontSize] = useState(28)
   const [sizeKey, setSizeKey] = useState<SizeKey>('medium')
   const [recent, setRecent] = useState<string[]>([])
-  const [textDraft, setTextDraft] = useState<TextDraft | null>(null)
-  const [confirm, setConfirm] = useState<'none' | 'clear' | 'close'>('none')
-  const [dirty, setDirty] = useState(false)
-  // undo/redo 스택 본체는 ref에 두고, 버튼 활성화용 길이만 상태로 미러링
   const [histLen, setHistLen] = useState({ undo: 0, redo: 0 })
+  const [dirty, setDirty] = useState(false)
+  const [confirm, setConfirm] = useState<'none' | 'clear' | 'close'>('none')
+  const [textDraft, setTextDraft] = useState<TextDraft | null>(null)
 
-  const undoStack = useRef<ImageData[]>([])
-  const redoStack = useRef<ImageData[]>([])
   const drawing = useRef(false)
   const startPt = useRef<Pt | null>(null)
   const lastPt = useRef<Pt | null>(null)
   const prevMid = useRef<Pt | null>(null)
-  const strokePts = useRef<Pt[]>([])
   const snapshot = useRef<ImageData | null>(null)
-  const keyHandlerRef = useRef<(e: KeyboardEvent) => void>(() => undefined)
+  const undoStack = useRef<ImageData[]>([])
+  const redoStack = useRef<ImageData[]>([])
+  const toolRef = useRef(tool)
+  const colorRef = useRef(color)
+  const sizeRef = useRef(size)
+  const fontSizeRef = useRef(fontSize)
+  const shiftRef = useRef(false)
+  const selection = useRef<Selection | null>(null)
+  const textDraftRef = useRef<TextDraft | null>(null)
 
-  const canUndo = histLen.undo > 0
-  const canRedo = histLen.redo > 0
-  const isDirty = dirty || (textDraft !== null && textDraft.value.trim() !== '')
+  toolRef.current = tool
+  colorRef.current = color
+  sizeRef.current = size
+  fontSizeRef.current = fontSize
+  textDraftRef.current = textDraft
 
-  function syncHistLen() {
-    setHistLen({ undo: undoStack.current.length, redo: redoStack.current.length })
-  }
+  const getCtx = useCallback(() => canvasRef.current?.getContext('2d', { willReadFrequently: true }) ?? null, [])
+  const getOverlay = useCallback(() => overlayRef.current?.getContext('2d') ?? null, [])
+  const syncHistLen = useCallback(() => setHistLen({ undo: undoStack.current.length, redo: redoStack.current.length }), [])
 
-  function getCtx(): CanvasRenderingContext2D | null {
-    return canvasRef.current?.getContext('2d', { willReadFrequently: true }) ?? null
-  }
-
-  // 최초 마운트 시 흰 배경으로 초기화
   useEffect(() => {
+    const ctx = getCtx()
     const c = canvasRef.current
-    const ctx = c?.getContext('2d', { willReadFrequently: true })
     if (!c || !ctx) return
     ctx.fillStyle = '#ffffff'
     ctx.fillRect(0, 0, c.width, c.height)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  function clearOverlay() {
+    const octx = getOverlay()
+    const ov = overlayRef.current
+    if (octx && ov) octx.clearRect(0, 0, ov.width, ov.height)
+  }
+
   function pushHistory() {
-    const c = canvasRef.current
     const ctx = getCtx()
-    if (!c || !ctx) return
+    const c = canvasRef.current
+    if (!ctx || !c) return
     undoStack.current.push(ctx.getImageData(0, 0, c.width, c.height))
     if (undoStack.current.length > MAX_HISTORY) undoStack.current.shift()
     redoStack.current = []
     syncHistLen()
   }
 
-  // 스냅샷 복원 — 크기 변경 이전 상태면 캔버스 크기까지 함께 되돌림
-  function applyHistory(img: ImageData) {
-    const c = canvasRef.current
+  function commitFloatingSelection() {
+    const sel = selection.current
     const ctx = getCtx()
-    if (!c || !ctx) return
-    if (c.width !== img.width || c.height !== img.height) {
-      c.width = img.width
-      c.height = img.height
-      const match = CANVAS_SIZES.find((s) => s.w === img.width && s.h === img.height)
-      if (match) setSizeKey(match.key)
-    }
-    ctx.putImageData(img, 0, 0)
-  }
-
-  function undo() {
-    const c = canvasRef.current
-    const ctx = getCtx()
-    if (!c || !ctx || undoStack.current.length === 0) return
-    redoStack.current.push(ctx.getImageData(0, 0, c.width, c.height))
-    const img = undoStack.current.pop()
-    if (img) applyHistory(img)
-    syncHistLen()
-  }
-
-  function redo() {
-    const c = canvasRef.current
-    const ctx = getCtx()
-    if (!c || !ctx || redoStack.current.length === 0) return
-    undoStack.current.push(ctx.getImageData(0, 0, c.width, c.height))
-    const img = redoStack.current.pop()
-    if (img) applyHistory(img)
-    syncHistLen()
-  }
-
-  function rememberColor(c: string) {
-    setRecent((prev) => [c, ...prev.filter((x) => x !== c)].slice(0, 6))
-  }
-
-  function toCanvas(e: React.PointerEvent<HTMLCanvasElement>): Pt {
-    const c = canvasRef.current
-    if (!c) return { x: 0, y: 0, p: 0.5 }
-    const r = c.getBoundingClientRect()
-    return {
-      x: (e.clientX - r.left) * (c.width / r.width),
-      y: (e.clientY - r.top) * (c.height / r.height),
-      p: e.pressure > 0 ? e.pressure : 0.5,
-    }
-  }
-
-  // 필압에 따른 펜 굵기 (마우스 기본 필압 0.5 → 슬라이더 값 그대로)
-  function penWidth(p: number): number {
-    return Math.max(0.5, size * (0.4 + p * 1.2))
-  }
-
-  function highlighterWidth(): number {
-    return Math.max(size * 2, 8)
-  }
-
-  function textFontSize(): number {
-    return 12 + size * 2
-  }
-
-  function drawHighlightPath(ctx: CanvasRenderingContext2D) {
-    const pts = strokePts.current
-    if (pts.length === 0) return
-    ctx.save()
-    ctx.globalAlpha = 0.35
-    ctx.strokeStyle = color
-    ctx.fillStyle = color
-    ctx.lineWidth = highlighterWidth()
-    ctx.lineCap = 'round'
-    ctx.lineJoin = 'round'
-    if (pts.length === 1) {
-      ctx.beginPath()
-      ctx.arc(pts[0].x, pts[0].y, highlighterWidth() / 2, 0, Math.PI * 2)
-      ctx.fill()
-    } else {
-      ctx.beginPath()
-      ctx.moveTo(pts[0].x, pts[0].y)
-      for (let i = 1; i < pts.length - 1; i++) {
-        const mx = (pts[i].x + pts[i + 1].x) / 2
-        const my = (pts[i].y + pts[i + 1].y) / 2
-        ctx.quadraticCurveTo(pts[i].x, pts[i].y, mx, my)
-      }
-      const last = pts[pts.length - 1]
-      ctx.lineTo(last.x, last.y)
-      ctx.stroke()
-    }
-    ctx.restore()
-  }
-
-  function drawArrowHead(ctx: CanvasRenderingContext2D, a: Pt, b: Pt) {
-    const angle = Math.atan2(b.y - a.y, b.x - a.x)
-    const len = Math.max(12, size * 3)
-    ctx.beginPath()
-    ctx.moveTo(b.x, b.y)
-    ctx.lineTo(b.x - len * Math.cos(angle - Math.PI / 7), b.y - len * Math.sin(angle - Math.PI / 7))
-    ctx.lineTo(b.x - len * Math.cos(angle + Math.PI / 7), b.y - len * Math.sin(angle + Math.PI / 7))
-    ctx.closePath()
-    ctx.fill()
-  }
-
-  function drawShapePreview(ctx: CanvasRenderingContext2D, a: Pt, b: Pt) {
-    ctx.strokeStyle = color
-    ctx.fillStyle = color
-    ctx.lineWidth = size
-    ctx.lineCap = 'round'
-    ctx.lineJoin = 'round'
-    if (tool === 'line' || tool === 'arrow') {
-      ctx.beginPath()
-      ctx.moveTo(a.x, a.y)
-      ctx.lineTo(b.x, b.y)
-      ctx.stroke()
-      if (tool === 'arrow') drawArrowHead(ctx, a, b)
-    } else if (tool === 'rect') {
-      ctx.strokeRect(a.x, a.y, b.x - a.x, b.y - a.y)
-    } else if (tool === 'ellipse') {
-      ctx.beginPath()
-      ctx.ellipse(
-        (a.x + b.x) / 2,
-        (a.y + b.y) / 2,
-        Math.abs(b.x - a.x) / 2,
-        Math.abs(b.y - a.y) / 2,
-        0,
-        0,
-        Math.PI * 2,
-      )
-      ctx.stroke()
-    }
+    if (!sel || !sel.floated || !ctx) return
+    ctx.putImageData(sel.data, Math.round(sel.rect.x), Math.round(sel.rect.y))
+    selection.current = null
+    clearOverlay()
   }
 
   function commitText() {
-    const draft = textDraft
-    setTextDraft(null)
-    if (!draft || draft.value.trim() === '') return
+    const draft = textDraftRef.current
     const ctx = getCtx()
-    if (!ctx) return
-    pushHistory()
-    ctx.fillStyle = color
-    ctx.font = `${textFontSize()}px "Noto Sans KR", "Malgun Gothic", sans-serif`
-    ctx.textBaseline = 'top'
-    ctx.fillText(draft.value, draft.cx, draft.cy)
-    setDirty(true)
-    rememberColor(color)
+    if (!draft || !ctx) { setTextDraft(null); return }
+    if (draft.value.trim()) {
+      pushHistory()
+      ctx.fillStyle = colorRef.current
+      ctx.font = `${fontSizeRef.current}px "Malgun Gothic", "맑은 고딕", sans-serif`
+      ctx.textBaseline = 'top'
+      draft.value.split('\n').forEach((line, i) => ctx.fillText(line, draft.cx, draft.cy + i * fontSizeRef.current * 1.25))
+      setDirty(true)
+      rememberColor(colorRef.current)
+    }
+    setTextDraft(null)
+  }
+
+  const undo = useCallback(() => {
+    const ctx = getCtx()
+    const c = canvasRef.current
+    if (!ctx || !c || undoStack.current.length === 0) return
+    commitFloatingSelection()
+    redoStack.current.push(ctx.getImageData(0, 0, c.width, c.height))
+    const prev = undoStack.current.pop()!
+    if (prev.width !== c.width || prev.height !== c.height) {
+      c.width = prev.width; c.height = prev.height
+      const ov = overlayRef.current
+      if (ov) { ov.width = prev.width; ov.height = prev.height }
+      const found = CANVAS_SIZES.find((s) => s.w === prev.width && s.h === prev.height)
+      if (found) setSizeKey(found.key)
+    }
+    ctx.putImageData(prev, 0, 0)
+    selection.current = null
+    clearOverlay()
+    syncHistLen()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [getCtx])
+
+  const redo = useCallback(() => {
+    const ctx = getCtx()
+    const c = canvasRef.current
+    if (!ctx || !c || redoStack.current.length === 0) return
+    undoStack.current.push(ctx.getImageData(0, 0, c.width, c.height))
+    const next = redoStack.current.pop()!
+    if (next.width !== c.width || next.height !== c.height) {
+      c.width = next.width; c.height = next.height
+      const ov = overlayRef.current
+      if (ov) { ov.width = next.width; ov.height = next.height }
+      const found = CANVAS_SIZES.find((s) => s.w === next.width && s.h === next.height)
+      if (found) setSizeKey(found.key)
+    }
+    ctx.putImageData(next, 0, 0)
+    syncHistLen()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [getCtx])
+
+  function rememberColor(hex: string) {
+    setRecent((prev) => [hex, ...prev.filter((c) => c !== hex)].slice(0, 8))
+  }
+
+  function toCanvas(e: React.PointerEvent): Pt {
+    const c = canvasRef.current!
+    const r = c.getBoundingClientRect()
+    const sx = c.width / r.width
+    const sy = c.height / r.height
+    const pressure = e.pressure > 0 && e.pressure !== 0.5 ? e.pressure : 0.5
+    return { x: (e.clientX - r.left) * sx, y: (e.clientY - r.top) * sy, p: pressure }
+  }
+
+  function penWidth(p: number): number {
+    return Math.max(0.5, sizeRef.current * (0.6 + p * 0.8))
   }
 
   function handlePointerDown(e: React.PointerEvent<HTMLCanvasElement>) {
@@ -368,456 +285,543 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
     if (!c || !ctx) return
     setConfirm('none')
     const pt = toCanvas(e)
+    const t = toolRef.current
 
-    if (tool === 'text') {
-      if (textDraft) commitText() // 입력 중이던 텍스트는 커밋하고 새 위치에서 시작
-      const r = c.getBoundingClientRect()
-      setTextDraft({
-        cx: pt.x,
-        cy: pt.y,
-        dx: e.clientX - r.left,
-        dy: e.clientY - r.top,
-        scale: r.width / c.width,
-        value: '',
-      })
+    if (t === 'eyedropper') {
+      const px = ctx.getImageData(Math.max(0, Math.floor(pt.x)), Math.max(0, Math.floor(pt.y)), 1, 1).data
+      const hex = rgbToHex(px[0], px[1], px[2])
+      setColor(hex); rememberColor(hex); setTool('pen')
       return
     }
-    if (textDraft) commitText()
 
-    if (tool === 'fill') {
+    if (t === 'text') {
+      if (textDraftRef.current) commitText()
+      const r = c.getBoundingClientRect()
+      setTextDraft({ cx: pt.x, cy: pt.y, dx: e.clientX - r.left, dy: e.clientY - r.top, scale: r.width / c.width, value: '' })
+      return
+    }
+    if (textDraftRef.current) commitText()
+
+    if (t === 'fill') {
       pushHistory()
-      const changed = floodFill(ctx, Math.floor(pt.x), Math.floor(pt.y), color)
-      if (changed) {
-        setDirty(true)
-        rememberColor(color)
-      } else {
-        // 변화가 없으면 방금 쌓은 히스토리를 되돌림
-        undoStack.current.pop()
-        syncHistLen()
+      const changed = floodFill(ctx, Math.floor(pt.x), Math.floor(pt.y), colorRef.current)
+      if (changed) { setDirty(true); rememberColor(colorRef.current) }
+      else { undoStack.current.pop(); syncHistLen() }
+      return
+    }
+
+    if (t === 'select') {
+      const sel = selection.current
+      if (sel && pt.x >= sel.rect.x && pt.x <= sel.rect.x + sel.rect.w && pt.y >= sel.rect.y && pt.y <= sel.rect.y + sel.rect.h) {
+        if (!sel.floated) {
+          pushHistory()
+          ctx.fillStyle = '#ffffff'
+          ctx.fillRect(sel.rect.x, sel.rect.y, sel.rect.w, sel.rect.h)
+          sel.floated = true
+          setDirty(true)
+        }
+        sel.dragging = true
+        sel.offsetX = pt.x - sel.rect.x
+        sel.offsetY = pt.y - sel.rect.y
+        try { c.setPointerCapture(e.pointerId) } catch { /* 합성/무포인터 시 무시 */ }
+        return
       }
+      commitFloatingSelection()
+      selection.current = { rect: { x: pt.x, y: pt.y, w: 0, h: 0 }, data: new ImageData(1, 1), dragging: false, offsetX: 0, offsetY: 0, floated: false }
+      drawing.current = true
+      startPt.current = pt
+      try { c.setPointerCapture(e.pointerId) } catch { /* 무시 */ }
       return
     }
 
     pushHistory()
     drawing.current = true
-    c.setPointerCapture(e.pointerId)
+    try { c.setPointerCapture(e.pointerId) } catch { /* 무시 */ }
     startPt.current = pt
     lastPt.current = pt
     prevMid.current = pt
-    strokePts.current = [pt]
     snapshot.current = ctx.getImageData(0, 0, c.width, c.height)
 
-    // 탭(클릭)만 해도 점이 찍히도록 시작점을 렌더
-    if (tool === 'pen') {
-      ctx.fillStyle = color
+    if (t === 'pen') {
+      ctx.fillStyle = colorRef.current
       ctx.beginPath()
       ctx.arc(pt.x, pt.y, penWidth(pt.p) / 2, 0, Math.PI * 2)
       ctx.fill()
-    } else if (tool === 'eraser') {
+    } else if (t === 'eraser') {
       ctx.fillStyle = '#ffffff'
       ctx.beginPath()
-      ctx.arc(pt.x, pt.y, size, 0, Math.PI * 2)
+      ctx.arc(pt.x, pt.y, sizeRef.current * 1.5, 0, Math.PI * 2)
       ctx.fill()
-    } else if (tool === 'highlighter') {
-      drawHighlightPath(ctx)
     }
   }
 
   function handlePointerMove(e: React.PointerEvent<HTMLCanvasElement>) {
-    if (!drawing.current || !e.isPrimary) return
     const c = canvasRef.current
     const ctx = getCtx()
-    const start = startPt.current
-    const last = lastPt.current
-    if (!c || !ctx || !start || !last) return
+    if (!c || !ctx) return
     const pt = toCanvas(e)
+    const t = toolRef.current
 
-    if (tool === 'pen' || tool === 'eraser') {
-      // 중간점을 제어점으로 쓰는 이차 곡선으로 부드럽게 연결
+    drawCursorPreview(pt)
+
+    if (t === 'select' && selection.current?.dragging) {
+      const sel = selection.current
+      sel.rect.x = pt.x - sel.offsetX
+      sel.rect.y = pt.y - sel.offsetY
+      renderSelectionOverlay()
+      return
+    }
+    if (t === 'select' && drawing.current && startPt.current && selection.current) {
+      const s = startPt.current
+      selection.current.rect = { x: Math.min(s.x, pt.x), y: Math.min(s.y, pt.y), w: Math.abs(pt.x - s.x), h: Math.abs(pt.y - s.y) }
+      renderSelectionOverlay()
+      return
+    }
+
+    if (!drawing.current) return
+    const start = startPt.current
+    if (!start) return
+
+    if (t === 'pen' || t === 'highlighter' || t === 'eraser') {
+      const last = lastPt.current ?? pt
       const mid = { x: (last.x + pt.x) / 2, y: (last.y + pt.y) / 2, p: pt.p }
-      const pm = prevMid.current ?? last
-      ctx.strokeStyle = tool === 'eraser' ? '#ffffff' : color
-      ctx.lineWidth = tool === 'eraser' ? size * 2 : penWidth(pt.p)
       ctx.lineCap = 'round'
       ctx.lineJoin = 'round'
+      if (t === 'highlighter') {
+        ctx.strokeStyle = colorRef.current; ctx.globalAlpha = 0.35; ctx.lineWidth = sizeRef.current * 3
+      } else if (t === 'eraser') {
+        ctx.strokeStyle = '#ffffff'; ctx.globalAlpha = 1; ctx.lineWidth = sizeRef.current * 3
+      } else {
+        ctx.strokeStyle = colorRef.current; ctx.globalAlpha = 1; ctx.lineWidth = penWidth(pt.p)
+      }
       ctx.beginPath()
-      ctx.moveTo(pm.x, pm.y)
+      ctx.moveTo((prevMid.current ?? last).x, (prevMid.current ?? last).y)
       ctx.quadraticCurveTo(last.x, last.y, mid.x, mid.y)
       ctx.stroke()
+      ctx.globalAlpha = 1
       prevMid.current = mid
       lastPt.current = pt
       return
     }
 
-    if (tool === 'highlighter') {
-      // 반투명 선은 겹침 얼룩을 막기 위해 매번 전체 스트로크를 다시 그림
-      strokePts.current.push(pt)
-      if (snapshot.current) ctx.putImageData(snapshot.current, 0, 0)
-      drawHighlightPath(ctx)
-      lastPt.current = pt
-      return
-    }
-
-    // 도형 미리보기: 스냅샷 복원 후 다시 그림
     if (snapshot.current) ctx.putImageData(snapshot.current, 0, 0)
-    drawShapePreview(ctx, start, pt)
-    lastPt.current = pt
+    let ex = pt.x, ey = pt.y
+    if (shiftRef.current) {
+      if (t === 'line' || t === 'arrow') {
+        const dx = pt.x - start.x, dy = pt.y - start.y
+        if (Math.abs(dx) > Math.abs(dy) * 2) ey = start.y
+        else if (Math.abs(dy) > Math.abs(dx) * 2) ex = start.x
+        else { const d = Math.min(Math.abs(dx), Math.abs(dy)); ex = start.x + Math.sign(dx) * d; ey = start.y + Math.sign(dy) * d }
+      } else {
+        const d = Math.min(Math.abs(pt.x - start.x), Math.abs(pt.y - start.y))
+        ex = start.x + Math.sign(pt.x - start.x) * d
+        ey = start.y + Math.sign(pt.y - start.y) * d
+      }
+    }
+    ctx.strokeStyle = colorRef.current
+    ctx.fillStyle = colorRef.current
+    ctx.lineWidth = sizeRef.current
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+    if (t === 'line') { ctx.beginPath(); ctx.moveTo(start.x, start.y); ctx.lineTo(ex, ey); ctx.stroke() }
+    else if (t === 'arrow') drawArrow(ctx, start.x, start.y, ex, ey, sizeRef.current)
+    else if (t === 'rect') ctx.strokeRect(start.x, start.y, ex - start.x, ey - start.y)
+    else if (t === 'ellipse') {
+      ctx.beginPath()
+      ctx.ellipse((start.x + ex) / 2, (start.y + ey) / 2, Math.abs(ex - start.x) / 2, Math.abs(ey - start.y) / 2, 0, 0, Math.PI * 2)
+      ctx.stroke()
+    }
   }
 
   function handlePointerUp(e: React.PointerEvent<HTMLCanvasElement>) {
-    if (!drawing.current || !e.isPrimary) return
-    drawing.current = false
-    setDirty(true)
-    if (tool !== 'eraser') rememberColor(color)
-    startPt.current = null
-    lastPt.current = null
-    prevMid.current = null
-    strokePts.current = []
-    snapshot.current = null
-  }
-
-  function clearAll() {
     const c = canvasRef.current
     const ctx = getCtx()
-    if (!c || !ctx) return
-    if (textDraft) setTextDraft(null)
-    pushHistory()
-    ctx.fillStyle = '#ffffff'
-    ctx.fillRect(0, 0, c.width, c.height)
-    setDirty(false)
-    setConfirm('none')
-  }
+    const t = toolRef.current
 
-  function changeCanvasSize(key: SizeKey) {
-    const c = canvasRef.current
-    const ctx = getCtx()
-    if (!c || !ctx) return
-    const preset = CANVAS_SIZES.find((s) => s.key === key)
-    if (!preset) return
-    if (c.width === preset.w && c.height === preset.h) {
-      setSizeKey(key)
+    if (t === 'select') {
+      if (selection.current?.dragging) {
+        selection.current.dragging = false
+        renderSelectionOverlay()
+      } else if (drawing.current && selection.current && ctx && c) {
+        drawing.current = false
+        const rc = selection.current.rect
+        if (rc.w >= 3 && rc.h >= 3) {
+          const rx = Math.max(0, Math.round(rc.x)), ry = Math.max(0, Math.round(rc.y))
+          const rw = Math.min(c.width - rx, Math.round(rc.w)), rh = Math.min(c.height - ry, Math.round(rc.h))
+          selection.current.data = ctx.getImageData(rx, ry, rw, rh)
+          selection.current.rect = { x: rx, y: ry, w: rw, h: rh }
+          renderSelectionOverlay()
+        } else {
+          selection.current = null
+          clearOverlay()
+        }
+      }
+      try { if (c) c.releasePointerCapture(e.pointerId) } catch { /* 이미 해제됨 */ }
       return
     }
-    if (textDraft) commitText()
+
+    if (drawing.current) {
+      drawing.current = false
+      setDirty(true)
+      if (t !== 'eraser') rememberColor(colorRef.current)
+      try { if (c) c.releasePointerCapture(e.pointerId) } catch { /* 이미 해제됨 */ }
+    }
+  }
+
+  function handlePointerLeave() {
+    if (!drawing.current && toolRef.current !== 'select') clearOverlay()
+  }
+
+  function drawCursorPreview(pt: Pt) {
+    const octx = getOverlay()
+    const ov = overlayRef.current
+    if (!octx || !ov) return
+    const t = toolRef.current
+    if (t === 'select') { renderSelectionOverlay(); return }
+    octx.clearRect(0, 0, ov.width, ov.height)
+    if (t === 'eraser' || t === 'pen' || t === 'highlighter') {
+      const radius = t === 'eraser' ? sizeRef.current * 1.5 : t === 'highlighter' ? sizeRef.current * 1.5 : penWidth(pt.p) / 2
+      octx.beginPath()
+      octx.arc(pt.x, pt.y, Math.max(2, radius), 0, Math.PI * 2)
+      octx.strokeStyle = t === 'eraser' ? 'rgba(0,0,0,0.55)' : 'rgba(0,0,0,0.35)'
+      octx.lineWidth = 1
+      octx.setLineDash(t === 'eraser' ? [4, 3] : [])
+      octx.stroke()
+      octx.setLineDash([])
+    }
+  }
+
+  function renderSelectionOverlay() {
+    const octx = getOverlay()
+    const ov = overlayRef.current
+    const sel = selection.current
+    if (!octx || !ov) return
+    octx.clearRect(0, 0, ov.width, ov.height)
+    if (!sel) return
+    if (sel.floated) {
+      const tmp = document.createElement('canvas')
+      tmp.width = sel.data.width; tmp.height = sel.data.height
+      tmp.getContext('2d')!.putImageData(sel.data, 0, 0)
+      octx.drawImage(tmp, Math.round(sel.rect.x), Math.round(sel.rect.y))
+    }
+    octx.strokeStyle = '#1E88E5'
+    octx.lineWidth = 1
+    octx.setLineDash([5, 4])
+    octx.strokeRect(sel.rect.x + 0.5, sel.rect.y + 0.5, sel.rect.w, sel.rect.h)
+    octx.setLineDash([])
+  }
+
+  function openImageFile() {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'image/*'
+    input.onchange = () => {
+      const file = input.files?.[0]
+      if (!file) return
+      const img = new Image()
+      img.onload = () => {
+        const c = canvasRef.current
+        const ctx = getCtx()
+        if (!c || !ctx) return
+        pushHistory()
+        const scale = Math.min(1, c.width / img.width, c.height / img.height)
+        const w = img.width * scale, h = img.height * scale
+        ctx.drawImage(img, (c.width - w) / 2, (c.height - h) / 2, w, h)
+        setDirty(true)
+        URL.revokeObjectURL(img.src)
+      }
+      img.src = URL.createObjectURL(file)
+    }
+    input.click()
+  }
+
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      if (textDraftRef.current) return
+      const items = e.clipboardData?.items
+      if (!items) return
+      for (const item of items) {
+        if (item.type.startsWith('image/')) {
+          const file = item.getAsFile()
+          if (!file) continue
+          e.preventDefault()
+          const img = new Image()
+          img.onload = () => {
+            const c = canvasRef.current
+            const ctx = getCtx()
+            if (!c || !ctx) return
+            pushHistory()
+            ctx.drawImage(img, 10, 10)
+            setDirty(true)
+            URL.revokeObjectURL(img.src)
+          }
+          img.src = URL.createObjectURL(file)
+          return
+        }
+      }
+    }
+    document.addEventListener('paste', onPaste)
+    return () => document.removeEventListener('paste', onPaste)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const ctrl = e.ctrlKey || e.metaKey
+      if (textDraftRef.current) return
+      if (ctrl && e.key.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return }
+      if (ctrl && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) { e.preventDefault(); redo(); return }
+      if (ctrl && e.key.toLowerCase() === 'o') { e.preventDefault(); openImageFile(); return }
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selection.current) {
+        e.preventDefault()
+        const ctx = getCtx()
+        const sel = selection.current
+        if (ctx) {
+          if (!sel.floated) { pushHistory(); ctx.fillStyle = '#ffffff'; ctx.fillRect(sel.rect.x, sel.rect.y, sel.rect.w, sel.rect.h) }
+          setDirty(true)
+        }
+        selection.current = null
+        clearOverlay()
+        return
+      }
+      if (ctrl && e.key.toLowerCase() === 'c' && selection.current) { e.preventDefault(); copySelectionToClipboard(); return }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        if (textDraftRef.current) { commitText(); return }
+        if (selection.current) { commitFloatingSelection(); return }
+        requestClose()
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [undo, redo])
+
+  async function copySelectionToClipboard() {
+    const sel = selection.current
+    if (!sel) return
+    try {
+      const tmp = document.createElement('canvas')
+      tmp.width = sel.data.width; tmp.height = sel.data.height
+      tmp.getContext('2d')!.putImageData(sel.data, 0, 0)
+      const blob = await new Promise<Blob | null>((res) => tmp.toBlob(res, 'image/png'))
+      if (blob && navigator.clipboard && 'write' in navigator.clipboard) {
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+      }
+    } catch { /* 클립보드 권한 없으면 무시 */ }
+  }
+
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => { if (e.key === 'Shift') shiftRef.current = true }
+    const up = (e: KeyboardEvent) => { if (e.key === 'Shift') shiftRef.current = false }
+    window.addEventListener('keydown', down)
+    window.addEventListener('keyup', up)
+    return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up) }
+  }, [])
+
+  function changeSize(key: SizeKey) {
+    const target = CANVAS_SIZES.find((s) => s.key === key)!
+    const c = canvasRef.current
+    const ov = overlayRef.current
+    const ctx = getCtx()
+    if (!c || !ctx || (c.width === target.w && c.height === target.h)) { setSizeKey(key); return }
+    commitFloatingSelection()
     pushHistory()
-    // 기존 그림을 임시 캔버스에 복사해 두었다가 새 크기 위에 다시 그림
     const old = document.createElement('canvas')
-    old.width = c.width
-    old.height = c.height
-    old.getContext('2d')?.drawImage(c, 0, 0)
-    c.width = preset.w
-    c.height = preset.h
+    old.width = c.width; old.height = c.height
+    old.getContext('2d')!.drawImage(c, 0, 0)
+    c.width = target.w; c.height = target.h
+    if (ov) { ov.width = target.w; ov.height = target.h }
     ctx.fillStyle = '#ffffff'
     ctx.fillRect(0, 0, c.width, c.height)
     ctx.drawImage(old, 0, 0)
     setSizeKey(key)
+    setDirty(true)
   }
 
-  function insertToEditor() {
-    if (textDraft) commitText()
+  function clearCanvas() {
     const c = canvasRef.current
-    if (!editor || !c) return
-    editor.chain().focus().setImage({ src: c.toDataURL('image/png') }).run()
+    const ctx = getCtx()
+    if (!c || !ctx) return
+    pushHistory()
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, c.width, c.height)
+    selection.current = null
+    clearOverlay()
     setDirty(false)
-    onClose()
+    setConfirm('none')
+  }
+
+  function fileStamp(): string {
+    const d = new Date()
+    return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`
   }
 
   function downloadPng() {
-    if (textDraft) commitText()
+    commitText(); commitFloatingSelection()
     const c = canvasRef.current
     if (!c) return
-    const d = new Date()
-    const pad = (n: number) => String(n).padStart(2, '0')
-    const name = `그림-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.png`
     const a = document.createElement('a')
     a.href = c.toDataURL('image/png')
-    a.download = name
+    a.download = `그림-${fileStamp()}.png`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
   }
 
-  function requestClose() {
-    if (isDirty) {
-      setConfirm('close')
-      return
-    }
+  function insertToMemo() {
+    commitText(); commitFloatingSelection()
+    const c = canvasRef.current
+    if (!c || !editor) return
+    editor.chain().focus().setImage({ src: c.toDataURL('image/png') }).run()
+    setDirty(false)
     onClose()
   }
 
-  // 키보드: Esc(더티 가드 포함), Ctrl+Z / Ctrl+Y(Ctrl+Shift+Z)
-  // 렌더마다 최신 상태를 캡처한 핸들러를 ref에 갱신해 stale closure를 방지
-  useEffect(() => {
-    keyHandlerRef.current = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (textDraft) {
-          setTextDraft(null)
-          return
-        }
-        if (confirm !== 'none') {
-          setConfirm('none')
-          return
-        }
-        requestClose()
-        return
-      }
-      const t = e.target
-      if (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement) return
-      const mod = e.ctrlKey || e.metaKey
-      if (mod && !e.shiftKey && e.key.toLowerCase() === 'z') {
-        e.preventDefault()
-        undo()
-      } else if ((mod && e.key.toLowerCase() === 'y') || (mod && e.shiftKey && e.key.toLowerCase() === 'z')) {
-        e.preventDefault()
-        redo()
-      }
-    }
-  })
+  function requestClose() {
+    if (textDraftRef.current) commitText()
+    if (dirty) { setConfirm('close'); return }
+    onClose()
+  }
 
-  useEffect(() => {
-    const h = (e: KeyboardEvent) => keyHandlerRef.current(e)
-    window.addEventListener('keydown', h)
-    return () => window.removeEventListener('keydown', h)
-  }, [])
-
-  const defaultSize = CANVAS_SIZES.find((s) => s.key === 'medium') ?? CANVAS_SIZES[0]
+  const activeSize = CANVAS_SIZES.find((s) => s.key === sizeKey)!
 
   return (
-    <div
-      className="jan-modal-overlay"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) requestClose()
-      }}
-    >
-      <div className="jan-modal jan-paint-modal" role="dialog" aria-label="그림판" onClick={(e) => e.stopPropagation()}>
+    <div className="jan-modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) requestClose() }}>
+      <div className="jan-modal jan-paint-modal" onMouseDown={(e) => e.stopPropagation()}>
         <div className="jan-modal-head">
           <h3>그림판</h3>
-          <button type="button" className="jan-modal-close" onClick={requestClose} aria-label="그림판 닫기" title="닫기 (Esc)">
-            닫기
-          </button>
+          <button className="jan-modal-close" onClick={requestClose} aria-label="닫기">닫기</button>
         </div>
-        <div className="jan-modal-body">
-          {confirm === 'close' && (
-            <div className="pcx-confirm" role="alertdialog" aria-label="닫기 확인">
-              <span>그림이 저장되지 않았습니다 — 삽입하지 않고 닫을까요?</span>
-              <span className="pcx-confirm-actions">
-                <button type="button" className="pcx-btn pcx-btn-danger" onClick={onClose} aria-label="저장하지 않고 닫기">
-                  닫기
-                </button>
-                <button type="button" className="pcx-btn" onClick={() => setConfirm('none')} aria-label="계속 그리기">
-                  계속 그리기
-                </button>
-              </span>
-            </div>
-          )}
-          {confirm === 'clear' && (
-            <div className="pcx-confirm" role="alertdialog" aria-label="전체 지우기 확인">
-              <span>캔버스 전체를 지울까요? 이 동작은 되돌리기로 복구할 수 있습니다.</span>
-              <span className="pcx-confirm-actions">
-                <button type="button" className="pcx-btn pcx-btn-danger" onClick={clearAll} aria-label="전체 지우기 실행">
-                  전체 지우기
-                </button>
-                <button type="button" className="pcx-btn" onClick={() => setConfirm('none')} aria-label="전체 지우기 취소">
-                  취소
-                </button>
-              </span>
-            </div>
-          )}
 
-          <div className="pcx-toolbar" role="toolbar" aria-label="그리기 도구 모음">
-            <div className="pcx-row">
-              <div className="pcx-group" role="group" aria-label="도구 선택">
-                {TOOLS.map((t) => (
-                  <button
-                    key={t.id}
-                    type="button"
-                    className={'pcx-btn' + (tool === t.id ? ' is-active' : '')}
-                    aria-label={t.label}
-                    aria-pressed={tool === t.id}
-                    title={t.title}
-                    onClick={() => setTool(t.id)}
-                  >
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-              <span className="pcx-divider" aria-hidden="true" />
-              <div className="pcx-group" role="group" aria-label="편집">
-                <button
-                  type="button"
-                  className="pcx-btn"
-                  onClick={undo}
-                  disabled={!canUndo}
-                  aria-label="되돌리기"
-                  title="되돌리기 (Ctrl+Z)"
-                >
-                  되돌리기
-                </button>
-                <button
-                  type="button"
-                  className="pcx-btn"
-                  onClick={redo}
-                  disabled={!canRedo}
-                  aria-label="다시 실행"
-                  title="다시 실행 (Ctrl+Y)"
-                >
-                  다시 실행
-                </button>
-                <button
-                  type="button"
-                  className="pcx-btn"
-                  onClick={() => setConfirm(confirm === 'clear' ? 'none' : 'clear')}
-                  aria-label="전체 지우기"
-                  title="캔버스 전체 지우기"
-                >
-                  전체 지우기
-                </button>
-              </div>
-            </div>
+        <div className="pcx-body">
+          <div className="pcx-toolbar" role="toolbar" aria-label="그리기 도구">
+            <button type="button" className="pcx-btn" onClick={openImageFile} aria-label="이미지 파일 열기" title="이미지 파일 열기 (Ctrl+O)">열기</button>
+            <span className="pcx-sep" />
+            {TOOLS.map((tl) => (
+              <button
+                key={tl.id}
+                type="button"
+                className={'pcx-tool' + (tool === tl.id ? ' is-active' : '')}
+                aria-pressed={tool === tl.id}
+                aria-label={tl.label}
+                title={tl.title}
+                onClick={() => { commitText(); setTool(tl.id) }}
+              >{tl.label}</button>
+            ))}
+            <span className="pcx-sep" />
+            <button type="button" className="pcx-btn" onClick={undo} disabled={histLen.undo === 0} aria-label="되돌리기" title="되돌리기 (Ctrl+Z)">되돌리기</button>
+            <button type="button" className="pcx-btn" onClick={redo} disabled={histLen.redo === 0} aria-label="다시 실행" title="다시 실행 (Ctrl+Y)">다시 실행</button>
+            <button type="button" className="pcx-btn" onClick={() => setConfirm('clear')} aria-label="전체 지우기" title="전체 지우기">전체 지우기</button>
+          </div>
 
-            <div className="pcx-row">
-              <div className="pcx-group" role="group" aria-label="색상 팔레트">
-                {PALETTE.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    className={'pcx-swatch' + (c === color ? ' is-active' : '')}
-                    style={{ background: c }}
-                    onClick={() => setColor(c)}
-                    aria-label={`색상 ${c}`}
-                    aria-pressed={c === color}
-                    title={c}
-                  />
-                ))}
-                <input
-                  type="color"
-                  className="pcx-color-picker"
-                  value={color}
-                  onChange={(e) => setColor(e.target.value)}
-                  aria-label="사용자 지정 색상 선택"
-                  title="사용자 지정 색상"
+          <div className="pcx-options">
+            <div className="pcx-swatches" role="group" aria-label="색상 팔레트">
+              {PALETTE.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  className={'pcx-swatch' + (color === c ? ' is-active' : '')}
+                  style={{ background: c }}
+                  aria-label={`색상 ${c}`}
+                  aria-pressed={color === c}
+                  title={c}
+                  onClick={() => setColor(c)}
                 />
-              </div>
-              {recent.length > 0 && (
-                <>
-                  <span className="pcx-divider" aria-hidden="true" />
-                  <span className="pcx-recent-label">최근</span>
-                  <div className="pcx-group" role="group" aria-label="최근 사용 색상">
-                    {recent.map((c) => (
-                      <button
-                        key={c}
-                        type="button"
-                        className={'pcx-swatch' + (c === color ? ' is-active' : '')}
-                        style={{ background: c }}
-                        onClick={() => setColor(c)}
-                        aria-label={`최근 색상 ${c}`}
-                        title={c}
-                      />
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-
-            <div className="pcx-row">
-              <label className="pcx-size-label">
-                굵기
-                <input
-                  type="range"
-                  min={1}
-                  max={32}
-                  value={size}
-                  onChange={(e) => setSize(parseInt(e.target.value, 10))}
-                  aria-label="선 굵기"
-                  title={`선 굵기 ${size}px`}
-                />
+              ))}
+              <label className="pcx-color-custom" title="사용자 지정 색상">
+                <input type="color" value={color} onChange={(e) => setColor(e.target.value)} aria-label="사용자 지정 색상" />
+                <span>+</span>
               </label>
-              <span className="pcx-size-preview" aria-hidden="true">
-                <span
-                  className="pcx-size-dot"
-                  style={{ width: Math.min(size, 32), height: Math.min(size, 32), background: color }}
-                />
-              </span>
-              <span className="pcx-size-value">{size}px</span>
-              <span className="pcx-divider" aria-hidden="true" />
-              <div className="pcx-group" role="group" aria-label="캔버스 크기">
-                <span className="pcx-recent-label">크기</span>
-                {CANVAS_SIZES.map((s) => (
-                  <button
-                    key={s.key}
-                    type="button"
-                    className={'pcx-btn' + (sizeKey === s.key ? ' is-active' : '')}
-                    onClick={() => changeCanvasSize(s.key)}
-                    aria-label={s.title}
-                    aria-pressed={sizeKey === s.key}
-                    title={s.title}
-                  >
-                    {s.label}
-                  </button>
+            </div>
+
+            {recent.length > 0 && (
+              <div className="pcx-recent" role="group" aria-label="최근 사용 색상">
+                {recent.map((c, i) => (
+                  <button key={c + i} type="button" className="pcx-swatch pcx-swatch-sm" style={{ background: c }} aria-label={`최근 색상 ${c}`} title={c} onClick={() => setColor(c)} />
                 ))}
               </div>
+            )}
+
+            <div className="pcx-slider">
+              <label>
+                <span>굵기</span>
+                <input type="range" min={1} max={40} value={size} onChange={(e) => setSize(Number(e.target.value))} aria-label="선 굵기" />
+                <i className="pcx-size-dot" style={{ width: Math.min(28, size), height: Math.min(28, size), background: color }} />
+                <b>{size}</b>
+              </label>
+            </div>
+
+            {tool === 'text' && (
+              <div className="pcx-slider">
+                <label>
+                  <span>글자 크기</span>
+                  <select value={fontSize} onChange={(e) => setFontSize(Number(e.target.value))} aria-label="글자 크기">
+                    {FONT_SIZES.map((n) => <option key={n} value={n}>{n}px</option>)}
+                  </select>
+                </label>
+              </div>
+            )}
+
+            <div className="pcx-canvas-sizes" role="group" aria-label="캔버스 크기">
+              {CANVAS_SIZES.map((s) => (
+                <button key={s.key} type="button" className={'pcx-btn' + (sizeKey === s.key ? ' is-active' : '')} aria-pressed={sizeKey === s.key} title={s.title} onClick={() => changeSize(s.key)}>{s.label}</button>
+              ))}
             </div>
           </div>
 
           <div className="pcx-canvas-scroll">
-            <div className="pcx-canvas-box">
+            <div className="pcx-canvas-box" style={{ width: activeSize.w, height: activeSize.h }}>
               <canvas
                 ref={canvasRef}
-                width={defaultSize.w}
-                height={defaultSize.h}
-                className={'pcx-canvas' + (tool === 'text' ? ' is-text' : '')}
-                aria-label="그리기 캔버스"
+                width={activeSize.w}
+                height={activeSize.h}
+                className={'pcx-canvas pcx-tool-' + tool}
                 onPointerDown={handlePointerDown}
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerUp}
-                onPointerCancel={handlePointerUp}
+                onPointerLeave={handlePointerLeave}
+                style={{ touchAction: 'none' }}
               />
+              <canvas ref={overlayRef} width={activeSize.w} height={activeSize.h} className="pcx-overlay" aria-hidden="true" />
               {textDraft && (
-                <input
+                <textarea
                   className="pcx-text-input"
-                  style={{
-                    left: textDraft.dx,
-                    top: textDraft.dy,
-                    fontSize: Math.max(10, textFontSize() * textDraft.scale),
-                    color,
-                  }}
+                  autoFocus
                   value={textDraft.value}
                   onChange={(e) => setTextDraft({ ...textDraft, value: e.target.value })}
                   onBlur={commitText}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      commitText()
-                    } else if (e.key === 'Escape') {
-                      e.stopPropagation()
-                      setTextDraft(null)
-                    }
-                  }}
+                  onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); commitText() } e.stopPropagation() }}
                   aria-label="캔버스에 넣을 텍스트 입력"
-                  placeholder="텍스트 입력 후 Enter"
-                  autoFocus
+                  placeholder="입력 후 바깥 클릭"
+                  style={{ left: textDraft.dx, top: textDraft.dy, color, fontSize: fontSize * textDraft.scale, lineHeight: 1.25 }}
                 />
               )}
             </div>
           </div>
-
-          <div className="pcx-footer">
-            <button type="button" className="pcx-btn" onClick={downloadPng} aria-label="PNG 파일로 다운로드" title="PNG 다운로드">
-              PNG 다운로드
-            </button>
-            <button
-              type="button"
-              className="pcx-btn pcx-btn-primary"
-              onClick={insertToEditor}
-              disabled={!editor}
-              aria-label="그림을 메모에 삽입"
-              title="메모에 삽입"
-            >
-              메모에 삽입
-            </button>
-          </div>
         </div>
+
+        <div className="pcx-foot">
+          <span className="pcx-foot-note">{toolHint(tool)}</span>
+          <span className="flex-spacer" />
+          <button type="button" className="pcx-btn" onClick={downloadPng} aria-label="PNG 파일로 다운로드" title="PNG 다운로드">PNG 다운로드</button>
+          <button type="button" className="pcx-btn pcx-btn-primary" onClick={insertToMemo} disabled={!editor} aria-label="메모에 삽입" title="메모에 이미지로 삽입">메모에 삽입</button>
+        </div>
+
+        {confirm === 'clear' && (
+          <div className="pcx-confirm" role="alertdialog" aria-label="전체 지우기 확인">
+            <span>캔버스를 모두 지울까요? (되돌리기 가능)</span>
+            <button type="button" className="pcx-btn pcx-btn-primary" onClick={clearCanvas}>지우기</button>
+            <button type="button" className="pcx-btn" onClick={() => setConfirm('none')}>취소</button>
+          </div>
+        )}
+        {confirm === 'close' && (
+          <div className="pcx-confirm" role="alertdialog" aria-label="닫기 확인">
+            <span>그림이 저장되지 않았습니다 — 삽입하지 않고 닫을까요?</span>
+            <button type="button" className="pcx-btn pcx-btn-primary" onClick={onClose}>닫기</button>
+            <button type="button" className="pcx-btn" onClick={() => setConfirm('none')}>계속 그리기</button>
+          </div>
+        )}
       </div>
     </div>
   )
