@@ -1090,7 +1090,7 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
           <div className="pcx-ribbon" role="toolbar" aria-label="그림판 도구">
             {/* 편집 */}
             <div className="pcx-group">
-              <div className="pcx-tiles pcx-tiles-2">
+              <div className="pcx-tiles">
                 <button type="button" className="pcx-tile" onClick={undo} disabled={histLen.undo === 0} title="되돌리기 (Ctrl+Z)" aria-label="되돌리기"><ToolIcon name="undo" /></button>
                 <button type="button" className="pcx-tile" onClick={redo} disabled={histLen.redo === 0} title="다시 실행 (Ctrl+Y)" aria-label="다시 실행"><ToolIcon name="redo" /></button>
                 <button type="button" className="pcx-tile" onClick={() => setConfirm('clear')} title="전체 지우기" aria-label="전체 지우기"><ToolIcon name="clear" /></button>
@@ -1101,7 +1101,7 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
 
             {/* 선택 */}
             <div className="pcx-group">
-              <div className="pcx-tiles pcx-tiles-2">
+              <div className="pcx-tiles">
                 <button type="button" className={tileClass(tool === 'select')} onClick={() => selectTool('select')} title="사각형 선택" aria-label="선택"><ToolIcon name="select" /></button>
                 <button type="button" className="pcx-tile" onClick={selectAll} title="전체 선택 (Ctrl+A)" aria-label="전체 선택"><ToolIcon name="selectAll" /></button>
               </div>
@@ -1111,16 +1111,11 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
 
             {/* 이미지 */}
             <div className="pcx-group">
-              <div className="pcx-tiles pcx-tiles-3">
+              <div className="pcx-tiles pcx-tiles-grid">
                 <button type="button" className="pcx-tile" onClick={openImageFile} title="이미지 파일 열기 (Ctrl+O)" aria-label="열기"><ToolIcon name="open" /></button>
                 <button type="button" className="pcx-tile" onClick={cropToSelection} title="선택 영역으로 자르기" aria-label="자르기"><ToolIcon name="crop" /></button>
                 <button type="button" className="pcx-tile" onClick={rotate90} title="90° 회전" aria-label="회전"><ToolIcon name="rotate" /></button>
                 <button type="button" className="pcx-tile" onClick={flipH} title="좌우 대칭" aria-label="대칭"><ToolIcon name="flip" /></button>
-                <div className="pcx-canvas-sizes" role="group" aria-label="캔버스 크기">
-                  {CANVAS_SIZES.map((s) => (
-                    <button key={s.key} type="button" className={'pcx-mini' + (sizeKey === s.key ? ' is-active' : '')} aria-pressed={sizeKey === s.key} title={s.title} onClick={() => changeSize(s.key)}>{s.label}</button>
-                  ))}
-                </div>
               </div>
               <div className="pcx-group-label">이미지</div>
             </div>
@@ -1128,7 +1123,7 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
 
             {/* 도구 */}
             <div className="pcx-group">
-              <div className="pcx-tiles pcx-tiles-3">
+              <div className="pcx-tiles pcx-tiles-grid">
                 <button type="button" className={tileClass(tool === 'pen')} onClick={() => selectTool('pen')} title="연필" aria-label="연필"><ToolIcon name="pen" /></button>
                 <button type="button" className={tileClass(tool === 'fill')} onClick={() => selectTool('fill')} title="채우기" aria-label="채우기"><ToolIcon name="fill" /></button>
                 <button type="button" className={tileClass(tool === 'text')} onClick={() => selectTool('text')} title="텍스트" aria-label="텍스트"><ToolIcon name="text" /></button>
@@ -1144,8 +1139,9 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
             <div className="pcx-group">
               <div className="pcx-tiles">
                 <div className="pcx-dd" ref={brushWrapRef}>
-                  <button type="button" className={'pcx-tile pcx-tile-dd' + (tool === 'brush' ? ' is-active' : '')} aria-haspopup="menu" aria-expanded={brushMenuOpen} title="브러시 선택" onClick={() => setBrushMenuOpen((v) => !v)}>
+                  <button type="button" className={'pcx-brush-big' + (tool === 'brush' ? ' is-active' : '')} aria-haspopup="menu" aria-expanded={brushMenuOpen} title="브러시 선택" onClick={() => setBrushMenuOpen((v) => !v)}>
                     <ToolIcon name="brush" />
+                    <span className="pcx-brush-name">{BRUSHES.find((b) => b.id === brush)?.label ?? '붓'}</span>
                     <svg className="pcx-caret" viewBox="0 0 10 6" width="10" height="6" aria-hidden="true"><path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
                   </button>
                   {brushMenuOpen && (
@@ -1163,7 +1159,7 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
 
             {/* 도형 */}
             <div className="pcx-group">
-              <div className="pcx-tiles">
+              <div className="pcx-tiles pcx-shape-wrap">
                 <div className="pcx-shape-grid" role="group" aria-label="도형">
                   {SHAPES.map((s) => (
                     <button
@@ -1187,7 +1183,7 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
             <span className="pcx-group-sep" />
 
             {/* 색 */}
-            <div className="pcx-group pcx-group-grow">
+            <div className="pcx-group">
               <div className="pcx-color-area">
                 <div className="pcx-current-color" title="현재 색" style={{ background: color }} aria-hidden="true" />
                 <div className="pcx-swatch-grid" role="group" aria-label="색상 팔레트">
@@ -1232,6 +1228,12 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
               </div>
             )}
             <span className="flex-spacer" />
+            <div className="pcx-canvas-sizes" role="group" aria-label="캔버스 크기">
+              <span>캔버스</span>
+              {CANVAS_SIZES.map((s) => (
+                <button key={s.key} type="button" className={'pcx-mini' + (sizeKey === s.key ? ' is-active' : '')} aria-pressed={sizeKey === s.key} title={s.title} onClick={() => changeSize(s.key)}>{s.label}</button>
+              ))}
+            </div>
             <div className="pcx-zoom" role="group" aria-label="확대">
               <span>확대</span>
               {ZOOMS.map((z) => (
