@@ -578,6 +578,8 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
     }
 
     if (t === 'text') {
+      // 클릭 기본동작이 포커스를 빼앗아 입력창이 즉시 blur→닫히는 것을 막는다
+      e.preventDefault()
       if (textDraftRef.current) commitText()
       const r = c.getBoundingClientRect()
       setTextDraft({ cx: pt.x, cy: pt.y, dx: e.clientX - r.left, dy: e.clientY - r.top, scale: r.width / c.width, value: '' })
@@ -1265,7 +1267,7 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
                   onBlur={commitText}
                   onKeyDown={(e) => {
                     if (e.key === 'Escape') { e.preventDefault(); commitText() }
-                    else if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); commitText() }
+                    else if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); commitText() }
                     e.stopPropagation()
                   }}
                   aria-label="캔버스에 넣을 텍스트 입력"
