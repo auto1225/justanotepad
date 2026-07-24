@@ -5430,3 +5430,25 @@ html, body, #root {
   border-radius: 10px; background: #fff; cursor: crosshair; display: block;
 }
 .jan-ms-pad-foot { display: flex; gap: 8px; }
+
+/* 수식 스튜디오 — 최상단 통합 검색 강조 */
+.jan-ms-search-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 4px 12px;
+  border: 2px solid var(--accent, #D97757);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent, #D97757) 5%, var(--paper, #fff));
+  color: var(--accent, #D97757);
+}
+.jan-ms-search-row .jan-ms-search {
+  flex: 1; border: 0; background: transparent; outline: none;
+  padding: 9px 0; font-size: 14.5px; color: var(--jan-fg, #191919);
+}
+.jan-ms-search-row .jan-ms-search::placeholder { color: #999; }
+.jan-ms-search-clear {
+  padding: 4px 10px; border: 1px solid var(--paper-edge, #ddd); border-radius: 6px;
+  background: var(--paper, #fff); font-size: 11.5px; cursor: pointer; color: #555; font-family: inherit;
+}
+.jan-theme-dark .jan-ms-search-row { background: color-mix(in srgb, var(--accent, #D97757) 12%, #262626); }
+.jan-theme-dark .jan-ms-search-row .jan-ms-search { color: #e8e8e8; }
+.jan-theme-dark .jan-ms-search-clear { background: #2c2c2c; border-color: #4a4a4a; color: #bbb; }

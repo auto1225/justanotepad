@@ -55,6 +55,34 @@ interface MathStudioProps {
 const RECENT_KEY = 'jan-v2-math-recent'
 const PLACEHOLDER = '□'
 
+/** 통합 검색 — 기호(한글 동의어 포함)·구조·공식·상수 전부에서 */
+function searchEverything(queryRaw: string): Array<Sym & { badge?: string }> {
+  const q = queryRaw.trim().toLowerCase()
+  if (!q) return []
+  const out: Array<Sym & { badge?: string }> = []
+  for (const g of MATH_SYMBOL_GROUPS) {
+    for (const s of g.items) {
+      const hay = `${s.tip} ${s.tex} ${g.label} ${koExpand(s.tip)}`.toLowerCase()
+      if (hay.includes(q)) out.push({ ...s, badge: g.label })
+    }
+  }
+  for (const s of MATH_TEMPLATES2) {
+    const hay = `${s.tip} ${s.tex} ${koExpand(s.tip)}`.toLowerCase()
+    if (hay.includes(q)) out.push({ ...s, badge: '구조' })
+  }
+  for (const f of FORMULA_LIBRARY) {
+    if (f.label.toLowerCase().includes(q) || f.field.toLowerCase().includes(q) || (f.alias || '').toLowerCase().includes(q) || f.tex.toLowerCase().includes(q)) {
+      out.push({ tex: f.tex, tip: `${f.field} · ${f.label}`, badge: '공식' })
+    }
+  }
+  for (const c of PHYSICAL_CONSTANTS) {
+    if (c.label.toLowerCase().includes(q) || c.sym.toLowerCase().includes(q) || c.value.toLowerCase().includes(q)) {
+      out.push({ tex: c.value, tip: `상수 · ${c.label}`, badge: '상수' })
+    }
+  }
+  return out.slice(0, 60)
+}
+
 function loadRecent(): Sym[] {
   try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]') } catch { return [] }
 }
@@ -75,7 +103,8 @@ function renderKatex(tex: string, displayMode: boolean): string {
   if (hit !== undefined) return hit
   let html: string
   try {
-    html = katex.renderToString(tex.replace(/□/g, '\\square'), { throwOnError: true, displayMode, output: 'html' })
+    // strict:'ignore' — 한글 등 비ASCII 입력 중 콘솔 경고 억제
+    html = katex.renderToString(tex.replace(/□/g, '\\square'), { throwOnError: true, displayMode, output: 'html', strict: 'ignore' })
   } catch (e) {
     html = `<span class="jan-ms-err">${(e instanceof Error ? e.message : 'LaTeX 오류').replace(/&/g, '&amp;').replace(/</g, '&lt;')}</span>`
   }
@@ -191,16 +220,27 @@ export function MathStudio({ editor, onClose, initial = '', onSave }: MathStudio
   }
   useEffect(() => { if (padOpen) padClear() }, [padOpen])
 
-  /** 자동완성 — 커서 앞의 \명령 조각을 찾아 후보 제시 */
+  /** 자동완성 — \명령 조각 또는 한글 단어(→통합검색)를 찾아 후보 제시.
+   * 사용자가 검색창 대신 LaTeX 입력창에 "알파"처럼 한글을 쳐도
+   * 바로 후보가 떠서 Enter 한 번에 수식으로 치환된다. */
   function updateAutocomplete(value: string, caret: number) {
     const before = value.slice(0, caret)
-    const m = before.match(/\\([a-zA-Z]{1,20})$/)
-    if (!m) { setAc(null); return }
-    const word = m[0] // 예: \fr
-    const items = AUTOCOMPLETE_COMMANDS
-      .filter((c) => c.tex.toLowerCase().startsWith(word.toLowerCase()) && c.tex !== word)
-      .slice(0, 8)
-    setAc(items.length ? { items, sel: 0, word } : null)
+    const cmd = before.match(/\\([a-zA-Z]{1,20})$/)
+    if (cmd) {
+      const word = cmd[0] // 예: \fr
+      const items = AUTOCOMPLETE_COMMANDS
+        .filter((c) => c.tex.toLowerCase().startsWith(word.toLowerCase()) && c.tex !== word)
+        .slice(0, 8)
+      setAc(items.length ? { items, sel: 0, word } : null)
+      return
+    }
+    const ko = before.match(/[가-힣]{2,}$/)
+    if (ko) {
+      const items = searchEverything(ko[0]).slice(0, 6)
+      setAc(items.length ? { items, sel: 0, word: ko[0] } : null)
+      return
+    }
+    setAc(null)
   }
 
   function acceptAutocomplete(item: Sym) {
@@ -244,35 +284,7 @@ export function MathStudio({ editor, onClose, initial = '', onSave }: MathStudio
 
   // 검색 재계산을 입력보다 한 박자 늦춰 한글 IME 조합이 무거운 렌더에 끊기지 않게 한다
   const deferredQuery = useDeferredValue(query)
-
-  /** 통합 검색 — 기호(한글 동의어 포함)·구조·공식 121·물리상수 전부에서 */
-  const searchResults = useMemo(() => {
-    const q = deferredQuery.trim().toLowerCase()
-    if (!q) return null
-    const out: Array<Sym & { badge?: string }> = []
-    for (const g of MATH_SYMBOL_GROUPS) {
-      for (const s of g.items) {
-        // 영문 tip + LaTeX + 그룹명(한글) + 한글 동의어 사전 확장까지 모두 매칭
-        const hay = `${s.tip} ${s.tex} ${g.label} ${koExpand(s.tip)}`.toLowerCase()
-        if (hay.includes(q)) out.push({ ...s, badge: g.label })
-      }
-    }
-    for (const s of MATH_TEMPLATES2) {
-      const hay = `${s.tip} ${s.tex} ${koExpand(s.tip)}`.toLowerCase()
-      if (hay.includes(q)) out.push({ ...s, badge: '구조' })
-    }
-    for (const f of FORMULA_LIBRARY) {
-      if (f.label.toLowerCase().includes(q) || f.field.toLowerCase().includes(q) || (f.alias || '').toLowerCase().includes(q) || f.tex.toLowerCase().includes(q)) {
-        out.push({ tex: f.tex, tip: `${f.field} · ${f.label}`, badge: '공식' })
-      }
-    }
-    for (const c of PHYSICAL_CONSTANTS) {
-      if (c.label.toLowerCase().includes(q) || c.sym.toLowerCase().includes(q) || c.value.toLowerCase().includes(q)) {
-        out.push({ tex: c.value, tip: `상수 · ${c.label}`, badge: '상수' })
-      }
-    }
-    return out.slice(0, 60)
-  }, [deferredQuery])
+  const searchResults = useMemo(() => (deferredQuery.trim() ? searchEverything(deferredQuery) : null), [deferredQuery])
 
   function pick(sym: Sym) {
     if (!taRef.current) return
@@ -350,6 +362,21 @@ export function MathStudio({ editor, onClose, initial = '', onSave }: MathStudio
         </div>
 
         <div className="jan-ms-body">
+          {/* 통합 검색 — 맨 위, 가장 눈에 띄게 */}
+          <div className="jan-ms-search-row">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" /><path d="M15.5 15.5L21 21" /></svg>
+            <input
+              className="jan-ms-search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="무엇이든 한글로 검색 — 알파, 적분, 행렬, 베르누이, 옴, 슈뢰딩거..."
+              aria-label="기호·공식 통합 검색"
+            />
+            {query && (
+              <button type="button" className="jan-ms-search-clear" onClick={() => setQuery('')} aria-label="검색어 지우기">지우기</button>
+            )}
+          </div>
+
           {/* 실시간 미리보기 */}
           <div className="jan-ms-preview" aria-live="polite" dangerouslySetInnerHTML={{ __html: previewHtml }} />
 
@@ -387,16 +414,6 @@ export function MathStudio({ editor, onClose, initial = '', onSave }: MathStudio
             )}
           </div>
 
-          {/* 검색 + 탭 */}
-          <div className="jan-ms-toolrow">
-            <input
-              className="jan-ms-search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="통합 검색 — 예: integral, 행렬 hat, 베르누이, ohm..."
-              aria-label="기호·공식 검색"
-            />
-          </div>
           {!searchResults && (
             <div className="jan-ms-tabs" role="tablist" aria-label="기호 분류">
               <button role="tab" aria-selected={tab === 'templates'} className={tab === 'templates' ? 'is-active' : ''} onClick={() => setTab('templates')}>구조</button>
