@@ -5546,3 +5546,29 @@ html, body, #root {
   border-radius: 8px;
   transition: outline-color 0.4s ease;
 }
+
+/* ============================================================
+   도구·보기·파일 메뉴 차별화 — 문서 건강 점수 · 타자기 모드 · 문단 하이라이트
+   ============================================================ */
+
+/* 문서 건강 점수 리포트 */
+.jan-health-modal { max-width: 620px; }
+.jan-health-score { display: flex; align-items: baseline; gap: 6px; justify-content: center; padding: 10px 0 16px; }
+.jan-health-score strong { font-size: 44px; font-weight: 800; line-height: 1; }
+.jan-health-score span { font-size: 15px; color: #888; }
+.jan-health-area { margin: 14px 0 6px; }
+.jan-health-area-head { display: flex; justify-content: space-between; font-weight: 700; font-size: 13px; margin-bottom: 4px; }
+.jan-health-bar { height: 6px; background: rgba(128,128,128,0.18); border-radius: 3px; overflow: hidden; margin-bottom: 6px; }
+.jan-health-bar-fill { height: 100%; background: #D97757; border-radius: 3px; transition: width 0.4s ease; }
+.jan-health-fix { display: block; font-style: normal; font-size: 12px; color: #888; margin-top: 1px; }
+.jan-theme-dark .jan-health-score span, .jan-theme-dark .jan-health-fix { color: #aaa; }
+
+/* 타자기 모드 — 커서 줄 중앙 고정을 위한 상하 여백 확보 */
+body.jan-typewriter .jan-editor-main { scroll-behavior: auto; }
+/* 하단 스페이서 — 마지막 줄도 화면 중앙까지 끌어올릴 스크롤 여유 확보
+   (.jan-editor-pages 는 명시 height(border-box)라 padding 이 스크롤 높이에 반영되지 않아 실제 DOM 스페이서를 쓴다) */
+.jan-typewriter-spacer { height: 50vh; }
+
+/* 현재 문단 하이라이트 — 커서 문단 외에는 흐리게 (읽기 흐름 유지 위해 완전히 숨기지 않음) */
+body.jan-para-focus .ProseMirror > *:not(.jan-current-para) { opacity: 0.35; transition: opacity 0.25s ease; }
+body.jan-para-focus .ProseMirror > .jan-current-para { opacity: 1; transition: opacity 0.15s ease; }

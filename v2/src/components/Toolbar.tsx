@@ -19,12 +19,14 @@ import { saveDataUrlAsBlobRef } from '../lib/blobRefs'
 import { fitPageZoom, setPageZoom } from '../lib/pageZoom'
 import { PAGE_BREAK_HTML } from '../lib/pageBreak'
 import { flash } from '../lib/flash'
-import { askText } from '../lib/promptModal'
+import { askText, askConfirm } from '../lib/promptModal'
+import { computeDocHealth, showHealthReport, markBackupDone } from '../lib/docHealth'
 import { applyPaperFormat, PAPER_FORMATS } from '../lib/paperFormats'
 import { saveCurrentAsStyle, showMyStylesPicker } from '../lib/myStyles'
 import { insertNumberedEquation, insertFigureCaption, insertTableCaption, insertCrossRef, paperTargetCount, renumberWithFeedback } from '../lib/paperRefs'
 import { pickMathTemplate, lintPaper, showLintReport, insertCreditBlock, insertCoiBlock, insertDataAvailabilityBlock, insertListOfFigures, insertListOfTables, insertAcronymList } from '../lib/paperTools'
 import { downloadLatex } from '../lib/latexExport'
+import { downloadHtmlFile, downloadDocFile } from '../lib/htmlDocExport'
 import { MathStudio } from './MathStudio'
 
 interface ToolbarProps {
@@ -67,6 +69,7 @@ interface ToolbarProps {
   onPageSettings: () => void
   onLectureNotes: () => void
   onMeetingNotes: () => void
+  onTrash: () => void
 }
 
 /** useHeadingAnchors 의 slug 규칙과 동일해야 목차 앵커가 실제 제목 id 와 일치한다 */
@@ -252,9 +255,9 @@ export function Toolbar(p: ToolbarProps) {
   const insertYouTube = async () => {
     const url = await askText('YouTube URL:', '', { placeholder: 'https://youtube.com/watch?v=...' }); if (!url) return
     const m = url.match(/(?:v=|youtu\.be\/)([\w-]{11})/)
-    if (!m) { alert('유효한 YouTube URL 이 아님'); return }
+    if (!m) { flash('유효한 YouTube URL 이 아닙니다'); return }
     // 스키마에 div/iframe 이 없어 통삽입은 조용히 사라진다 — Embed 노드를 사용
-    if (!editor.commands.setEmbed(`https://www.youtube.com/watch?v=${m[1]}`)) alert('임베드 삽입 실패')
+    if (!editor.commands.setEmbed(`https://www.youtube.com/watch?v=${m[1]}`)) flash('임베드 삽입 실패')
   }
 
   /* === 논문 구성 요소 === */
@@ -481,12 +484,12 @@ export function Toolbar(p: ToolbarProps) {
       track.stop()
       const dataUrl = cv.toDataURL('image/png')
       editor.chain().focus().setImage({ src: dataUrl }).run()
-    } catch (e: any) { alert('화면 캡쳐 취소 또는 실패: ' + (e.message || e)) }
+    } catch (e: any) { flash('화면 캡쳐 취소 또는 실패: ' + (e.message || e), 2600) }
   }
   const openGallery = () => {
     const root = document.querySelector('.ProseMirror'); if (!root) return
     const imgs = root.querySelectorAll('img')
-    if (!imgs.length) { alert('현재 메모에 이미지가 없습니다.'); return }
+    if (!imgs.length) { flash('현재 메모에 이미지가 없습니다'); return }
     const w = window.open('', '_blank', 'width=900,height=700')
     if (!w) return
     let html = `<!doctype html><html><head><title>갤러리</title><style>body{margin:0;background:#111;color:#fff;font-family:sans-serif;padding:1em;} .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;} .grid img{width:100%;border-radius:4px;cursor:pointer;}</style></head><body><h2>갤러리 — ${imgs.length}개</h2><div class="grid">`
@@ -496,14 +499,14 @@ export function Toolbar(p: ToolbarProps) {
   }
   const startVoiceInput = () => {
     const SR: any = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-    if (!SR) { alert('이 브라우저는 음성 인식을 지원하지 않습니다.'); return }
+    if (!SR) { flash('이 브라우저는 음성 인식을 지원하지 않습니다'); return }
     const r = new SR(); r.lang = 'ko-KR'; r.interimResults = true; r.continuous = false
     let final = ''
     r.onresult = (e: any) => { for (let i = e.resultIndex; i < e.results.length; i++) { if (e.results[i].isFinal) final += e.results[i][0].transcript } }
-    r.onend = () => { if (final) editor.chain().focus().insertContent(final).run(); else alert('인식된 음성 없음') }
-    r.onerror = (e: any) => alert('음성 인식 오류: ' + e.error)
+    r.onend = () => { if (final) editor.chain().focus().insertContent(final).run(); else flash('인식된 음성이 없습니다') }
+    r.onerror = (e: any) => flash('음성 인식 오류: ' + e.error, 2600)
     r.start()
-    alert('말하세요... (한 문장 인식 후 자동 종료)')
+    flash('말하세요... (한 문장 인식 후 자동 종료)', 2600)
   }
   const speakSelection = () => {
     const sel = window.getSelection()?.toString() || editor.state.doc.textContent.slice(0, 1000)
@@ -533,7 +536,7 @@ export function Toolbar(p: ToolbarProps) {
       document.body.appendChild(overlay)
       rec.onstart = () => {}
       rec.addEventListener('stop', () => overlay.remove())
-    } catch (e: any) { alert('마이크 접근 실패: ' + (e.message || e)) }
+    } catch (e: any) { flash('마이크 접근 실패: ' + (e.message || e), 2600) }
   }
   const meetingNote = () => {
     insertHTML(`
@@ -560,7 +563,7 @@ export function Toolbar(p: ToolbarProps) {
       words[w] = (words[w] || 0) + 1
     })
     const sorted = Object.entries(words).sort((a, b) => b[1] - a[1]).slice(0, 60)
-    if (!sorted.length) { alert('단어가 없습니다.'); return }
+    if (!sorted.length) { flash('워드 클라우드를 만들 단어가 없습니다'); return }
     const max = sorted[0][1]
     const w = window.open('', '_blank', 'width=900,height=600'); if (!w) return
     let html = `<!doctype html><html><head><title>워드 클라우드</title><style>body{font-family:sans-serif;padding:2em;line-height:2;text-align:center;background:#fff8e7;} span{display:inline-block;margin:0.2em 0.4em;color:hsl(${Math.random()*360},60%,40%);}</style></head><body><h2>워드 클라우드 — ${sorted.length}개</h2><div>`
@@ -575,52 +578,74 @@ export function Toolbar(p: ToolbarProps) {
       while (next && !/^H[1-3]$/.test(next.tagName)) { body += next.textContent + ' '; next = next.nextElementSibling }
       cards.push({ q: h.textContent || '', a: body.trim() })
     })
-    if (!cards.length) { alert('제목 (H1/H2/H3) 이 없어 플래시카드를 만들 수 없습니다.'); return }
+    if (!cards.length) { flash('제목(H1~H3)이 없어 플래시카드를 만들 수 없습니다'); return }
     const w = window.open('', '_blank', 'width=600,height=500'); if (!w) return
     w.document.write(`<!doctype html><html><head><title>플래시카드</title><style>body{font-family:sans-serif;padding:2em;background:#FFFBE5;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:90vh;} .card{background:#fff;border:1px solid #ccc;border-radius:12px;padding:2em;width:80%;max-width:480px;box-shadow:0 4px 16px rgba(0,0,0,0.1);text-align:center;cursor:pointer;min-height:200px;display:flex;align-items:center;justify-content:center;} button{padding:0.6em 1.4em;margin:0.5em;background:#FAE100;border:0;border-radius:6px;font-weight:600;cursor:pointer;}</style></head><body><div class="card" id="c"></div><div><button id="prev">←</button> <span id="i">1</span>/${cards.length} <button id="next">→</button> <button id="flip">뒤집기</button></div><script>const cards=${JSON.stringify(cards)};let idx=0;let face=0;function show(){const c=cards[idx];document.getElementById('c').innerHTML=face?c.a:c.q;document.getElementById('i').textContent=idx+1;}show();document.getElementById('prev').onclick=()=>{idx=(idx-1+cards.length)%cards.length;face=0;show()};document.getElementById('next').onclick=()=>{idx=(idx+1)%cards.length;face=0;show()};document.getElementById('flip').onclick=()=>{face=1-face;show()};document.getElementById('c').onclick=()=>{face=1-face;show()};</script></body></html>`)
     w.document.close()
   }
-  const startPomodoro = () => {
-    const min = Number(window.prompt('포모도로 시간 (분):', '25')); if (!min) return
+  const startPomodoro = async () => {
+    const v = await askText('포모도로 시간 (분):', '25', { placeholder: '예: 25' })
+    if (v === null) return
+    const min = Number(v)
+    if (!min || min <= 0) { flash('1 이상의 숫자를 입력하세요'); return }
     const end = Date.now() + min * 60000
-    let id = setInterval(() => {
+    const id = setInterval(() => {
       const left = Math.max(0, end - Date.now())
       const m = Math.floor(left / 60000), s = Math.floor((left % 60000) / 1000)
-      const el = document.getElementById('jan-pomo-display') || (() => { const d = document.createElement('div'); d.id = 'jan-pomo-display'; d.style.cssText = 'position:fixed;top:8px;right:8px;background:#FAE100;color:#333;padding:6px 12px;border-radius:6px;font-weight:700;z-index:9999;'; document.body.appendChild(d); return d })()
+      const el = document.getElementById('jan-pomo-display') || (() => { const d = document.createElement('div'); d.id = 'jan-pomo-display'; d.title = '클릭하면 타이머 중단'; d.style.cssText = 'position:fixed;top:8px;right:8px;background:#FAE100;color:#333;padding:6px 12px;border-radius:6px;font-weight:700;z-index:9999;cursor:pointer;'; document.body.appendChild(d); return d })()
       el.textContent = `포모도로 ${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
-      el.onclick = () => { clearInterval(id); el.remove() }
-      if (left <= 0) { clearInterval(id); el.remove(); alert('포모도로 완료! 5분 휴식하세요.'); try { new Audio('data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEA').play() } catch {} }
+      el.onclick = () => { clearInterval(id); el.remove(); flash('포모도로를 중단했습니다') }
+      if (left <= 0) {
+        clearInterval(id); el.remove()
+        flash('포모도로 완료! 5분 휴식하세요', 4000)
+        try { if ('Notification' in window && Notification.permission === 'granted') new Notification('포모도로 완료', { body: '5분 휴식하세요' }) } catch {}
+      }
     }, 500)
+    try { if ('Notification' in window && Notification.permission === 'default') void Notification.requestPermission() } catch {}
+    flash(`포모도로 ${min}분 시작 — 우측 상단 타이머를 클릭하면 중단`)
   }
   const toggleSpellCheck = () => {
     const cur = useUIStore.getState().spellCheck
     useUIStore.setState({ spellCheck: !cur })
     document.querySelectorAll('.ProseMirror').forEach(el => el.setAttribute('spellcheck', !cur ? 'true' : 'false'))
-    alert(`맞춤법 검사 ${!cur ? '켬' : '끔'}`)
+    flash(`맞춤법 검사 ${!cur ? '켬' : '끔'}`)
   }
+  const runDocHealth = () => showHealthReport(computeDocHealth(editor))
 
   /* === 파일 / 백업 === */
-  const exportHwpx = async () => { try { await downloadHwpx(editor.getHTML(), '메모') } catch (e: any) { alert('HWPX 실패: ' + (e.message || e)) } }
-  const exportMd = () => { try { downloadMd(editor.getHTML(), '메모') } catch (e: any) { alert('MD 실패: ' + (e.message || e)) } }
-  const exportPdf = async () => { try { await exportToPdf(editor.getHTML(), '메모') } catch (e: any) { alert('PDF 실패: ' + (e.message || e)) } }
-  const exportHtml = () => {
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>메모</title></head><body>${editor.getHTML()}</body></html>`
-    const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
-    const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = '메모.html'
-    document.body.appendChild(a); a.click(); document.body.removeChild(a); setTimeout(() => URL.revokeObjectURL(url), 800)
+  const memoTitle = () => (useMemosStore.getState().current()?.title || '메모').trim() || '메모'
+  const exportHwpx = async () => { try { await downloadHwpx(editor.getHTML(), memoTitle()) } catch (e: any) { flash('HWPX 실패: ' + (e.message || e), 2600) } }
+  const exportMd = () => { try { downloadMd(editor.getHTML(), memoTitle()) } catch (e: any) { flash('MD 실패: ' + (e.message || e), 2600) } }
+  const exportPdf = async () => { try { await exportToPdf(editor.getHTML(), memoTitle()) } catch (e: any) { flash('PDF 실패: ' + (e.message || e), 2600) } }
+  const exportTex = () => { try { downloadLatex(editor.getHTML(), memoTitle()) } catch (e: any) { flash('LaTeX 실패: ' + (e.message || e), 2600) } }
+  /** 원클릭 전체 내보내기 — MD·HTML·LaTeX·HWPX·DOC 를 한 번에 (브라우저 다중 다운로드 차단 회피를 위해 순차 실행) */
+  const exportAll = async () => {
+    const title = memoTitle()
+    const html = editor.getHTML()
+    const jobs: Array<[string, () => void | Promise<void>]> = [
+      ['MD', () => downloadMd(html, title)],
+      ['HTML', () => downloadHtmlFile(html, title)],
+      ['LaTeX', () => downloadLatex(html, title)],
+      ['HWPX', () => downloadHwpx(html, title)],
+      ['DOC', () => downloadDocFile(html, title)],
+    ]
+    flash('5개 형식 내보내기 시작 (MD·HTML·LaTeX·HWPX·DOC)...', 2600)
+    const failed: string[] = []
+    for (const [name, job] of jobs) {
+      try { await job() } catch { failed.push(name) }
+      await new Promise((r) => setTimeout(r, 350))
+    }
+    flash(failed.length ? `완료 — 실패: ${failed.join(', ')}` : '모든 형식 내보내기 완료 (5개 파일)', 3000)
   }
-  const exportDocx = () => {
-    /* HTML 을 Word 가 인식하는 .doc (HTML application) 로 저장 — 가장 단순한 docx 호환 */
-    const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>메모</title></head><body>${editor.getHTML()}</body></html>`
-    const blob = new Blob(['\ufeff', html], { type: 'application/msword' })
-    const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = '메모.doc'
-    document.body.appendChild(a); a.click(); document.body.removeChild(a); setTimeout(() => URL.revokeObjectURL(url), 800)
-  }
+  const exportHtml = () => downloadHtmlFile(editor.getHTML(), memoTitle())
+  const exportDocx = () => downloadDocFile(editor.getHTML(), memoTitle())
   const exportJsonBackup = async () => {
     const json = await exportV2ToJson()
     const blob = new Blob([json], { type: 'application/json' })
     const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `JustANotepad-backup-${Date.now()}.json`
     document.body.appendChild(a); a.click(); document.body.removeChild(a); setTimeout(() => URL.revokeObjectURL(url), 800)
+    markBackupDone()
+    flash('JSON 백업 저장 완료 — 백업 시각이 기록되었습니다', 2200)
   }
   const importJsonBackup = () => {
     const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'application/json,.json'
@@ -631,18 +656,18 @@ export function Toolbar(p: ToolbarProps) {
         try {
           const result = await importV2FromJsonAsync(String(r.result))
           if (result.errors.length) {
-            alert(`가져오기 오류 ${result.errors.length}개: ${result.errors[0]}`)
+            flash(`가져오기 오류 ${result.errors.length}개: ${result.errors[0]}`, 3200)
             return
           }
-          alert(`백업 가져오기 완료: ${result.imported}개 항목 반영`)
-        } catch (e: any) { alert('가져오기 실패: ' + (e.message || e)) }
+          flash(`백업 가져오기 완료: ${result.imported}개 항목 반영`, 2600)
+        } catch (e: any) { flash('가져오기 실패: ' + (e.message || e), 3200) }
       }
       r.readAsText(file)
     }
     inp.click()
   }
   const importV1 = async () => {
-    if (!confirm('v1 의 localStorage 메모를 v2 로 가져옵니다. 진행하시겠습니까?')) return
+    if (!(await askConfirm('v1 메모 가져오기', 'v1 의 localStorage 메모를 v2 로 가져옵니다. 진행하시겠습니까?', '가져오기'))) return
     try {
       /* v1 은 같은 origin 의 localStorage 에 'jan_memos' 같은 키로 저장 */
       const candidates = ['jan-memos', 'jan_memos', 'memos', 'sticky_memos']
@@ -662,17 +687,8 @@ export function Toolbar(p: ToolbarProps) {
           })
         } catch {}
       }
-      alert(imported ? `${imported}개 가져오기 완료` : 'v1 메모를 찾지 못했습니다.')
-    } catch (e: any) { alert('실패: ' + (e.message || e)) }
-  }
-  const openTrash = () => {
-    const all = useMemosStore.getState().list()
-    const trashed = all.filter((m: any) => m.deleted || m.trashed)
-    if (!trashed.length) { alert('휴지통이 비어있습니다.'); return }
-    const w = window.open('', '_blank', 'width=600,height=500'); if (!w) return
-    let html = `<!doctype html><html><head><title>휴지통</title><style>body{font-family:sans-serif;padding:1em;}li{padding:0.5em;border-bottom:1px solid #eee;}</style></head><body><h2>휴지통 (${trashed.length})</h2><ul>`
-    trashed.forEach((m: any) => { html += `<li>${m.title || '제목없음'}</li>` })
-    html += '</ul></body></html>'; w.document.write(html); w.document.close()
+      flash(imported ? `${imported}개 가져오기 완료` : 'v1 메모를 찾지 못했습니다', 2600)
+    } catch (e: any) { flash('실패: ' + (e.message || e), 3200) }
   }
 
   /* === 명령 팔레트 / 검색 등 === */
@@ -870,6 +886,7 @@ export function Toolbar(p: ToolbarProps) {
         { label: '찾아 바꾸기', hint: 'Ctrl+H', icon: 'replace', onClick: () => run(p.onFind) },
         { label: '깨진 링크 검사', icon: 'unlink', onClick: () => run(p.onLinkCheck) },
         { divider: '분석', label: '' },
+        { label: '문서 건강 점수 (100점 진단)', icon: 'shield', onClick: () => run(runDocHealth) },
         { label: '통계 / 대시보드', icon: 'hash', onClick: () => run(p.onStats) },
         { label: '활동 히트맵', icon: 'hash', onClick: () => run(p.onHeatmap) },
         { label: '메모 정보', icon: 'info', onClick: () => run(p.onInfo) },
@@ -899,6 +916,8 @@ export function Toolbar(p: ToolbarProps) {
         { divider: '창', label: '' },
         { label: '집중 모드', hint: 'F11', icon: 'focus', onClick: () => run(() => ui.toggleFocus()) },
         { label: '읽기 모드', hint: 'Shift+F11', icon: 'preview', onClick: () => run(() => ui.toggleReading()) },
+        { label: `타자기 모드 ${ui.typewriterMode ? '끄기' : '켜기'} (커서 줄 중앙 고정)`, icon: 'focus', onClick: () => run(() => { ui.toggleTypewriter(); flash(ui.typewriterMode ? '타자기 모드 끔' : '타자기 모드 켬 — 커서 줄이 화면 중앙에 유지됩니다') }) },
+        { label: `현재 문단 하이라이트 ${ui.paragraphFocus ? '끄기' : '켜기'}`, icon: 'focus', onClick: () => run(() => { ui.toggleParagraphFocus(); flash(ui.paragraphFocus ? '문단 하이라이트 끔' : '문단 하이라이트 켬 — 커서 문단 외에는 흐려집니다') }) },
         { label: '사이드바 토글', icon: 'list-bullet', onClick: () => run(() => ui.toggleSidebar()) },
         { label: `눈금자 ${ui.showRulers ? '숨기기' : '표시'}`, icon: 'columns', onClick: () => run(() => ui.toggleRulers()) },
         { divider: '줌', label: '' },
@@ -933,6 +952,8 @@ export function Toolbar(p: ToolbarProps) {
         { label: 'Markdown(.md) 저장', icon: 'file-text', onClick: () => run(exportMd) },
         { label: 'HWPX (한글) 내보내기', icon: 'file-text', onClick: () => run(exportHwpx) },
         { label: 'Word(.doc) 내보내기', icon: 'file-text', onClick: () => run(exportDocx) },
+        { label: 'LaTeX(.tex) 내보내기', icon: 'file-text', onClick: () => run(exportTex) },
+        { label: '모든 형식 내보내기 (MD·HTML·LaTeX·HWPX·DOC)', icon: 'download', onClick: () => run(() => { void exportAll() }) },
         { divider: '공유 / 백업', label: '' },
         { label: 'GitHub Gist 로 공유', icon: 'cloud', onClick: () => run(p.onGist) },
         { label: '공유 링크', icon: 'link', onClick: () => run(p.onShare) },
@@ -942,7 +963,7 @@ export function Toolbar(p: ToolbarProps) {
         { divider: '관리', label: '' },
         { label: '버전 기록', icon: 'undo', onClick: () => run(p.onVersions) },
         { label: '잠금 / 비밀번호', icon: 'lock', onClick: () => run(p.onLock) },
-        { label: '휴지통', icon: 'box', onClick: () => run(openTrash) },
+        { label: '휴지통', icon: 'box', onClick: () => run(p.onTrash) },
         { label: '정보 / 버전', icon: 'info', onClick: () => run(p.onAbout) },
       ],
     },

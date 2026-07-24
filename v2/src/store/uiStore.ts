@@ -306,6 +306,10 @@ export function formatRunningText(template: string, page = 1, total = 1): string
 interface UIState {
   focusMode: boolean
   readingMode: boolean
+  /** 타자기 모드 — 커서 줄을 화면 중앙에 고정 (iA Writer 스타일) */
+  typewriterMode: boolean
+  /** 현재 문단 하이라이트 — 커서가 있는 문단 외에는 흐리게 (포커스 라이팅) */
+  paragraphFocus: boolean
   spellCheck: boolean
   sidebarCollapsed: boolean
   headingNumbers: boolean
@@ -331,6 +335,8 @@ interface UIState {
   toggleFocus: () => void
   setFocus: (v: boolean) => void
   toggleReading: () => void
+  toggleTypewriter: () => void
+  toggleParagraphFocus: () => void
   toggleSpellCheck: () => void
   toggleSidebar: () => void
   toggleHeadingNumbers: () => void
@@ -357,6 +363,8 @@ export const useUIStore = create<UIState>()(
     (set, get) => ({
       focusMode: false,
       readingMode: false,
+      typewriterMode: false,
+      paragraphFocus: false,
       spellCheck: false,
       sidebarCollapsed: false,
       headingNumbers: false,
@@ -381,6 +389,8 @@ export const useUIStore = create<UIState>()(
       watermarkText: '',
       toggleFocus: () => set({ focusMode: !get().focusMode }),
       toggleReading: () => set({ readingMode: !get().readingMode }),
+      toggleTypewriter: () => set({ typewriterMode: !get().typewriterMode }),
+      toggleParagraphFocus: () => set({ paragraphFocus: !get().paragraphFocus }),
       toggleSpellCheck: () => set({ spellCheck: !get().spellCheck }),
       setFocus: (v) => set({ focusMode: v }),
       toggleSidebar: () => set({ sidebarCollapsed: !get().sidebarCollapsed }),

@@ -40,6 +40,44 @@ export function askText(title: string, defaultValue = '', opts: Partial<AskOptio
   })
 }
 
+/** 앱 스타일 확인 모달 — window.confirm 대체. 확인 시 true, 취소/닫기 시 false */
+export function askConfirm(title: string, detail = '', okLabel = '확인'): Promise<boolean> {
+  return new Promise((resolve) => {
+    const r = ensureRoot()
+    const close = (ok: boolean) => {
+      r.render(null)
+      resolve(ok)
+    }
+    r.render(<ConfirmModal title={title} detail={detail} okLabel={okLabel} onClose={close} />)
+  })
+}
+
+function ConfirmModal({ title, detail, okLabel, onClose }: { title: string; detail: string; okLabel: string; onClose: (ok: boolean) => void }) {
+  const okRef = useRef<HTMLButtonElement>(null)
+  useEffect(() => { okRef.current?.focus() }, [])
+  const onKey = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') { e.preventDefault(); onClose(false) }
+    else if (e.key === 'Enter') { e.preventDefault(); onClose(true) }
+  }
+  return (
+    <div className="jan-modal-overlay" onClick={() => onClose(false)} onKeyDown={onKey} role="dialog" aria-modal="true" aria-label={title}>
+      <div className="jan-modal jan-prompt-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
+        <div className="jan-modal-head">
+          <h3 style={{ fontSize: 15 }}>{title}</h3>
+          <button className="jan-modal-close" onClick={() => onClose(false)} aria-label="취소">닫기</button>
+        </div>
+        <div className="jan-modal-body" style={{ padding: 16 }}>
+          {detail && <p style={{ margin: '0 0 12px', fontSize: 13, color: '#666', lineHeight: 1.5 }}>{detail}</p>}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+            <button onClick={() => onClose(false)} style={{ padding: '6px 14px' }}>취소</button>
+            <button ref={okRef} onClick={() => onClose(true)} className="primary" style={{ padding: '6px 14px', background: '#D97757', color: '#fff', border: 0, borderRadius: 6 }}>{okLabel}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function PromptModal({ title, defaultValue = '', placeholder, multiline, okLabel = '확인', onClose }: AskOptions & { onClose: (v: string | null) => void }) {
   const [value, setValue] = useState(defaultValue)
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null)

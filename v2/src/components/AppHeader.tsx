@@ -4,6 +4,8 @@ import { useUIStore } from '../store/uiStore'
 import { useThemeStore } from '../store/themeStore'
 import { useMemosStore } from '../store/memosStore'
 import { useRoleToolsStore } from '../store/roleToolsStore'
+import { flash } from '../lib/flash'
+import { askText } from '../lib/promptModal'
 
 interface AppHeaderProps {
   onAccount: () => void
@@ -62,16 +64,20 @@ export function AppHeader(p: AppHeaderProps) {
     const t = setTimeout(() => {
       if (pomoLeft <= 1000) {
         setPomoLeft(null)
-        alert('포모도로 완료! 5분 휴식하세요.')
+        flash('포모도로 완료! 5분 휴식하세요', 4000)
+        try { if ('Notification' in window && Notification.permission === 'granted') new Notification('포모도로 완료', { body: '5분 휴식하세요' }) } catch {}
         return
       }
       setPomoLeft(pomoLeft - 1000)
     }, 1000)
     return () => clearTimeout(t)
   }, [pomoLeft])
-  const togglePomo = () => {
-    if (pomoLeft !== null) { setPomoLeft(null); return }
-    const min = Number(window.prompt('포모도로 시간 (분):', '25')) || 25
+  const togglePomo = async () => {
+    if (pomoLeft !== null) { setPomoLeft(null); flash('포모도로를 중단했습니다'); return }
+    const v = await askText('포모도로 시간 (분):', '25', { placeholder: '예: 25' })
+    if (v === null) return
+    const min = Number(v) || 25
+    try { if ('Notification' in window && Notification.permission === 'default') void Notification.requestPermission() } catch {}
     setPomoLeft(min * 60 * 1000)
   }
   const isTauri = typeof window !== 'undefined' && '__TAURI__' in window

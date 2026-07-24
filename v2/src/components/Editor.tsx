@@ -78,6 +78,7 @@ import { LinkCard } from '../extensions/LinkCard'
 import { AudioNode, VideoNode } from '../extensions/Media'
 import { PageBreak } from '../extensions/PageBreak'
 import { PaperTag, PaperBlockAttrs } from '../extensions/PaperTag'
+import { CurrentParaHighlight } from '../extensions/CurrentParaHighlight'
 import { MultiPageView } from './MultiPageView'
 import { NormalHorizontalRule } from '../extensions/HorizontalRule'
 import Highlight from '@tiptap/extension-highlight'
@@ -124,6 +125,7 @@ const WebBrowserModal = lazy(() => import('./WebBrowserModal').then((m) => ({ de
 const BusinessCardsModal = lazy(() => import('./BusinessCardsModal').then((m) => ({ default: m.BusinessCardsModal })))
 const PageSettingsModal = lazy(() => import('./PageSettingsModal').then((m) => ({ default: m.PageSettingsModal })))
 const MeetingNotesModal = lazy(() => import('./MeetingNotesModal').then((m) => ({ default: m.MeetingNotesModal })))
+const TrashModal = lazy(() => import('./TrashModal').then((m) => ({ default: m.TrashModal })))
 const CONTENT_COMMIT_DELAY_MS = 350
 
 /** 페이지마다 반복되는 대각선 워터마크 SVG (배경 이미지용) */
@@ -190,6 +192,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   const [showPageSettings, setShowPageSettings] = useState(false)
   const [showMeetingNotes, setShowMeetingNotes] = useState(false)
   const [meetingKind, setMeetingKind] = useState<MeetingKind>('meeting')
+  const [showTrash, setShowTrash] = useState(false)
   const paperStyle = useUIStore((s) => s.paperStyle)
   const pageSize = useUIStore((s) => s.pageSize)
   const pageOrientation = useUIStore((s) => s.pageOrientation)
@@ -201,6 +204,8 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   const spellCheck = useUIStore((s) => s.spellCheck)
   const showRulers = useUIStore((s) => s.showRulers)
   const viewLayout = useUIStore((s) => s.viewLayout)
+  const typewriterMode = useUIStore((s) => s.typewriterMode)
+  const paragraphFocus = useUIStore((s) => s.paragraphFocus)
 
   const customPageWidthMm = useUIStore((s) => s.customPageWidthMm)
   const customPageHeightMm = useUIStore((s) => s.customPageHeightMm)
@@ -384,6 +389,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       TaskList,
       TaskItem.configure({ nested: true }),
       PaperTag,
+      CurrentParaHighlight,
       PaperBlockAttrs,
     ]
     // 페이지 분할(PaginationPlus)은 float 기반이라 CSS 다단(column)과 공존 불가
@@ -455,6 +461,37 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
     window.addEventListener('jan-edit-image-in-paint', onEdit)
     return () => window.removeEventListener('jan-edit-image-in-paint', onEdit)
   }, [])
+
+  // 타자기 모드 — 커서 줄을 스크롤 컨테이너(.jan-editor-main) 중앙에 유지
+  useEffect(() => {
+    document.body.classList.toggle('jan-typewriter', typewriterMode)
+    if (!editor || !typewriterMode) return
+    const center = () => {
+      try {
+        const scroller = document.querySelector('.jan-editor-main')
+        if (!scroller) return
+        const coords = editor.view.coordsAtPos(editor.state.selection.head)
+        const rect = scroller.getBoundingClientRect()
+        const delta = coords.top - (rect.top + rect.height / 2)
+        if (Math.abs(delta) > 4) scroller.scrollBy({ top: delta, behavior: 'auto' })
+      } catch {}
+    }
+    editor.on('selectionUpdate', center)
+    editor.on('update', center)
+    center()
+    return () => {
+      editor.off('selectionUpdate', center)
+      editor.off('update', center)
+    }
+  }, [editor, typewriterMode])
+
+  // 현재 문단 하이라이트 — 실제 강조는 CurrentParaHighlight 확장(PM node decoration)이 담당.
+  // 여기서는 body 클래스 토글 + 빈 트랜잭션 디스패치로 데코레이션 재계산만 유발한다.
+  useEffect(() => {
+    document.body.classList.toggle('jan-para-focus', paragraphFocus)
+    if (!editor) return
+    try { editor.view.dispatch(editor.state.tr) } catch {}
+  }, [editor, paragraphFocus])
 
   useEffect(() => {
     if (!editor || !paginationEnabled) return
@@ -789,6 +826,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
         onMeetingNotes={() => openMeetingNotes('meeting')}
         onToggleOutline={() => setShowOutline((v) => !v)}
         outlineOpen={showOutline}
+        onTrash={() => setShowTrash(true)}
       />
       <TagsBar />
       <div className="jan-app-body">
@@ -898,6 +936,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
               )}
             </div>
           </div>
+          {typewriterMode && <div className="jan-typewriter-spacer" aria-hidden="true" />}
         </div>
       </div>
       </div>
@@ -953,6 +992,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
         {showCards && <BusinessCardsModal editor={editor} onClose={() => setShowCards(false)} />}
         {showPageSettings && <PageSettingsModal onClose={() => setShowPageSettings(false)} />}
         {showMeetingNotes && <MeetingNotesModal editor={editor} initialKind={meetingKind} onClose={() => setShowMeetingNotes(false)} />}
+        {showTrash && <TrashModal onClose={() => setShowTrash(false)} />}
       </Suspense>
       <Lightbox />
     </div>

@@ -1,5 +1,8 @@
+import { useEffect } from 'react'
 import { useMemosStore } from '../store/memosStore'
 import { purgeMemoArtifacts } from '../lib/memoCleanup'
+import { askConfirm } from '../lib/promptModal'
+import { flash } from '../lib/flash'
 
 interface TrashModalProps {
   onClose: () => void
@@ -15,6 +18,12 @@ export function TrashModal({ onClose }: TrashModalProps) {
   const { trashedList, restore, permaDelete, emptyTrash } = useMemosStore()
   const items = trashedList()
   const now = Date.now()
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
 
   function fmtRemain(trashedAt: number): string {
     const days = Math.max(0, Math.ceil((trashedAt + TTL_MS - now) / 86400000))
@@ -46,8 +55,10 @@ export function TrashModal({ onClose }: TrashModalProps) {
                     <div className="jan-trash-actions">
                       <button onClick={() => restore(t.id)}>복원</button>
                       <button
-                        onClick={() => {
-                          if (confirm(`"${t.title || '무제'}" 영구 삭제? 복구 불가능.`)) { permaDelete(t.id); purgeMemoArtifacts([t.id]) }
+                        onClick={async () => {
+                          if (await askConfirm('영구 삭제', `"${t.title || '무제'}" 메모를 영구 삭제합니다. 복구할 수 없습니다.`, '영구 삭제')) {
+                            permaDelete(t.id); purgeMemoArtifacts([t.id]); flash('영구 삭제되었습니다')
+                          }
                         }}
                       >
                         영구 삭제
@@ -58,8 +69,10 @@ export function TrashModal({ onClose }: TrashModalProps) {
               </ul>
               <button
                 className="jan-trash-empty-btn"
-                onClick={() => {
-                  if (confirm(`휴지통의 ${items.length}개 메모를 모두 영구 삭제? 복구 불가능.`)) { const ids = items.map((m) => m.id); emptyTrash(); purgeMemoArtifacts(ids) }
+                onClick={async () => {
+                  if (await askConfirm('휴지통 비우기', `휴지통의 ${items.length}개 메모를 모두 영구 삭제합니다. 복구할 수 없습니다.`, '모두 삭제')) {
+                    const ids = items.map((m) => m.id); emptyTrash(); purgeMemoArtifacts(ids); flash(`${ids.length}개 메모를 영구 삭제했습니다`)
+                  }
                 }}
               >
                 휴지통 비우기
