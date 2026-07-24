@@ -60,8 +60,24 @@ export function useFormatPainter(editor: Editor | null) {
         if (saved.current) { e.preventDefault(); paste() }
       }
     }
+    // 메뉴에서도 실행할 수 있도록 커스텀 이벤트 통로 제공
+    const onCopyEvt = () => {
+      const sel = editor?.state.selection
+      if (sel && !sel.empty) copy()
+      else flashIndicator('먼저 서식을 복사할 텍스트를 선택하세요')
+    }
+    const onPasteEvt = () => {
+      if (saved.current) paste()
+      else flashIndicator('복사된 서식이 없습니다 — 먼저 "서식 복사"를 실행하세요')
+    }
     document.addEventListener('keydown', onKey, true)
-    return () => document.removeEventListener('keydown', onKey, true)
+    window.addEventListener('jan-format-copy', onCopyEvt)
+    window.addEventListener('jan-format-paste', onPasteEvt)
+    return () => {
+      document.removeEventListener('keydown', onKey, true)
+      window.removeEventListener('jan-format-copy', onCopyEvt)
+      window.removeEventListener('jan-format-paste', onPasteEvt)
+    }
   }, [editor])
 }
 

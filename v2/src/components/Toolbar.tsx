@@ -21,6 +21,7 @@ import { PAGE_BREAK_HTML } from '../lib/pageBreak'
 import { flash } from '../lib/flash'
 import { askText } from '../lib/promptModal'
 import { applyPaperFormat, PAPER_FORMATS } from '../lib/paperFormats'
+import { saveCurrentAsStyle, showMyStylesPicker } from '../lib/myStyles'
 import { insertNumberedEquation, insertFigureCaption, insertTableCaption, insertCrossRef, paperTargetCount, renumberWithFeedback } from '../lib/paperRefs'
 import { pickMathTemplate, lintPaper, showLintReport, insertCreditBlock, insertCoiBlock, insertDataAvailabilityBlock, insertListOfFigures, insertListOfTables, insertAcronymList } from '../lib/paperTools'
 import { downloadLatex } from '../lib/latexExport'
@@ -393,20 +394,20 @@ export function Toolbar(p: ToolbarProps) {
   const insertSymbol = () => setShowSymbolPop(true)
 
   /* === 한국어 타이포 인라인 === */
-  const setLetterSpacing = () => {
-    const v = window.prompt('자간 (em, 예: -0.05 좁게 / 0.1 넓게):', localStorage.getItem('jan-letter-spacing') || '0')
+  const setLetterSpacing = async () => {
+    const v = await askText('자간 (em) — 예: -0.05 좁게 / 0.1 넓게', localStorage.getItem('jan-letter-spacing') || '0')
     if (v === null) return
-    if (Number.isNaN(Number(v))) { alert('숫자를 입력하세요 (예: -0.05, 0.1)'); return }
+    if (Number.isNaN(Number(v))) { flash('숫자를 입력하세요 (예: -0.05, 0.1)'); return }
     localStorage.setItem('jan-letter-spacing', v)
     const id = 'jan-letter-spacing-style'
     const s = document.getElementById(id) || (() => { const e = document.createElement('style'); e.id = id; document.head.appendChild(e); return e })()
-    s.textContent = `.ProseMirror { letter-spacing: ${v}em; }`
+    s.textContent = `.ProseMirror { letter-spacing: ${Number(v)}em; }`
   }
-  const setCharScale = () => {
-    const v = window.prompt('장평 (% — 기본 100):', localStorage.getItem('jan-char-scale') || '100')
+  const setCharScale = async () => {
+    const v = await askText('장평 (%) — 20~200, 기본 100', localStorage.getItem('jan-char-scale') || '100')
     if (v === null) return
     const scaleNum = Number(v)
-    if (Number.isNaN(scaleNum) || scaleNum < 20 || scaleNum > 200) { alert('20~200 사이 숫자를 입력하세요'); return }
+    if (Number.isNaN(scaleNum) || scaleNum < 20 || scaleNum > 200) { flash('20~200 사이 숫자를 입력하세요'); return }
     localStorage.setItem('jan-char-scale', v)
     const id = 'jan-char-scale-style'
     const s = document.getElementById(id) || (() => { const e = document.createElement('style'); e.id = id; document.head.appendChild(e); return e })()
@@ -423,18 +424,18 @@ export function Toolbar(p: ToolbarProps) {
     const s = document.getElementById(id) || (() => { const e = document.createElement('style'); e.id = id; document.head.appendChild(e); return e })()
     s.textContent = next ? '.ProseMirror p { text-indent: 1.5em; }' : ''
   }
-  const setParagraphSpacing = () => {
-    const v = window.prompt('단락 간격 (em, 예: 0.8):', localStorage.getItem('jan-para-space') || '0.6')
+  const setParagraphSpacing = async () => {
+    const v = await askText('단락 간격 (em) — 예: 0.8', localStorage.getItem('jan-para-space') || '0.6')
     if (v === null) return
-    if (Number.isNaN(Number(v)) || Number(v) < 0) { alert('0 이상의 숫자를 입력하세요 (예: 0.8)'); return }
+    if (Number.isNaN(Number(v)) || Number(v) < 0) { flash('0 이상의 숫자를 입력하세요 (예: 0.8)'); return }
     localStorage.setItem('jan-para-space', v)
     const id = 'jan-para-space-style'
     const s = document.getElementById(id) || (() => { const e = document.createElement('style'); e.id = id; document.head.appendChild(e); return e })()
-    s.textContent = `.ProseMirror p { margin: ${v}em 0; }`
+    s.textContent = `.ProseMirror p { margin: ${Number(v)}em 0; }`
   }
-  const setTextEffect = () => {
+  const setTextEffect = async () => {
     if (editor.state.selection.empty) { flash('효과를 적용할 텍스트를 먼저 선택하세요'); return }
-    const v = window.prompt('글자 효과 (1=그림자, 2=네온, 3=음각, 0=해제):', '1')
+    const v = await askText('글자 효과 — 1: 그림자 · 2: 네온 · 3: 음각 · 0: 해제', '1')
     if (v === null) return
     const shadows: Record<string, string> = {
       '0': '',
@@ -739,6 +740,15 @@ export function Toolbar(p: ToolbarProps) {
         { label: '단락 간격', icon: 'paragraph', onClick: () => run(setParagraphSpacing) },
         { label: '글자 효과', icon: 'sparkle', onClick: () => run(setTextEffect) },
         { label: '강조 배경 상자', icon: 'highlight', onClick: () => run(insertHighlightBox) },
+        { divider: '서식 복사 · 내 스타일', label: '' },
+        { label: '서식 복사', hint: 'Ctrl+Shift+C', icon: 'wand', onClick: () => run(() => window.dispatchEvent(new Event('jan-format-copy'))) },
+        { label: '서식 붙여넣기', hint: 'Ctrl+Shift+V', icon: 'wand', onClick: () => run(() => window.dispatchEvent(new Event('jan-format-paste'))) },
+        { label: '현재 서식을 내 스타일로 저장', icon: 'save', onClick: () => run(async () => {
+          if (editor.state.selection.empty) { flash('먼저 서식이 적용된 텍스트를 선택하세요'); return }
+          const name = await askText('스타일 이름:', '', { placeholder: '예: 핵심 강조, 보고서 소제목' })
+          if (name) saveCurrentAsStyle(editor, name)
+        }) },
+        { label: '내 스타일 적용 / 관리', icon: 'palette', onClick: () => run(() => showMyStylesPicker(editor)) },
         { divider: '기타', label: '' },
         { label: '문서 스타일', icon: 'palette', onClick: () => run(p.onTypo) },
         { label: '서식 지우기', icon: 'wand', onClick: () => run(() => editor.chain().focus().unsetAllMarks().clearNodes().run()) },
