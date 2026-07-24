@@ -197,3 +197,65 @@ export const MATH_SNIPPETS: Array<{ label: string; tex: string; field: string }>
   { field: '전산', label: '엔트로피', tex: 'H(X) = -\\sum_{i} p_i \\log_2 p_i' },
   { field: '건축', label: '휨응력', tex: '\\sigma = \\frac{M c}{I}' },
 ]
+
+/**
+ * 한글 검색 동의어 사전 — 기호 tip(영문)을 한글 검색어로도 찾을 수 있게 한다.
+ * 검색 시 각 항목의 tip 단어를 이 사전으로 확장해 매칭한다.
+ */
+export const KO_TERMS: Record<string, string> = {
+  // 그리스 문자
+  alpha: '알파', beta: '베타', gamma: '감마', delta: '델타', epsilon: '엡실론', varepsilon: '엡실론',
+  zeta: '제타', eta: '에타', theta: '세타 씨타', vartheta: '세타', iota: '이오타', kappa: '카파',
+  lambda: '람다', mu: '뮤', nu: '뉴', xi: '크사이 자이', pi: '파이', varpi: '파이', rho: '로',
+  sigma: '시그마', tau: '타우', upsilon: '입실론', phi: '파이 피', varphi: '피', chi: '카이',
+  psi: '프사이', omega: '오메가', nabla: '나블라 델',
+  // 연산·관계
+  plus: '더하기 플러스', minus: '빼기 마이너스', times: '곱하기 곱셈', divide: '나누기 나눗셈',
+  dot: '점 내적', leq: '이하 작거나같다', geq: '이상 크거나같다', neq: '같지않다 부등호',
+  approx: '근사 약', equiv: '합동 항등', propto: '비례', parallel: '평행', perp: '수직 직교',
+  angle: '각 각도', triangle: '삼각형', square: '사각형 네모', degree: '도',
+  // 화살표
+  to: '화살표 오른쪽', gets: '왼쪽 화살표', mapsto: '사상', iff: '동치 필요충분',
+  rightarrow: '화살표', leftrightarrow: '양방향', equilibrium: '평형 가역',
+  // 큰 연산자·미적분
+  sum: '합 시그마 급수', product: '곱 파이', integral: '적분 인테그랄', 'double': '이중',
+  'triple': '삼중', contour: '선적분 폐곡선', union: '합집합', intersection: '교집합',
+  limit: '극한 리미트', infinity: '무한 무한대', derivative: '미분 도함수', partial: '편미분',
+  grad: '기울기 그래디언트', divergence: '발산', curl: '회전 컬', laplacian: '라플라시안',
+  // 집합·논리
+  'for': '모든 임의', all: '모든', exists: '존재', in: '원소 포함', subset: '부분집합',
+  supset: '포함', empty: '공집합', and: '그리고 논리곱', or: '또는 논리합', not: '부정',
+  implies: '함의 이면', therefore: '그러므로 따라서', because: '왜냐하면', reals: '실수',
+  complex: '복소수', integers: '정수', naturals: '자연수', rationals: '유리수',
+  // 구조·강조
+  fraction: '분수', frac: '분수', sqrt: '제곱근 루트 근호', hat: '햇 모자', bar: '바 평균',
+  vector: '벡터', tilde: '틸드 물결', overline: '윗줄', underline: '밑줄', brace: '중괄호',
+  parens: '괄호 소괄호', brackets: '대괄호', abs: '절댓값 절대값', norm: '노름', floor: '내림 바닥',
+  ceil: '올림 천장', matrix: '행렬', cases: '경우 조건', binomial: '이항 조합',
+  // 함수
+  sin: '사인', cos: '코사인', tan: '탄젠트', log: '로그', ln: '자연로그', exp: '지수 지수함수',
+  min: '최소', max: '최대', gcd: '최대공약수', mod: '나머지 모듈로', det: '행렬식',
+  // 물리·화학·기타
+  'h-bar': '플랑크 디랙 상수', braket: '브라켓 디랙', ket: '켓', bra: '브라',
+  hamiltonian: '해밀토니안', newton: '뉴턴', field: '장 전기장 자기장', water: '물',
+  reaction: '반응 반응식', isotope: '동위원소', ion: '이온', proton: '양성자', electron: '전자',
+  radical: '라디칼', enthalpy: '엔탈피', meter: '미터', kilogram: '킬로그램', second: '초',
+  ampere: '암페어', kelvin: '켈빈', mole: '몰', newton2: '뉴턴', pascal: '파스칼', joule: '줄',
+  watt: '와트', hertz: '헤르츠', volt: '볼트', ohm: '옴 저항', farad: '패럿', tesla: '테슬라',
+  celsius: '섭씨', voltage: '전압', current: '전류', impedance: '임피던스', phasor: '페이저',
+  expectation: '기대값 기댓값 평균', variance: '분산', covariance: '공분산', mean: '평균',
+  normal: '정규분포 정규', conditional: '조건부 확률', correlation: '상관계수',
+  'chi-square': '카이제곱', reynolds: '레이놀즈', mach: '마하', stress: '응력', strain: '변형률',
+  shear: '전단', efficiency: '효율', density: '밀도', lift: '양력', drag: '항력',
+  'big-o': '빅오 시간복잡도', xor: '배타적', assign: '대입 할당', negation: '부정',
+  pathway: '경로 대사', enzyme: '효소', female: '암컷', male: '수컷', cross: '교배 교차',
+  substrate: '기질',
+}
+
+/** tip(영문) → 한글 동의어 문자열로 확장 */
+export function koExpand(tip: string): string {
+  const words = tip.toLowerCase().split(/[^a-z-]+/).filter(Boolean)
+  const out: string[] = []
+  for (const w of words) { const k = KO_TERMS[w]; if (k) out.push(k) }
+  return out.join(' ')
+}

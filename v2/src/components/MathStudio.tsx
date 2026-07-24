@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import type { Editor } from '@tiptap/react'
 import katex from 'katex'
-import { MATH_SYMBOL_GROUPS, MATH_TEMPLATES2, type Sym } from '../lib/mathSymbols'
+import { MATH_SYMBOL_GROUPS, MATH_TEMPLATES2, koExpand, type Sym } from '../lib/mathSymbols'
 import { FORMULA_LIBRARY, FORMULA_FIELDS, PHYSICAL_CONSTANTS } from '../lib/formulaLibrary'
 import { insertNumberedEquation } from '../lib/paperRefs'
 import { runAiVision, aiConfigured } from '../lib/aiApi'
@@ -65,12 +65,23 @@ function pushRecent(sym: Sym) {
   } catch { /* 무시 */ }
 }
 
+// 팔레트는 같은 tex 를 반복 렌더하므로 캐시 — 검색 타이핑(특히 한글 IME 조합) 중
+// 키 입력마다 KaTeX 수십 개를 동기 렌더하면 조합이 버벅이는 것을 방지
+const katexCache = new Map<string, string>()
+
 function renderKatex(tex: string, displayMode: boolean): string {
+  const key = (displayMode ? 'D:' : 'I:') + tex
+  const hit = katexCache.get(key)
+  if (hit !== undefined) return hit
+  let html: string
   try {
-    return katex.renderToString(tex.replace(/□/g, '\\square'), { throwOnError: true, displayMode, output: 'html' })
+    html = katex.renderToString(tex.replace(/□/g, '\\square'), { throwOnError: true, displayMode, output: 'html' })
   } catch (e) {
-    return `<span class="jan-ms-err">${(e instanceof Error ? e.message : 'LaTeX 오류').replace(/&/g, '&amp;').replace(/</g, '&lt;')}</span>`
+    html = `<span class="jan-ms-err">${(e instanceof Error ? e.message : 'LaTeX 오류').replace(/&/g, '&amp;').replace(/</g, '&lt;')}</span>`
   }
+  if (katexCache.size > 1200) katexCache.clear()
+  katexCache.set(key, html)
+  return html
 }
 
 /** 커서 위치에 tex 삽입, 첫 □ 를 선택 상태로 */
@@ -231,18 +242,24 @@ export function MathStudio({ editor, onClose, initial = '', onSave }: MathStudio
 
   const previewHtml = useMemo(() => (latex.trim() ? renderKatex(latex, true) : '<span class="jan-ms-hint">기호를 클릭하거나 LaTeX 를 입력하세요</span>'), [latex])
 
-  /** 통합 검색 — 기호·구조·공식 110+·물리상수 전부에서 (한글·영문·별칭·LaTeX) */
+  // 검색 재계산을 입력보다 한 박자 늦춰 한글 IME 조합이 무거운 렌더에 끊기지 않게 한다
+  const deferredQuery = useDeferredValue(query)
+
+  /** 통합 검색 — 기호(한글 동의어 포함)·구조·공식 121·물리상수 전부에서 */
   const searchResults = useMemo(() => {
-    const q = query.trim().toLowerCase()
+    const q = deferredQuery.trim().toLowerCase()
     if (!q) return null
     const out: Array<Sym & { badge?: string }> = []
     for (const g of MATH_SYMBOL_GROUPS) {
       for (const s of g.items) {
-        if (s.tip.toLowerCase().includes(q) || s.tex.toLowerCase().includes(q)) out.push({ ...s, badge: g.label })
+        // 영문 tip + LaTeX + 그룹명(한글) + 한글 동의어 사전 확장까지 모두 매칭
+        const hay = `${s.tip} ${s.tex} ${g.label} ${koExpand(s.tip)}`.toLowerCase()
+        if (hay.includes(q)) out.push({ ...s, badge: g.label })
       }
     }
     for (const s of MATH_TEMPLATES2) {
-      if (s.tip.toLowerCase().includes(q) || s.tex.toLowerCase().includes(q)) out.push({ ...s, badge: '구조' })
+      const hay = `${s.tip} ${s.tex} ${koExpand(s.tip)}`.toLowerCase()
+      if (hay.includes(q)) out.push({ ...s, badge: '구조' })
     }
     for (const f of FORMULA_LIBRARY) {
       if (f.label.toLowerCase().includes(q) || f.field.toLowerCase().includes(q) || (f.alias || '').toLowerCase().includes(q) || f.tex.toLowerCase().includes(q)) {
@@ -255,7 +272,7 @@ export function MathStudio({ editor, onClose, initial = '', onSave }: MathStudio
       }
     }
     return out.slice(0, 60)
-  }, [query])
+  }, [deferredQuery])
 
   function pick(sym: Sym) {
     if (!taRef.current) return
