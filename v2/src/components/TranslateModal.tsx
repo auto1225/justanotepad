@@ -46,7 +46,7 @@ export function TranslateModal({ editor, onClose }: TranslateModalProps) {
     const lang = LANGS.find((l) => l.code === target)?.label || target
     const prompt = `Translate the following text to ${lang}. Preserve paragraph breaks and formatting. Output only the translation, no preamble.\n\n${text}`
     try {
-      const r = await runAi('translate', prompt)
+      const r = await runAi('raw', prompt)
       if (r.ok && r.text) setResult(r.text)
       else setError(r.error || 'AI 응답 없음')
     } catch (e: any) {
@@ -58,13 +58,15 @@ export function TranslateModal({ editor, onClose }: TranslateModalProps) {
 
   function insertAfter() {
     if (!editor || !result) return
-    editor.chain().focus().insertContentAt(sel.to, '\n\n--- ' + LANGS.find((l) => l.code === target)?.label + ' ---\n\n' + result).run()
+    const label = LANGS.find((l) => l.code === target)?.label || target
+    const html = `<p>--- ${escapeHtml(label)} ---</p><p>${escapeHtml(result).replace(/\n/g, '<br>')}</p>`
+    editor.chain().focus().insertContentAt(sel.to, html).run()
     onClose()
   }
   function replace() {
     if (!editor || !result) return
     if (hasSel) {
-      editor.chain().focus().deleteSelection().insertContent(result).run()
+      editor.chain().focus().deleteSelection().insertContent(escapeHtml(result).replace(/\n/g, '<br>')).run()
     } else {
       editor.commands.setContent(`<p>${escapeHtml(result).replace(/\n/g, '</p><p>')}</p>`)
     }

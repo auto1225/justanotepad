@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Editor } from '@tiptap/react'
 import { useTemplatesStore } from '../store/templatesStore'
+import { flash } from '../lib/flash'
 import { useMemosStore } from '../store/memosStore'
 import { expandVars } from '../store/macrosStore'
 
@@ -14,18 +15,25 @@ interface TemplatesModalProps {
  * "현재 메모를 템플릿으로 저장" + "템플릿으로 새 메모 만들기".
  */
 export function TemplatesModal({ editor, onClose }: TemplatesModalProps) {
-  const { templates, add, remove } = useTemplatesStore()
+  const { templates, add, remove, update } = useTemplatesStore()
   const memo = useMemosStore((s) => s.current())
   const newMemo = useMemosStore((s) => s.newMemo)
   const updateCurrent = useMemosStore((s) => s.updateCurrent)
   const setCurrent = useMemosStore((s) => s.setCurrent)
   const [name, setName] = useState('')
   const [category, setCategory] = useState('')
+  const [editingId, setEditingId] = useState<string | null>(null)
 
   function saveCurrent() {
     if (!memo || !name.trim()) return
     const content = editor && !editor.isDestroyed ? editor.getHTML() : memo.content
-    add({ name: name.trim(), title: memo.title || '무제', content, category: category.trim() || undefined })
+    if (editingId) {
+      // 기존 템플릿 갱신 — 삭제 후 재저장하면 id 가 바뀌어 중복이 쌓인다
+      update(editingId, { name: name.trim(), title: memo.title || '무제', content, category: category.trim() || undefined })
+      setEditingId(null)
+    } else {
+      add({ name: name.trim(), title: memo.title || '무제', content, category: category.trim() || undefined })
+    }
     setName('')
     setCategory('')
   }
@@ -56,7 +64,8 @@ export function TemplatesModal({ editor, onClose }: TemplatesModalProps) {
             <div className="jan-macros-form">
               <input placeholder="템플릿 이름" value={name} onChange={(e) => setName(e.target.value)} style={{ flex: 2 }} />
               <input placeholder="카테고리 (선택)" value={category} onChange={(e) => setCategory(e.target.value)} style={{ flex: 1 }} />
-              <button className="primary" onClick={saveCurrent} disabled={!memo || !name.trim()}>저장</button>
+              <button className="primary" onClick={saveCurrent} disabled={!memo || !name.trim()}>{editingId ? '갱신 저장' : '저장'}</button>
+              {editingId && <button onClick={() => { setEditingId(null); setName(''); setCategory('') }}>취소</button>}
             </div>
           </section>
 
@@ -77,6 +86,15 @@ export function TemplatesModal({ editor, onClose }: TemplatesModalProps) {
                     </div>
                     <span className="flex-spacer" />
                     <button onClick={() => applyTemplate(t)}>새 메모로</button>
+                    <button
+                      title="현재 메모 내용으로 이 템플릿을 즉시 갱신"
+                      onClick={() => {
+                        if (!memo) return
+                        const content = editor && !editor.isDestroyed ? editor.getHTML() : memo.content
+                        update(t.id, { title: memo.title || '무제', content })
+                        flash(`템플릿 "${t.name}" 을 현재 메모 내용으로 갱신했습니다`)
+                      }}
+                    >현재 메모로 갱신</button>
                     <button onClick={() => { if (confirm('삭제?')) remove(t.id) }}>×</button>
                   </li>
                 ))}

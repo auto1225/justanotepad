@@ -29,7 +29,11 @@ export function MemoTabs() {
 
   // 닫힌 메모 (휴지통 등) 정리
   useEffect(() => {
-    setOpenIds((ids) => ids.filter((id) => memos[id]))
+    setOpenIds((ids) => {
+      const next = ids.filter((id) => memos[id])
+      // 내용이 같으면 기존 배열을 반환해 불필요한 재렌더/localStorage 쓰기를 막는다
+      return next.length === ids.length ? ids : next
+    })
   }, [memos])
 
   function close(id: string, e: React.MouseEvent) {
@@ -67,6 +71,7 @@ export function MemoTabs() {
             key={id}
             className={'jan-memo-tab' + (active ? ' is-active' : '')}
             onClick={() => setCurrent(id)}
+            onAuxClick={(e) => { if (e.button === 1) close(id, e) }}
             title={m.title || '무제'}
           >
             <span className="jan-memo-tab-dot" style={{ background: dotColor(id) }} />

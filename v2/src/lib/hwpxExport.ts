@@ -10,6 +10,7 @@
  *   - <img> → <hp:pic> (data URL 만 inline 처리)
  */
 import JSZip from 'jszip'
+import { resolveBlobRefsInHtml } from './blobRefs'
 
 const VERSION_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <hv:HCFVersion xmlns:hv="http://www.hancom.co.kr/hwpml/2011/version" targetApplication="WORDPROCESSOR" major="5" minor="0" micro="3" buildNumber="0" os="windows" application="JustANotepad" appVersion="2.0.0"/>`
@@ -288,6 +289,8 @@ export async function exportHwpx(html: string): Promise<Blob> {
 
 /** 다운로드 헬퍼. */
 export async function downloadHwpx(html: string, filename: string) {
+  // 큰 이미지는 jan-blob:// 참조로 외부화돼 있다 — 해석하지 않으면 내보내기에서 이미지가 사라진다
+  html = await resolveBlobRefsInHtml(html)
   const blob = await exportHwpx(html)
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')

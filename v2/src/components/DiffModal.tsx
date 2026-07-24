@@ -64,7 +64,11 @@ export function DiffModal({ onClose }: DiffModalProps) {
 function plainText(html: string): string {
   const div = document.createElement('div')
   div.innerHTML = html
-  return (div.textContent || '').trim()
+  // 블록 요소 경계를 개행으로 살려야 줄 단위 diff 가 동작한다
+  div.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, blockquote, pre, tr, div').forEach((el) => {
+    el.appendChild(document.createTextNode('\n'))
+  })
+  return (div.textContent || '').replace(/\n{2,}/g, '\n').trim()
 }
 
 interface DiffLine {

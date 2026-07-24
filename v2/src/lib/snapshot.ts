@@ -535,7 +535,8 @@ export function applyV2Snapshot(snapshot: V2Snapshot): SnapshotApplyResult {
     const localTrash = nextTrash[memo.id]
     if (localTrash && localTrash.trashedAt >= memo.updatedAt) continue
     const localMemo = nextMemos[memo.id]
-    if (!localMemo || localMemo.updatedAt <= memo.updatedAt) {
+    // 동률(같은 타임스탬프)이면 로컬 우선 — 원격 사본이 최신일 때만 덮어쓴다
+    if (!localMemo || localMemo.updatedAt < memo.updatedAt) {
       nextMemos[memo.id] = memo
       delete nextTrash[memo.id]
       memosChanged++
@@ -546,7 +547,7 @@ export function applyV2Snapshot(snapshot: V2Snapshot): SnapshotApplyResult {
     const localMemo = nextMemos[trashed.id]
     if (localMemo && localMemo.updatedAt > trashed.trashedAt) continue
     const localTrash = nextTrash[trashed.id]
-    if (!localTrash || localTrash.trashedAt <= trashed.trashedAt) {
+    if (!localTrash || localTrash.trashedAt < trashed.trashedAt) {
       delete nextMemos[trashed.id]
       nextTrash[trashed.id] = trashed
       trashChanged++

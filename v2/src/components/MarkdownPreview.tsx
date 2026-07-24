@@ -13,9 +13,9 @@ interface MarkdownPreviewProps {
  * 클립보드 복사 / .md 다운로드 버튼.
  */
 export function MarkdownPreview({ editor, onClose }: MarkdownPreviewProps) {
-  if (!editor) return null
-  const html = editor.getHTML()
+  const html = editor ? editor.getHTML() : ''
   const md = useMemo(() => htmlToMd(html), [html])
+  if (!editor) return null
 
   function copyToClipboard() {
     navigator.clipboard.writeText(md).then(

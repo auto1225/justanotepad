@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import { createLocalFirstStorage } from '../lib/localFirstStorage'
+import { useMemosStore } from './memosStore'
 
 /**
  * Phase 6 — 태그 시스템.
@@ -38,8 +39,11 @@ export const useTagsStore = create<TagsState>()(
       setTags: (memoId, tags) =>
         set((s) => ({ byMemo: { ...s.byMemo, [memoId]: tags.map((t) => t.toLowerCase()) } })),
       allTags: () => {
+        // 휴지통에 있거나 삭제된 메모의 태그는 세지 않는다 (유령 태그 방지)
+        const liveMemos = useMemosStore.getState().memos
         const counts = new Map<string, number>()
-        for (const tags of Object.values(get().byMemo)) {
+        for (const [memoId, tags] of Object.entries(get().byMemo)) {
+          if (!liveMemos[memoId]) continue
           for (const t of tags) counts.set(t, (counts.get(t) || 0) + 1)
         }
         return Array.from(counts.entries())

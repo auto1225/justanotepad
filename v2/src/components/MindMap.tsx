@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import type { Editor } from '@tiptap/react'
+import { useMemosStore } from '../store/memosStore'
 
 interface MindMapProps {
   editor: Editor | null
@@ -18,9 +19,11 @@ interface Node {
  * H1 = 루트, H2/H3 = 자식 노드. 외부 라이브러리 0.
  */
 export function MindMap({ editor, onClose }: MindMapProps) {
-  if (!editor) return null
-
+  const memoTitle = useMemosStore((s) => s.current()?.title) || ''
+  // 훅은 조기 반환보다 먼저 호출돼야 한다 (Rules of Hooks — editor 가 null↔값 사이를
+  // 오가면 훅 개수가 달라져 크래시)
   const tree = useMemo(() => {
+    if (!editor) return []
     const headings: Array<{ level: number; text: string }> = []
     editor.state.doc.descendants((node) => {
       if (node.type.name === 'heading') {
@@ -33,6 +36,8 @@ export function MindMap({ editor, onClose }: MindMapProps) {
     })
     return buildTree(headings)
   }, [editor])
+
+  if (!editor) return null
 
   if (tree.length === 0) {
     return (
@@ -51,7 +56,7 @@ export function MindMap({ editor, onClose }: MindMapProps) {
   }
 
   // 단일 가상 루트 (메모 제목으로 가능, 단순화 — 첫 H1 또는 가상)
-  const root: Node = tree.length === 1 ? tree[0] : { id: 'root', text: '메모', level: 0, children: tree }
+  const root: Node = tree.length === 1 ? tree[0] : { id: 'root', text: memoTitle || '메모', level: 0, children: tree }
   const layout = layoutTree(root)
 
   function downloadSvg() {

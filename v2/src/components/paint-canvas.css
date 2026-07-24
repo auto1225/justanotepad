@@ -1,0 +1,231 @@
+/* 그림판(PaintCanvas) 전용 스타일 — index.css를 건드리지 않고 여기서만 관리 */
+
+.jan-paint-modal {
+  width: min(1100px, 96vw);
+  max-width: min(1100px, 96vw);
+}
+
+/* ── 툴바 ── */
+.pcx-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.03);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 8px;
+}
+
+.pcx-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+}
+
+.pcx-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.pcx-divider {
+  width: 1px;
+  height: 20px;
+  background: rgba(0, 0, 0, 0.14);
+  margin: 0 6px;
+  flex-shrink: 0;
+}
+
+.pcx-btn {
+  padding: 5px 10px;
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  background: #fff;
+  color: inherit;
+  cursor: pointer;
+  border-radius: 5px;
+  font-size: 12px;
+  line-height: 1.2;
+  font-family: inherit;
+  white-space: nowrap;
+}
+.pcx-btn:hover:not(:disabled) { background: rgba(0, 0, 0, 0.05); }
+.pcx-btn:disabled { opacity: 0.4; cursor: default; }
+.pcx-btn.is-active {
+  background: var(--jan-accent, #d97757);
+  color: #fff;
+  border-color: var(--jan-accent, #d97757);
+}
+.pcx-btn-primary {
+  background: var(--jan-accent, #d97757);
+  color: #fff;
+  border-color: var(--jan-accent, #d97757);
+  font-weight: 600;
+}
+.pcx-btn-primary:hover:not(:disabled) { background: #c76646; }
+.pcx-btn-danger {
+  background: #c62828;
+  color: #fff;
+  border-color: #c62828;
+}
+.pcx-btn-danger:hover:not(:disabled) { background: #a92222; }
+
+/* ── 색상 ── */
+.pcx-swatch {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: 50%;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.pcx-swatch.is-active {
+  outline: 2px solid var(--jan-accent, #d97757);
+  outline-offset: 2px;
+}
+
+.pcx-color-picker {
+  width: 28px;
+  height: 26px;
+  padding: 0 2px;
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  border-radius: 5px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.pcx-recent-label {
+  font-size: 11px;
+  opacity: 0.65;
+  margin-left: 2px;
+}
+
+/* ── 굵기 ── */
+.pcx-size-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.pcx-size-label input[type='range'] { width: 140px; }
+
+.pcx-size-preview {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+.pcx-size-dot { border-radius: 50%; display: block; }
+
+.pcx-size-value {
+  font-size: 11px;
+  min-width: 34px;
+  text-align: left;
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 인라인 확인 바 ── */
+.pcx-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 9px 12px;
+  border: 1px solid rgba(198, 40, 40, 0.35);
+  border-radius: 8px;
+  background: rgba(198, 40, 40, 0.07);
+  font-size: 13px;
+}
+.pcx-confirm-actions { display: inline-flex; gap: 6px; }
+
+/* ── 캔버스 ── */
+.pcx-canvas-scroll {
+  overflow: auto;
+  max-height: calc(80vh - 260px);
+  display: flex;
+  justify-content: center;
+}
+
+.pcx-canvas-box {
+  position: relative;
+  display: inline-block;
+  line-height: 0;
+}
+
+.pcx-canvas {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid rgba(0, 0, 0, 0.16);
+  border-radius: 4px;
+  background: #fff;
+  cursor: crosshair;
+  touch-action: none; /* 터치 드로잉 중 화면 스크롤 방지 */
+}
+.pcx-canvas.is-text { cursor: text; }
+
+/* 텍스트 도구의 인라인 입력 */
+.pcx-text-input {
+  position: absolute;
+  min-width: 60px;
+  padding: 1px 3px;
+  border: 1px dashed var(--jan-accent, #d97757);
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.85);
+  outline: none;
+  font-family: 'Noto Sans KR', 'Malgun Gothic', sans-serif;
+  line-height: 1.2;
+}
+
+/* ── 푸터 ── */
+.pcx-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+.pcx-footer .pcx-btn { padding: 7px 14px; font-size: 13px; }
+
+/* ── 다크 테마 ── */
+.jan-theme-dark .pcx-toolbar {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+.jan-theme-dark .pcx-btn {
+  background: #2e2e2e;
+  border-color: #4a4a4a;
+  color: #e0e0e0;
+}
+.jan-theme-dark .pcx-btn:hover:not(:disabled) { background: #3a3a3a; }
+.jan-theme-dark .pcx-btn.is-active,
+.jan-theme-dark .pcx-btn-primary {
+  background: var(--jan-accent, #d97757);
+  border-color: var(--jan-accent, #d97757);
+  color: #fff;
+}
+.jan-theme-dark .pcx-btn-danger { background: #c62828; border-color: #c62828; color: #fff; }
+.jan-theme-dark .pcx-divider { background: rgba(255, 255, 255, 0.18); }
+.jan-theme-dark .pcx-size-preview { background: #fff; }
+.jan-theme-dark .pcx-color-picker { background: #2e2e2e; border-color: #4a4a4a; }
+.jan-theme-dark .pcx-confirm {
+  background: rgba(198, 40, 40, 0.16);
+  border-color: rgba(198, 40, 40, 0.5);
+}
+
+/* ── 모바일 ── */
+@media (max-width: 640px) {
+  .pcx-size-label input[type='range'] { width: 90px; }
+  .pcx-canvas-scroll { max-height: 55vh; }
+}

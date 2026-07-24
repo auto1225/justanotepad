@@ -1,0 +1,245 @@
+/* ==========================================================================
+   Speech controls — TTSButton (읽어주기) + VoiceButton (음성 입력)
+   툴바 버튼 + 앵커 팝오버 + 인식 중간결과 오버레이 스타일.
+   ========================================================================== */
+
+.jan-speech-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.jan-speech-wrap > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.jan-speech-caret {
+  padding-left: 2px;
+  padding-right: 2px;
+}
+
+.jan-speech-mini {
+  font-size: 10px;
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+
+.jan-speech-elapsed {
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- 녹음 중 표시 (깜빡이는 빨간 점) ------------------------------------ */
+
+.jan-speech-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e5484d;
+  flex: none;
+  animation: jan-speech-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes jan-speech-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.75); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jan-speech-dot { animation: none; }
+}
+
+/* --- 팝오버 -------------------------------------------------------------- */
+
+.jan-speech-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 1000;
+  min-width: 232px;
+  max-width: 300px;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  border-radius: 8px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.16);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: left;
+  color: #333;
+  cursor: default;
+}
+
+.jan-theme-dark .jan-speech-pop {
+  background: #2b2b2b;
+  border-color: #454545;
+  color: #ddd;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+}
+
+.jan-speech-pop-title {
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.jan-speech-status {
+  font-size: 11px;
+  opacity: 0.75;
+}
+
+.jan-speech-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.jan-speech-field > span {
+  font-size: 11px;
+  opacity: 0.85;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.jan-speech-field > span b {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.jan-speech-field select {
+  width: 100%;
+  max-width: 100%;
+  font-size: 12px;
+  padding: 3px 4px;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  border-radius: 4px;
+  background: #fff;
+  color: inherit;
+}
+
+.jan-theme-dark .jan-speech-field select {
+  background: #232323;
+  border-color: #4a4a4a;
+}
+
+.jan-speech-field input[type='range'] {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--jan-accent, #d97757);
+}
+
+.jan-speech-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.jan-speech-check input[type='checkbox'] {
+  margin: 0;
+  accent-color: var(--jan-accent, #d97757);
+}
+
+.jan-speech-hint {
+  font-size: 10px;
+  opacity: 0.6;
+}
+
+/* 낭독 진행 / 일시정지 행 */
+.jan-speech-progressrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: rgba(217, 119, 87, 0.1);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 11px;
+}
+
+.jan-theme-dark .jan-speech-progressrow {
+  background: rgba(217, 119, 87, 0.18);
+}
+
+.jan-speech-pop .jan-speech-progressrow button {
+  font-size: 11px;
+  padding: 2px 8px;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  border-radius: 4px;
+  background: #fff;
+  color: inherit;
+  cursor: pointer;
+  flex: none;
+}
+
+.jan-theme-dark .jan-speech-pop .jan-speech-progressrow button {
+  background: #232323;
+  border-color: #4a4a4a;
+}
+
+.jan-speech-pop .jan-speech-progressrow button:hover {
+  border-color: var(--jan-accent, #d97757);
+  color: var(--jan-accent, #d97757);
+}
+
+/* --- 버튼 하단 플로팅 (중간 결과 미리보기 + 오류) ------------------------ */
+
+.jan-speech-float {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 999;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 180px;
+  max-width: 320px;
+}
+
+.jan-speech-interim {
+  background: #fff;
+  border: 1px dashed rgba(0, 0, 0, 0.25);
+  border-radius: 6px;
+  padding: 6px 9px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #8a8a8a;
+  font-style: italic;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1);
+  word-break: break-word;
+  max-height: 96px;
+  overflow: hidden;
+}
+
+.jan-theme-dark .jan-speech-interim {
+  background: #2b2b2b;
+  border-color: #555;
+  color: #999;
+}
+
+.jan-speech-error {
+  background: #fdecec;
+  border: 1px solid #f0b9b6;
+  border-radius: 6px;
+  padding: 5px 9px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #b3261e;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1);
+  word-break: keep-all;
+}
+
+.jan-theme-dark .jan-speech-error {
+  background: #3a2222;
+  border-color: #6e3a37;
+  color: #f2a9a3;
+}

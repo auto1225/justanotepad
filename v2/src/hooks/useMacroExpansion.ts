@@ -9,13 +9,17 @@ import { useMacrosStore, expandVars } from '../store/macrosStore'
 export function useMacroExpansion(editor: Editor | null) {
   useEffect(() => {
     if (!editor) return
-    const macros = useMacrosStore.getState().macros
 
     function tryExpand() {
       if (!editor) return
       const { selection } = editor.state
       if (!selection.empty) return
       const $from = selection.$from
+      // 코드 블록 안에서는 확장하지 않는다 (';today' 같은 코드가 바뀌면 안 됨)
+      if ($from.parent.type.name === 'codeBlock') return
+      // 매크로 목록은 호출 시점에 읽는다 — 마운트 시 스냅샷을 잡으면
+      // 매크로 추가/삭제가 새로고침 전까지 반영되지 않는다
+      const macros = useMacrosStore.getState().macros
       const before = $from.parent.textBetween(0, $from.parentOffset, '\u0000', '\u0000')
       // trigger 가 단어 경계 끝에 있는지
       for (const m of macros) {

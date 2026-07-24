@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
 import type { Editor } from '@tiptap/react'
+import type { Mark as PMMark } from '@tiptap/pm/model'
 import { useMemosStore } from '../store/memosStore'
 import { PAPER_STYLES, useUIStore } from '../store/uiStore'
 import { useThemeStore } from '../store/themeStore'
@@ -88,20 +89,18 @@ export function CommandPalette(p: CommandPaletteProps) {
     const s = document.getElementById(id) || (() => { const e = document.createElement('style'); e.id = id; document.head.appendChild(e); return e })()
     s.textContent = cur ? '.jan-2col .ProseMirror { column-count: 2; column-gap: 2em; column-rule: 1px solid #eee; }' : ''
   }
-  const wrapAsPage = () => editor && editor.commands.setContent(`<div class="jan-page-wrap">${editor.getHTML()}</div>`)
   const insertPageBreak = () => insertHTML(PAGE_BREAK_HTML)
   const insertFootnote = () => {
-    const n = (document.querySelectorAll('.paper-footnote').length || 0) + 1
+    if (!editor) return
+    let count = 0
+    editor.state.doc.descendants((node) => {
+      if (node.isText && node.marks.some((m) => m.type.name === 'superscript' && m.attrs.class === 'paper-fn-ref')) count++
+    })
+    const n = count + 1
     insertHTML(`<sup class="paper-fn-ref">[${n}]</sup>`)
-    const root = document.querySelector('.ProseMirror') as HTMLElement | null
-    if (root && editor) {
-      const div = document.createElement('div')
-      div.className = 'paper-footnote'
-      div.style.cssText = 'font-size:0.85em;color:#444;border-top:1px solid #ccc;padding-top:0.4em;margin-top:1em;'
-      div.textContent = `[${n}] 각주 내용`
-      root.appendChild(div)
-      editor.commands.setContent(root.innerHTML)
-    }
+    // DOM 을 읽어 setContent 하면 페이지네이션 위젯이 본문으로 재주입된다 — 트랜잭션으로만 추가
+    const end = editor.state.doc.content.size
+    editor.chain().insertContentAt(end, `<p><sup class="paper-fn-ref">[${n}]</sup> 각주 내용 — 클릭해서 편집</p>`).run()
   }
   const insertCitation = () => { const c = window.prompt('인용 (예: Smith, 2024):', 'Author, 2024'); if (c) insertHTML(`<sup>(${c})</sup>`) }
   const insertReference = () => { const r = window.prompt('참고문헌:', 'Author. (2024). Title.'); if (r) insertHTML(`<div class="paper-ref" style="text-indent:-1.5em;padding-left:1.5em;">${r}</div>`) }
@@ -231,7 +230,7 @@ export function CommandPalette(p: CommandPaletteProps) {
   const insertYouTube = () => {
     const u = window.prompt('YouTube URL:'); if (!u) return
     const m = u.match(/(?:v=|youtu\.be\/)([\w-]{11})/); if (!m) { alert('유효 URL 아님'); return }
-    insertHTML(`<div class="jan-yt"><iframe src="https://www.youtube.com/embed/${m[1]}" width="560" height="315" frameborder="0" allowfullscreen></iframe></div>`)
+    { if (!editor?.commands.setEmbed(`https://www.youtube.com/watch?v=${m[1]}`)) alert('임베드 삽입 실패') }
   }
   const insertSymbol = () => {
     const c = window.prompt('특수 문자:\n— – … · • ◦ ★ ☆ → ← ✓ ✗ ¶ § © ® ™ ° × ÷ ≈ ≠ ∞ Σ Π ∫ √ α β π σ ω', '—')
@@ -240,18 +239,28 @@ export function CommandPalette(p: CommandPaletteProps) {
   const insertHrStyle = () => {
     const v = window.prompt('스타일 (1=실선, 2=점선, 3=이중선, 4=별표):', '1')
     const map: Record<string,string> = {
-      '1': '<hr style="border:0;border-top:1px solid #888;margin:1em 0;"/>',
-      '2': '<hr style="border:0;border-top:1px dashed #888;margin:1em 0;"/>',
-      '3': '<hr style="border:0;border-top:3px double #888;margin:1em 0;"/>',
-      '4': '<p style="text-align:center;color:#888;letter-spacing:0.6em;">＊ ＊ ＊</p>',
+      '1': '<hr data-variant="solid" />',
+      '2': '<hr data-variant="dashed" />',
+      '3': '<hr data-variant="double" />',
+      '4': '<p style="text-align:center">＊ ＊ ＊</p>',
     }
     if (v && map[v]) insertHTML(map[v])
   }
   const renumberFn = () => {
-    const root = document.querySelector('.ProseMirror'); if (!root || !editor) return
-    root.querySelectorAll('.paper-fn-ref').forEach((el, i) => el.textContent = `[${i+1}]`)
-    root.querySelectorAll('.paper-footnote').forEach((el, i) => { const t = (el.textContent||'').replace(/^\[\d+\]\s*/, ''); el.textContent = `[${i+1}] ${t}` })
-    editor.commands.setContent(root.innerHTML)
+    if (!editor) return
+    const { state } = editor
+    const refs: Array<{ from: number; to: number; marks: readonly PMMark[] }> = []
+    state.doc.descendants((node, pos) => {
+      if (node.isText && node.marks.some((m) => m.type.name === 'superscript' && m.attrs.class === 'paper-fn-ref')) {
+        refs.push({ from: pos, to: pos + node.nodeSize, marks: node.marks })
+      }
+    })
+    if (!refs.length) return
+    let tr = state.tr
+    for (let i = refs.length - 1; i >= 0; i--) {
+      tr = tr.replaceWith(refs[i].from, refs[i].to, state.schema.text(`[${i + 1}]`, refs[i].marks as PMMark[]))
+    }
+    editor.view.dispatch(tr)
   }
   const setRunHeader = () => {
     const cur = localStorage.getItem('jan-run-header') || ''
@@ -261,8 +270,8 @@ export function CommandPalette(p: CommandPaletteProps) {
     const s = document.getElementById(id) || (() => { const e = document.createElement('style'); e.id = id; document.head.appendChild(e); return e })()
     s.textContent = v ? `.ProseMirror::before { content:"${v.replace(/"/g,'\\"')}"; display:block;text-align:center;font-size:0.85em;color:#888;border-bottom:1px solid #eee;padding-bottom:0.4em;margin-bottom:1em; }` : ''
   }
-  const insertHighlightBox = () => insertHTML(`<div style="background:#FFF8C4;border-left:4px solid #FAE100;padding:0.8em 1em;margin:1em 0;border-radius:4px;"><strong>강조:</strong> 내용을 작성하세요.</div>`)
-  const insertTextBox = () => insertHTML(`<div style="border:1px solid #ccc;background:#fafafa;padding:1em;margin:1em 0;border-radius:6px;">텍스트 입력</div>`)
+  const insertHighlightBox = () => insertHTML('<div data-callout data-kind="tip"><p><strong>강조:</strong> 내용을 작성하세요.</p></div>')
+  const insertTextBox = () => insertHTML('<div data-callout data-kind="info"><p>텍스트 입력</p></div>')
   const insertBookmark = () => { const id = window.prompt('책갈피 ID:', 'bm-' + Date.now()); if (id) insertHTML(`<a id="${id}" title="책갈피">⚓</a>`) }
   const setTextEffect = () => {
     const v = window.prompt('1=그림자, 2=네온, 3=조각, 0=해제:', '1')
@@ -289,8 +298,8 @@ export function CommandPalette(p: CommandPaletteProps) {
     return [
       /* 메모 */
       { id:'new', cat:'메모', icon:'file-plus', label:'새 메모', desc:'빈 메모를 새로 만듭니다.', hint:'Ctrl+N', run: () => newMemo() },
-      { id:'dup', cat:'메모', icon:'star', label:'현재 메모 복제', desc:'현재 메모를 새 사본으로 복사합니다.', run: () => duplicate?.() },
-      { id:'pin', cat:'메모', icon:'pin', label:'핀 / 핀 해제', desc:'메모를 사이드바 상단에 고정합니다.', run: () => togglePin?.() },
+      { id:'dup', cat:'메모', icon:'star', label:'현재 메모 복제', desc:'현재 메모를 새 사본으로 복사합니다.', run: () => { const id = useMemosStore.getState().currentId; if (id) duplicate?.(id) } },
+      { id:'pin', cat:'메모', icon:'pin', label:'핀 / 핀 해제', desc:'메모를 사이드바 상단에 고정합니다.', run: () => { const id = useMemosStore.getState().currentId; if (id) togglePin?.(id) } },
       ...memoCmds,
       /* 서식 */
       { id:'bold', cat:'서식', icon:'bold', label:'굵게', desc:'선택 텍스트를 두껍게 표시합니다.', hint:'Ctrl+B', run: () => ed.chain().focus().toggleBold().run() },
@@ -341,7 +350,6 @@ export function CommandPalette(p: CommandPaletteProps) {
       { id:'toc', cat:'논문', icon:'list-bullet', label:'TOC (목차) 자동 생성', desc:'헤딩 기반 목차 패널 토글.', run: () => p.onToggleOutline?.() },
       { id:'ack', cat:'논문', icon:'star', label:'Acknowledgments', desc:'감사의 말 섹션.', run: insertAck },
       { id:'2col', cat:'논문', icon:'columns', label:'2단 레이아웃 토글', desc:'본문 2단 표시.', run: toggleTwoCol },
-      { id:'wrap-page', cat:'논문', icon:'page', label:'페이지로 감싸기', desc:'전체 본문을 .jan-page-wrap 으로.', run: wrapAsPage },
       { id:'run-header', cat:'논문', icon:'pin', label:'러닝 헤더 · 꼬리말', desc:'페이지 상단 헤더 텍스트.', run: setRunHeader },
       { id:'footnote', cat:'논문', icon:'sup', label:'각주 삽입', desc:'<sup>[N]</sup> + 문서 끝 footnote.', run: insertFootnote },
       { id:'citation', cat:'논문', icon:'quote', label:'인용 삽입', desc:'<sup>(저자, 연도)</sup>.', run: insertCitation },
@@ -380,7 +388,6 @@ export function CommandPalette(p: CommandPaletteProps) {
       { id:'web', cat:'도구', icon:'globe', label:'웹 검색', desc:'구글에서 키워드 검색.', run: webSearch },
       { id:'ai', cat:'도구', icon:'ai', label:'AI 어시스턴트', desc:'AI 도우미 모달.', hint:'Ctrl+/', run: () => p.onAi?.() },
       { id:'chat', cat:'도구', icon:'ai', label:'AI 챗 패널', desc:'AI 채팅 사이드 패널.', run: () => p.onChat?.() },
-      { id:'cal', cat:'도구', icon:'page', label:'캘린더', desc:'QuickCapture 캘린더.', run: () => p.onCalendar?.() },
       { id:'search', cat:'도구', icon:'search', label:'전체 검색', desc:'모든 메모 검색.', hint:'Ctrl+Shift+F', run: () => p.onSearch?.() },
       { id:'find', cat:'도구', icon:'replace', label:'찾아 바꾸기', desc:'단어 일괄 교체.', hint:'Ctrl+H', run: () => p.onFind?.() },
       { id:'link-check', cat:'도구', icon:'unlink', label:'깨진 링크 검사', desc:'404 링크 찾기.', run: () => p.onLinkCheck?.() },

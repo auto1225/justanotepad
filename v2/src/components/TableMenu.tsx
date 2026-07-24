@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { Editor } from '@tiptap/react'
 import { aggregateColumn, tableToCsv, csvToRows, rowsToTableHtml } from '../lib/tableUtils'
+import { flash } from '../lib/flash'
 import { sortTableByCurrentColumn } from '../lib/tableSort'
 
 interface TableMenuProps {
@@ -58,6 +59,16 @@ export function TableMenu({ editor }: TableMenuProps) {
       <span className="divider" />
       <button onClick={() => editor.chain().focus().toggleHeaderRow().run()} title="헤더 행 토글">H</button>
       <button onClick={() => editor.chain().focus().mergeOrSplit().run()} title="셀 병합/분리">⊞</button>
+      {['#FFF3C4', '#FFE0DB', '#DCEEFF', '#E1F5E1', '#F0E6FF'].map((c) => (
+        <button
+          key={c}
+          onClick={() => editor.chain().focus().setCellAttribute('backgroundColor', c).run()}
+          title={`셀 배경색 ${c}`}
+          aria-label={`셀 배경색 ${c}`}
+          style={{ width: 18, height: 18, padding: 0, background: c, border: '1px solid rgba(0,0,0,0.2)', borderRadius: 3 }}
+        />
+      ))}
+      <button onClick={() => editor.chain().focus().setCellAttribute('backgroundColor', null).run()} title="셀 배경색 지우기" style={{ fontSize: 10 }}>배경×</button>
       <button onClick={() => { if (confirm('표 전체 삭제?')) editor.chain().focus().deleteTable().run() }} title="표 삭제">표×</button>
       <span className="divider" />
       <button onClick={() => aggregateColumn(editor, 'sum')} title="현재 열 합계">Σ</button>
@@ -69,7 +80,7 @@ export function TableMenu({ editor }: TableMenuProps) {
       <button onClick={() => {
         const csv = tableToCsv(editor)
         if (!csv) return
-        navigator.clipboard.writeText(csv).then(() => alert('CSV 클립보드 복사'))
+        navigator.clipboard.writeText(csv).then(() => flash('CSV 를 클립보드에 복사했습니다')).catch(() => flash('클립보드 복사 실패'))
       }} title="표를 CSV로">CSV→</button>
       <button onClick={() => {
         const csv = window.prompt('CSV 텍스트를 붙여넣으세요:')

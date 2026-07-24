@@ -6,7 +6,8 @@ describe('shareLink', () => {
     const orig = { v: 1 as const, title: 'Test', content: '<p>Hello</p>', createdAt: Date.now() }
     const url = await makeShareUrl(orig)
     expect(url).toContain('#share=')
-    expect(url).toContain('/v2/')
+    // 배포 base 경로는 vite 의 BASE_URL 을 따른다 (프로덕션에서는 /v2/, 테스트 env 에서는 /)
+    expect(url.startsWith(location.origin + (import.meta.env.BASE_URL || '/v2/'))).toBe(true)
 
     // 시뮬레이트: location.hash 에 fragment 주입 후 read
     const fragMatch = url.match(/#(.+)$/)

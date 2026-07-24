@@ -84,5 +84,5 @@ export function formatInline(c: Citation, style: CitationStyle, idx: number): st
   // APA / MLA — author-year 또는 author page
   const a = c.authors[0]?.split(' ').pop() || 'Anon'
   if (style === 'apa') return `(${a}, ${c.year || 'n.d.'})`
-  return `(${a} ${c.pages || c.year || ''})`.trim() + ')'.replace(/\)\)$/, ')')
+  return `(${a} ${c.pages || c.year || ''})`.replace(/\s+\)/, ')')
 }

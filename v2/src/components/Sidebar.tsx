@@ -23,7 +23,7 @@ export function Sidebar() {
   } = useMemosStore()
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed)
   const toggleSidebar = useUIStore((s) => s.toggleSidebar)
-  const { workspaces, byMemo: wsByMemo, currentWsId, setCurrentWs, list: wsList, assignMemo } = useWorkspaceStore()
+  const { workspaces, byMemo: wsByMemo, currentWsId, setCurrentWs, list: wsList, assignMemo, createWorkspace, renameWorkspace, deleteWorkspace } = useWorkspaceStore()
   const selectedRoleIds = useRoleToolsStore((s) => s.selectedRoleIds)
   const [showTrash, setShowTrash] = useState(false)
   const [filter, setFilter] = useState('')
@@ -82,14 +82,44 @@ export function Sidebar() {
         <select
           className="jan-sidebar-ws"
           value={currentWsId || ''}
-          onChange={(e) => setCurrentWs(e.target.value || null)}
+          onChange={(e) => {
+            const v = e.target.value
+            if (v === '__new') {
+              // 워크스페이스 생성 경로 — 이전에는 스토어에 함수만 있고 UI 진입점이 없었다
+              const name = window.prompt('새 워크스페이스 이름:')
+              if (name?.trim()) setCurrentWs(createWorkspace(name.trim()))
+              return
+            }
+            setCurrentWs(v || null)
+          }}
           title="워크스페이스 필터"
         >
           <option value="">전체 워크스페이스</option>
           {wsList().map((w) => (
             <option key={w.id} value={w.id} style={{ color: w.color }}>● {w.name}</option>
           ))}
+          <option value="__new">+ 새 워크스페이스...</option>
         </select>
+        {currentWsId && currentWsId !== 'ws_default' && (
+          <div style={{ display: 'flex', gap: 4 }}>
+            <button
+              className="jan-sidebar-ws-act"
+              style={{ flex: 1 }}
+              onClick={() => {
+                const w = workspaces[currentWsId]
+                const name = window.prompt('워크스페이스 이름 변경:', w?.name || '')
+                if (name?.trim()) renameWorkspace(currentWsId, name.trim())
+              }}
+            >이름 변경</button>
+            <button
+              className="jan-sidebar-ws-act"
+              style={{ flex: 1 }}
+              onClick={() => {
+                if (confirm('이 워크스페이스를 삭제할까요? 소속 메모는 기본 워크스페이스로 이동합니다.')) deleteWorkspace(currentWsId)
+              }}
+            >삭제</button>
+          </div>
+        )}
         <input
           type="search"
           className="jan-sidebar-filter"

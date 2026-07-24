@@ -51,7 +51,7 @@ export async function encryptHtml(html: string, password: string): Promise<strin
     new TextEncoder().encode(html) as any
   )
   const cipherB64 = bytesToB64(new Uint8Array(cipher))
-  return `<div class="jan-locked" data-iv="${bytesToB64(iv)}" data-salt="${bytesToB64(salt)}" data-cipher="${cipherB64}"><p>🔒 비밀번호로 보호됨 — 잠금 해제 필요</p></div>`
+  return `<div class="jan-locked" data-iv="${bytesToB64(iv)}" data-salt="${bytesToB64(salt)}" data-cipher="${cipherB64}"><p>비밀번호로 보호된 메모 — 잠금 해제 필요</p></div>`
 }
 
 export interface LockedMeta {

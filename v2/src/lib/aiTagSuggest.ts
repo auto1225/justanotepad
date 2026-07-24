@@ -17,7 +17,7 @@ export async function suggestTags(html: string): Promise<string[]> {
 메모:
 ${text}`
 
-  const r = await runAi('summarize', prompt)
+  const r = await runAi('raw', prompt)
   // summarize prompt 는 한국어 5줄 요약이라 우리 프롬프트 우선되도록 새 mode 가 더 좋지만,
   // 임시로 실행 후 JSON 추출.
   if (!r.ok || !r.text) throw new Error(r.error || 'AI 응답 없음')

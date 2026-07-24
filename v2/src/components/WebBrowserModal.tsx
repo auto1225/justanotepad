@@ -1,6 +1,7 @@
 ﻿import { useState, useRef, useEffect } from 'react'
 import type { Editor } from '@tiptap/react'
 import { Icon } from './Icons'
+import { sanitizeUntrustedHtml, escapeHtmlText } from '../lib/sanitizeHtml'
 
 interface WebBrowserModalProps {
   editor: Editor | null
@@ -244,7 +245,8 @@ export function WebBrowserModal({ editor, onClose }: WebBrowserModalProps) {
       const text = (article.textContent || '').trim().slice(0, 5000)
       const images = Array.from(article.querySelectorAll('img')).map(i => (i as HTMLImageElement).src || (i as HTMLImageElement).getAttribute('data-src') || '').filter(s => s.startsWith('http'))
       const tables = Array.from(article.querySelectorAll('table')).map(t => t.outerHTML)
-      setPreview({ url: r.url, title: doc.title || r.title, html: article.innerHTML.slice(0, 30000), images, tables, text })
+      // 원격 HTML 은 살균 후에만 보관 — 미리보기가 dangerouslySetInnerHTML 로 렌더된다
+      setPreview({ url: r.url, title: doc.title || r.title, html: sanitizeUntrustedHtml(article.innerHTML.slice(0, 30000)), images, tables: tables.map(sanitizeUntrustedHtml), text })
       setSelectedImgs(new Set())
       setView('preview')
       setStatusMsg(`이미지 ${images.length}개 · 표 ${tables.length}개 발견`)
@@ -263,12 +265,13 @@ export function WebBrowserModal({ editor, onClose }: WebBrowserModalProps) {
   const insertLinkCard = (r?: ResultItem) => {
     const t = r ? r : (preview ? { title: preview.title, url: preview.url, snippet: preview.text.slice(0, 200) } : null)
     if (!t) return
-    insertHTML(`<div style="border:1px solid #ddd;border-radius:8px;padding:1em;margin:1em 0;background:#fafafa;"><a href="${t.url}" target="_blank" style="font-weight:600;text-decoration:none;color:#1a73e8;font-size:1.05em;">${t.title}</a><div style="color:#666;font-size:0.9em;margin:0.4em 0;">${t.snippet || ''}</div><div style="font-size:0.8em;color:#999;font-family:monospace;">${t.url}</div></div>`)
+    const safeUrl = escapeHtmlText(t.url)
+    insertHTML(`<div style="border:1px solid #ddd;border-radius:8px;padding:1em;margin:1em 0;background:#fafafa;"><a href="${safeUrl}" target="_blank" style="font-weight:600;text-decoration:none;color:#1a73e8;font-size:1.05em;">${escapeHtmlText(t.title)}</a><div style="color:#666;font-size:0.9em;margin:0.4em 0;">${escapeHtmlText(t.snippet || '')}</div><div style="font-size:0.8em;color:#999;font-family:monospace;">${safeUrl}</div></div>`)
     setStatusMsg('링크 카드 삽입됨')
   }
   const insertReaderContent = () => {
     if (!preview) return
-    insertHTML(`<h2>${preview.title}</h2>${preview.html}<p><em>출처: <a href="${preview.url}" target="_blank">${preview.url}</a></em></p>`)
+    insertHTML(`<h2>${escapeHtmlText(preview.title)}</h2>${preview.html}<p><em>출처: <a href="${escapeHtmlText(preview.url)}" target="_blank">${escapeHtmlText(preview.url)}</a></em></p>`)
     setStatusMsg('본문 삽입됨')
   }
   const insertSelectedImages = () => {
@@ -291,7 +294,7 @@ export function WebBrowserModal({ editor, onClose }: WebBrowserModalProps) {
   const insertSnippet = () => {
     if (!preview) return
     const text = window.prompt('인용할 내용:', preview.text.slice(0, 300))
-    if (text) insertHTML(`<blockquote style="border-left:3px solid #FAE100;padding:0.4em 0.8em;margin:0.8em 0;background:#FFFBE5;">${text}<br><cite style="font-size:0.85em;color:#888;">— <a href="${preview.url}" target="_blank">${preview.title}</a></cite></blockquote>`)
+    if (text) insertHTML(`<blockquote style="border-left:3px solid #FAE100;padding:0.4em 0.8em;margin:0.8em 0;background:#FFFBE5;">${escapeHtmlText(text)}<br><cite style="font-size:0.85em;color:#888;">— <a href="${escapeHtmlText(preview.url)}" target="_blank">${escapeHtmlText(preview.title)}</a></cite></blockquote>`)
   }
   const toggleImg = (i: number) => {
     setSelectedImgs(s => { const n = new Set(s); if (n.has(i)) n.delete(i); else n.add(i); return n })

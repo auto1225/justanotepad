@@ -4,6 +4,8 @@ const DB_NAME = 'jan-v2-local-first'
 const DB_VERSION = 1
 const STORE = 'kv'
 const MIGRATION_PREFIX = 'jan:v2:local-first:migrated:'
+// IDB 쓰기 실패로 localStorage 에 최신본이 남아있음을 표시 — getItem 이 IDB 의 옛 사본 대신 이걸 읽게 한다
+const FALLBACK_PREFIX = 'jan:v2:local-first:fallback:'
 
 let dbPromise: Promise<IDBDatabase> | null = null
 
@@ -24,12 +26,13 @@ function safeLocalGet(key: string): string | null {
   }
 }
 
-function safeLocalSet(key: string, value: string) {
-  if (!hasBrowserStorage()) return
+function safeLocalSet(key: string, value: string): boolean {
+  if (!hasBrowserStorage()) return false
   try {
     window.localStorage.setItem(key, value)
+    return true
   } catch {
-    return
+    return false
   }
 }
 
@@ -94,6 +97,18 @@ export const localFirstStorage: StateStorage<Promise<void>> = {
     const legacyValue = safeLocalGet(name)
     if (!hasIndexedDb()) return legacyValue
 
+    // 직전 setItem 이 IDB 실패로 localStorage 에 남긴 최신본이 있으면 IDB 의 옛 사본보다 우선한다
+    if (legacyValue != null && safeLocalGet(FALLBACK_PREFIX + name) != null) {
+      try {
+        await idbSet(name, legacyValue)
+        safeLocalRemove(name)
+        safeLocalRemove(FALLBACK_PREFIX + name)
+      } catch {
+        // IDB 가 계속 실패하면 fallback 사본을 그대로 둔다
+      }
+      return legacyValue
+    }
+
     try {
       const stored = await idbGet(name)
       if (stored != null) return stored
@@ -120,13 +135,16 @@ export const localFirstStorage: StateStorage<Promise<void>> = {
     try {
       await idbSet(name, value)
       safeLocalRemove(name)
-    } catch {
-      safeLocalSet(name, value)
+      safeLocalRemove(FALLBACK_PREFIX + name)
+    } catch (error) {
+      const ok = safeLocalSet(name, value) && safeLocalSet(FALLBACK_PREFIX + name, String(Date.now()))
+      if (!ok) console.error('[localFirstStorage] persist failed for', name, error)
     }
   },
 
   async removeItem(name) {
     safeLocalRemove(name)
+    safeLocalRemove(FALLBACK_PREFIX + name)
     if (!hasIndexedDb()) return
     try {
       await idbRemove(name)

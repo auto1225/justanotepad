@@ -100,9 +100,9 @@ export function ActivityHeatmap({ onClose }: ActivityHeatmapProps) {
                 )
               )}
               {/* 요일 라벨 */}
-              <text x={0} y={18} fontSize={10} fill="#888">월</text>
-              <text x={0} y={44} fontSize={10} fill="#888">수</text>
-              <text x={0} y={70} fontSize={10} fill="#888">금</text>
+              <text x={0} y={21} fontSize={10} fill="#888">월</text>
+              <text x={0} y={47} fontSize={10} fill="#888">수</text>
+              <text x={0} y={73} fontSize={10} fill="#888">금</text>
             </svg>
           </div>
           <div className="jan-heatmap-legend">

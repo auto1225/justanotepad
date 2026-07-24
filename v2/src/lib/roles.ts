@@ -141,6 +141,19 @@ const interview = (): string => `<h2>유저 인터뷰 계획 — [주제]</h2>
 <h3>스크리너</h3><table><tbody><tr><th>기준</th><th>포함 / 제외</th></tr><tr><td>세그먼트</td><td></td></tr><tr><td>제품 사용 빈도</td><td></td></tr></tbody></table>
 <h3>인터뷰 가이드</h3><ol><li>배경</li><li>최근 행동</li><li>문제 상황</li><li>대안 탐색</li><li>마무리</li></ol>`
 
+const techSpec = (): string => `<h1>기술 스펙 — [제목]</h1>
+${table(`${row('작성자', '', '상태', '초안')}${row('리뷰어', '', '날짜', today())}`)}
+<h2>TL;DR (3줄)</h2><p></p>
+<h2>Context &amp; 문제</h2><p></p>
+<h2>목표 &amp; 비목표</h2>
+${table(`<tr><th>In Scope</th><th>Out of Scope</th></tr><tr><td></td><td></td></tr>`)}
+<h2>제안 설계 (아키텍처)</h2><p>주요 컴포넌트, 데이터 흐름, DB 스키마…</p>
+<h2>대안과 trade-off</h2>
+${table(`<tr><th>옵션</th><th>장점</th><th>단점</th><th>선택</th></tr><tr><td>A</td><td></td><td></td><td>선택</td></tr><tr><td>B</td><td></td><td></td><td></td></tr>`)}
+<h2>리스크·보안·성능·마이그레이션</h2>
+<ul><li><b>성능:</b> </li><li><b>보안:</b> </li><li><b>마이그레이션:</b> </li><li><b>롤백:</b> </li></ul>
+<h2>일정 &amp; 마일스톤</h2>${checklist(['Design 리뷰 완료', 'Feature flag 배포', '점진적 출시 10% → 50% → 100%', '문서·운영 가이드 업데이트'])}`
+
 const codeReview = (): string => `<h2>코드 리뷰 체크리스트</h2>
 <h3>기능</h3>${checklist(['요구사항 구현', '엣지 케이스 처리', '기존 기능 회귀 없음'])}
 <h3>안전성</h3>${checklist(['입력 검증', '민감 정보 로그 없음', '동시성 문제 없음'])}
@@ -199,7 +212,7 @@ const CORE_ROLES: Role[] = [
   { id: 'senior', name: '노년층', icon: 'heart', color: '#FAE100', desc: '약 복용·혈압·병원 일정', tools: ['med', 'vital', 'dday'], templates: [{ name: '병원 일정', html: healthMemo() }] },
   { id: 'pm', name: '기획자(PM/PO)', icon: 'focus', color: '#3f51b5', desc: 'PRD·스프린트·백로그·지표', tools: ['projPipe', 'timetrack', 'dday'], templates: [{ name: 'PRD', html: prd() }, { name: '스프린트 계획', html: sprint() }, { name: '제품 지표 리뷰', html: weeklyReport() }] },
   { id: 'designer', name: '디자이너(UX/UI)', icon: 'palette', color: '#e91e63', desc: '디자인 리뷰·유저 리서치', tools: ['timetrack', 'dday', 'projPipe'], templates: [{ name: '디자인 리뷰', html: designReview() }, { name: '유저 인터뷰 계획', html: interview() }] },
-  { id: 'dev', name: '개발자', icon: 'code', color: '#607d8b', desc: '기술 스펙·코드 리뷰·인시던트', tools: ['projPipe', 'timetrack', 'dday'], templates: [{ name: '기술 스펙', html: prd() }, { name: '코드 리뷰 체크리스트', html: codeReview() }, { name: '개발 일지', html: `<h2>개발 일지 — ${today()}</h2><h3>오늘 한 일</h3><ul><li></li></ul><h3>막힌 곳</h3><ul><li></li></ul><h3>내일 할 일</h3><ul><li></li></ul>` }] },
+  { id: 'dev', name: '개발자', icon: 'code', color: '#607d8b', desc: '기술 스펙·코드 리뷰·인시던트', tools: ['projPipe', 'timetrack', 'dday'], templates: [{ name: '기술 스펙', html: techSpec() }, { name: '코드 리뷰 체크리스트', html: codeReview() }, { name: '개발 일지', html: `<h2>개발 일지 — ${today()}</h2><h3>오늘 한 일</h3><ul><li></li></ul><h3>막힌 곳</h3><ul><li></li></ul><h3>내일 할 일</h3><ul><li></li></ul>` }] },
   { id: 'data', name: '데이터 분석가', icon: 'hash', color: '#00bcd4', desc: 'SQL·대시보드·리포트', tools: ['projPipe', 'timetrack', 'dday'], templates: [{ name: '분석 리포트', html: weeklyReport() }, { name: 'SQL Playbook', html: '<h2>SQL Playbook</h2><pre><code>SELECT date_trunc(\'day\', created_at) AS day, count(*) FROM events GROUP BY 1;</code></pre><h3>결과 해석</h3><ul><li></li></ul>' }] },
   { id: 'marketer', name: '마케터', icon: 'send', color: '#ff5722', desc: '캠페인·카피·채널 분석', tools: ['projPipe', 'dday', 'timetrack'], templates: [{ name: '캠페인 브리프', html: '<h2>캠페인 브리프</h2><h3>목표</h3><ul><li></li></ul><h3>타깃</h3><p></p><h3>메시지</h3><ul><li></li></ul><h3>KPI</h3><table><tbody><tr><th>채널</th><th>예산</th><th>노출</th><th>전환</th></tr><tr><td></td><td></td><td></td><td></td></tr></tbody></table>' }] },
   { id: 'sales', name: '영업', icon: 'phone', color: '#ffa726', desc: '리드·파이프라인·미팅 노트', tools: ['projPipe', 'timetrack', 'dday'], templates: [{ name: '영업 파이프라인', html: '<h2>영업 파이프라인</h2><table><tbody><tr><th>단계</th><th>건수</th><th>예상 가치</th><th>이번 주 액션</th></tr><tr><td>Qualified</td><td></td><td></td><td></td></tr><tr><td>Proposal</td><td></td><td></td><td></td></tr></tbody></table>' }, { name: '디스커버리 콜 노트', html: meeting() }] },

@@ -5028,3 +5028,8 @@ html, body, #root {
     flex-basis: 32px;
   }
 }
+
+/* 구분선 스타일 variant — Toolbar "구분선 스타일" 메뉴 */
+.ProseMirror hr.jan-hr-solid { border: 0; border-top: 1px solid #888; margin: 1em 0; }
+.ProseMirror hr.jan-hr-dashed { border: 0; border-top: 1px dashed #888; margin: 1em 0; }
+.ProseMirror hr.jan-hr-double { border: 0; border-top: 3px double #888; margin: 1em 0; }

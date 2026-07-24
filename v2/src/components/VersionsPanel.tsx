@@ -16,6 +16,7 @@ export function VersionsPanel({ onClose }: VersionsPanelProps) {
   const list = useVersionsStore((s) => s.list)
   const remove = useVersionsStore((s) => s.remove)
   const removeAll = useVersionsStore((s) => s.removeAll)
+  const takeSnapshot = useVersionsStore((s) => s.takeSnapshot)
   const versions = memo ? list(memo.id) : []
   const [selected, setSelected] = useState(versions[0]?.id || '')
 
@@ -27,6 +28,9 @@ export function VersionsPanel({ onClose }: VersionsPanelProps) {
 
   function restore(versionContent: string, versionTitle: string) {
     if (!confirm('현재 메모를 이 버전으로 복원할까요? 현재 내용은 새 버전으로 자동 저장됩니다.')) return
+    // 안내문 그대로 — 덮어쓰기 전에 현재 내용을 강제 스냅샷 (마지막 자동 스냅샷 이후의
+    // 편집이 복원으로 사라지는 데이터 유실 방지)
+    if (memo) takeSnapshot(memo.id, memo.title, memo.content, { force: true })
     updateCurrent({ title: versionTitle, content: versionContent })
     onClose()
   }

@@ -54,7 +54,7 @@ ${context ? '현재 메모 컨텍스트:\n' + context + '\n\n' : ''}${history ? 
 답변은 명확하고 구체적이며, 메모와 직접 관련 있는 경우 인용. 5문단 이내.`
 
     try {
-      const r = await runAi('summarize', prompt)
+      const r = await runAi('raw', prompt)
       if (r.ok && r.text) {
         setMessages((m) => [...m, { role: 'assistant', content: r.text!, ts: Date.now() }])
       } else {
@@ -69,7 +69,8 @@ ${context ? '현재 메모 컨텍스트:\n' + context + '\n\n' : ''}${history ? 
 
   function insertToMemo(text: string) {
     if (!editor) return
-    editor.chain().focus().insertContent('\n' + text).run()
+    // 모델 출력은 신뢰하지 않는 텍스트 — HTML 로 해석되지 않게 이스케이프
+    editor.chain().focus().insertContent('<p>' + escapeHtml(text).replace(/\n/g, '<br>') + '</p>').run()
   }
 
   function clear() {
@@ -128,4 +129,8 @@ function plainText(html: string): string {
   const div = document.createElement('div')
   div.innerHTML = html
   return (div.textContent || '').replace(/\s+/g, ' ').trim()
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }

@@ -43,7 +43,10 @@ export function ImageMenu({ editor }: ImageMenuProps) {
   function setAlign(side: 'left' | 'center' | 'right') {
     if (!editor) return
     // 이미지 정렬은 부모 paragraph 의 textAlign 으로 적용
-    editor.chain().focus().setTextAlign(side).run()
+    // 이미지가 NodeSelection 상태면 setTextAlign 이 부모 문단에 닿지 않는다 —
+    // 커서를 문단 안으로 옮겨 적용 후 이미지 선택 복원
+    const pos = editor.state.selection.from
+    editor.chain().focus().setTextSelection(pos).setTextAlign(side).setNodeSelection(pos).run()
   }
 
   if (!show || !editor) return null

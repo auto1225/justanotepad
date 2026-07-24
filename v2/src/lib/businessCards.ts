@@ -71,7 +71,7 @@ export const SNS_PLATFORMS: SnsPlatform[] = [
     placeholder: '+82 10-0000-0000',
     match: /wa\.me\/(\+?\d+)|api\.whatsapp\.com\/send\?phone=(\+?\d+)/i,
     normalize: (value) => {
-      const digits = value.replace(/[^\d+]/g, '')
+      const digits = value.replace(/\D/g, '')
       return digits ? `https://wa.me/${digits}` : value.trim()
     },
   },
@@ -315,7 +315,7 @@ function photoLine(dataUrl?: string): string[] {
   return [foldVCardLine(`PHOTO;ENCODING=b;TYPE=${type}:${match[2]}`)]
 }
 
-export function cardToVCard(card: BusinessCard): string {
+export function cardToVCard(card: BusinessCard, opts?: { includePhoto?: boolean }): string {
   const lines = ['BEGIN:VCARD', 'VERSION:3.0']
   if (card.name || card.nameEn) lines.push(`FN:${escapeVCard(card.name || card.nameEn)}`)
   if (card.name) lines.push(`N:${escapeVCard(card.name)};;;;`)
@@ -333,7 +333,7 @@ export function cardToVCard(card: BusinessCard): string {
     lines.push(`X-SOCIALPROFILE;TYPE=${escapeVCard(key)}:${escapeVCard(getSnsUrl(key, value) || value)}`)
   }
   if (card.memo) lines.push(`NOTE:${escapeVCard(card.memo)}`)
-  lines.push(...photoLine(card.frontImage))
+  if (opts?.includePhoto !== false) lines.push(...photoLine(card.frontImage))
   lines.push('END:VCARD')
   return lines.join('\r\n')
 }
@@ -1022,5 +1022,6 @@ export async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
 }
 
 export function buildQrUrl(card: BusinessCard): string {
-  return `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(cardToVCard(card))}`
+  // 사진(base64 수십 KB)을 넣으면 QR 용량 초과로 스캔 불가 — 연락처 필드만 인코딩
+  return `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(cardToVCard(card, { includePhoto: false }))}`
 }

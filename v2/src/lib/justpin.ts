@@ -53,7 +53,7 @@ export function listPostits(): Postit[] {
 }
 
 export function addPostit(text: string, color = '#FFEB3B'): Postit {
-  const p: Postit = { id: 'p' + Date.now(), text, color, createdAt: Date.now() }
+  const p: Postit = { id: 'p' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6), text, color, createdAt: Date.now() }
   const list = load()
   list.unshift(p)
   save(list)

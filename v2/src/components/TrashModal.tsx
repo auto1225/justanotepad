@@ -1,4 +1,5 @@
 import { useMemosStore } from '../store/memosStore'
+import { purgeMemoArtifacts } from '../lib/memoCleanup'
 
 interface TrashModalProps {
   onClose: () => void
@@ -46,7 +47,7 @@ export function TrashModal({ onClose }: TrashModalProps) {
                       <button onClick={() => restore(t.id)}>복원</button>
                       <button
                         onClick={() => {
-                          if (confirm(`"${t.title || '무제'}" 영구 삭제? 복구 불가능.`)) permaDelete(t.id)
+                          if (confirm(`"${t.title || '무제'}" 영구 삭제? 복구 불가능.`)) { permaDelete(t.id); purgeMemoArtifacts([t.id]) }
                         }}
                       >
                         영구 삭제
@@ -58,7 +59,7 @@ export function TrashModal({ onClose }: TrashModalProps) {
               <button
                 className="jan-trash-empty-btn"
                 onClick={() => {
-                  if (confirm(`휴지통의 ${items.length}개 메모를 모두 영구 삭제? 복구 불가능.`)) emptyTrash()
+                  if (confirm(`휴지통의 ${items.length}개 메모를 모두 영구 삭제? 복구 불가능.`)) { const ids = items.map((m) => m.id); emptyTrash(); purgeMemoArtifacts(ids) }
                 }}
               >
                 휴지통 비우기

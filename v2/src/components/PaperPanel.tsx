@@ -123,7 +123,16 @@ export function PaperPanel({ editor, onClose }: PaperPanelProps) {
               <input placeholder="no" value={draft.issue || ''} onChange={(e) => setDraft({ ...draft, issue: e.target.value })} style={{ width: 70 }} />
               <input placeholder="페이지 (12-34)" value={draft.pages || ''} onChange={(e) => setDraft({ ...draft, pages: e.target.value })} style={{ flex: 1 }} />
             </div>
-            <input placeholder="DOI 또는 URL" value={draft.doi || draft.url || ''} onChange={(e) => setDraft({ ...draft, doi: e.target.value })} />
+            <input
+              placeholder="DOI 또는 URL"
+              value={draft.doi || draft.url || ''}
+              onChange={(e) => {
+                const v = e.target.value.trim()
+                // 전체 URL 을 doi 필드에 넣으면 https://doi.org/https://... 로 망가진다
+                if (/^https?:\/\//i.test(v)) setDraft({ ...draft, url: v, doi: '' })
+                else setDraft({ ...draft, doi: v, url: '' })
+              }}
+            />
             <button className="jan-paper-add" onClick={add}>인용 추가</button>
           </div>
 

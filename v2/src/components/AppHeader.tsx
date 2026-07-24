@@ -6,10 +6,11 @@ import { useMemosStore } from '../store/memosStore'
 import { useRoleToolsStore } from '../store/roleToolsStore'
 
 interface AppHeaderProps {
-  onCmdK: () => void
+  onAccount: () => void
   onCmdPalette: () => void
   onSearch: () => void
-  onLanguage: () => void
+  onSyncSettings?: () => void
+  onGlobalSearch?: () => void
   onCalendar: () => void
   onOcr: () => void
   onChat: () => void
@@ -44,6 +45,15 @@ export function AppHeader(p: AppHeaderProps) {
   const memo = current()
   const title = memo?.title || '새 메모'
   const [showMobileMore, setShowMobileMore] = useState(false)
+  const [showHomeHub, setShowHomeHub] = useState(false)
+  const setCurrentMemo = useMemosStore((s) => s.setCurrent)
+
+  useEffect(() => {
+    if (!showHomeHub) return
+    const close = () => setShowHomeHub(false)
+    document.addEventListener('pointerdown', close)
+    return () => document.removeEventListener('pointerdown', close)
+  }, [showHomeHub])
 
   /* === 포모도로 인라인 타이머 === */
   const [pomoLeft, setPomoLeft] = useState<number | null>(null)
@@ -64,6 +74,7 @@ export function AppHeader(p: AppHeaderProps) {
     const min = Number(window.prompt('포모도로 시간 (분):', '25')) || 25
     setPomoLeft(min * 60 * 1000)
   }
+  const isTauri = typeof window !== 'undefined' && '__TAURI__' in window
   const pomoText = pomoLeft !== null
     ? `${String(Math.floor(pomoLeft / 60000)).padStart(2, '0')}:${String(Math.floor((pomoLeft % 60000) / 1000)).padStart(2, '0')}`
     : null
@@ -155,18 +166,17 @@ export function AppHeader(p: AppHeaderProps) {
     else alert('역할 팩 패널을 열 수 없습니다.')
   }
   const openHomeHub = () => {
-    const all = list().slice(0, 20)
-    const w = window.open('', '_blank', 'width=600,height=700')
-    if (!w) return
-    const items = all.map((m) => `<li><a href="javascript:void(0)" data-id="${m.id}">${m.title || '제목없음'}</a> — ${new Date(m.updatedAt || Date.now()).toLocaleString('ko-KR')}</li>`).join('')
-    w.document.write(`<!doctype html><html><head><title>홈 허브</title><style>body{font-family:sans-serif;padding:1em;background:#FFF8E7;} ul{list-style:none;padding:0;} li{padding:8px;border-bottom:1px solid #eee;} a{color:#333;text-decoration:none;font-weight:600;} a:hover{color:#FAE100;}</style></head><body><h2>홈 허브 — 최근 메모 ${all.length}개</h2><ul>${items}</ul></body></html>`)
-    w.document.close()
+    // 팝업 차단 시 아무 반응이 없던 window.open 방식 대신 인앱 목록으로
+    setShowHomeHub((v) => !v)
   }
   const openSync = () => {
-    p.onSettings()
+    if (p.onSyncSettings) p.onSyncSettings()
+    else p.onSettings()
   }
   const openCms = () => {
-    if (confirm('CMS 관리자 페이지로 이동합니다 (Super Admin 전용)')) window.open('/admin', '_blank')
+    if (confirm('CMS 관리자 페이지로 이동합니다 (Super Admin 전용)')) {
+      window.open(`${location.origin}/admin`, '_blank', 'noopener,noreferrer')
+    }
   }
   type TauriWindow = {
     isAlwaysOnTop?: () => Promise<boolean>
@@ -212,7 +222,7 @@ export function AppHeader(p: AppHeaderProps) {
     { label: '명령 팔레트', icon: 'cmd', onClick: p.onCmdPalette },
     { label: 'AI 도우미', icon: 'ai', onClick: p.onAi || p.onChat },
     { label: '웹 검색', icon: 'globe', onClick: openWebSearch },
-    { label: '캘린더', icon: 'page', onClick: p.onCalendar },
+    { label: '빠른 메모', icon: 'page', onClick: p.onCalendar },
     { label: 'JustPin', icon: 'pin', onClick: openJustPin },
     { label: '강의노트', icon: 'mic', onClick: insertLectureTemplate },
     { label: '회의노트', icon: 'users', onClick: insertMeetingTemplate },
@@ -253,8 +263,8 @@ export function AppHeader(p: AppHeaderProps) {
         <button className="jan-header-btn jan-header-compact-extra" onClick={p.onCmdPalette} title="명령 팔레트 (Ctrl+Shift+P)" aria-label="명령 팔레트"><Icon name="cmd" /></button>
         <button className="jan-header-btn jan-header-extra" onClick={openWebSearch} title="웹 검색" aria-label="웹 검색"><Icon name="globe" /></button>
         <button className="jan-header-btn jan-header-compact-extra" onClick={p.onAi || p.onChat} title="AI 어시스턴트 (Ctrl+/)" aria-label="AI"><Icon name="ai" /></button>
-        <button className="jan-header-btn jan-header-extra" onClick={p.onCalendar} title="캘린더" aria-label="캘린더"><Icon name="page" /></button>
-        <button className="jan-header-btn jan-header-extra" onClick={openJustPin} title="새 JustPin (Ctrl+Alt+P)" aria-label="JustPin"><Icon name="pin" /></button>
+        <button className="jan-header-btn jan-header-extra" onClick={p.onCalendar} title="빠른 메모 (Ctrl+Shift+J)" aria-label="빠른 메모"><Icon name="page" /></button>
+        <button className="jan-header-btn jan-header-extra" onClick={openJustPin} title="새 JustPin" aria-label="JustPin"><Icon name="pin" /></button>
         <button className="jan-header-btn jan-header-extra" onClick={insertLectureTemplate} title="강의노트" aria-label="강의노트"><Icon name="mic" /></button>
         <button className="jan-header-btn jan-header-extra" onClick={insertMeetingTemplate} title="회의노트" aria-label="회의노트"><Icon name="users" /></button>
         <button className="jan-header-btn jan-header-extra" onClick={p.onCards} title="명함 / 카드 관리" aria-label="명함"><Icon name="cards" /></button>
@@ -265,12 +275,35 @@ export function AppHeader(p: AppHeaderProps) {
           {roleCount > 0 && <span className="jan-header-role-badge">{roleCount}</span>}
         </button>
         <button className="jan-header-btn jan-header-extra" onClick={cycleTheme} title={`테마: ${theme}`} aria-label="테마"><Icon name={themeIcon} /></button>
-        <button className="jan-header-btn" onClick={p.onSearch} title="검색 (Ctrl+Shift+F)" aria-label="검색"><Icon name="search" /></button>
+        <button className="jan-header-btn" onClick={p.onGlobalSearch || p.onSearch} title="전체 검색 (Ctrl+Shift+F)" aria-label="전체 검색"><Icon name="search" /></button>
         <button className={'jan-header-btn jan-header-extra' + (focusMode ? ' is-active' : '')} onClick={() => toggleFocus()} title="집중 모드 (F11)" aria-label="집중 모드"><Icon name="eye" /></button>
         <button className="jan-header-btn jan-header-extra" onClick={p.onOcr} title="OCR" aria-label="OCR"><Icon name="image-text" /></button>
         <button className="jan-header-btn jan-header-extra" onClick={openCms} title="CMS 관리자 (Super Admin)" aria-label="CMS"><Icon name="shield" /></button>
         <button className="jan-header-btn jan-header-extra" onClick={p.onHelp} title="도움말 (F1)" aria-label="도움말"><Icon name="help" /></button>
-        <button className="jan-header-btn jan-header-extra" onClick={openHomeHub} title="홈 허브" aria-label="홈 허브"><Icon name="home" /></button>
+        <span style={{ position: 'relative', display: 'inline-flex' }} onPointerDown={(e) => e.stopPropagation()}>
+          <button className="jan-header-btn jan-header-extra" onClick={openHomeHub} title="홈 허브 — 최근 메모" aria-label="홈 허브" aria-expanded={showHomeHub}><Icon name="home" /></button>
+          {showHomeHub && (
+            <div
+              role="menu"
+              aria-label="최근 메모"
+              style={{ position: 'absolute', top: '110%', right: 0, width: 300, maxHeight: 380, overflowY: 'auto', background: 'var(--jan-bg, #fff)', border: '1px solid rgba(0,0,0,0.12)', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.15)', zIndex: 300, padding: '6px 0' }}
+            >
+              <div style={{ padding: '4px 12px 8px', fontWeight: 700, fontSize: 13, borderBottom: '1px solid rgba(0,0,0,0.06)' }}>최근 메모</div>
+              {list().slice(0, 20).map((m) => (
+                <button
+                  key={m.id}
+                  role="menuitem"
+                  onClick={() => { setCurrentMemo(m.id); setShowHomeHub(false) }}
+                  style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 12px', background: 'transparent', border: 0, cursor: 'pointer', fontSize: 13 }}
+                >
+                  <span style={{ display: 'block', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.title || '제목 없음'}</span>
+                  <span style={{ display: 'block', fontSize: 11, color: '#888' }}>{m.updatedAt ? new Date(m.updatedAt).toLocaleString('ko-KR') : ''}</span>
+                </button>
+              ))}
+              {list().length === 0 && <div style={{ padding: '10px 12px', color: '#999', fontSize: 12 }}>메모가 없습니다.</div>}
+            </div>
+          )}
+        </span>
         <button className="jan-header-btn jan-header-extra" onClick={openSync} title="동기화 설정" aria-label="동기화"><Icon name="sync" /></button>
         <button className="jan-header-btn jan-header-extra" onClick={p.onShare} title="공유" aria-label="공유"><Icon name="users" /></button>
         <button className="jan-header-btn jan-header-extra" onClick={p.onSettings} title="설정 (Ctrl+,)" aria-label="설정"><Icon name="settings" /></button>
@@ -298,11 +331,15 @@ export function AppHeader(p: AppHeaderProps) {
           )}
         </div>
         <span className="jan-header-divider" />
-        <button className="jan-header-btn jan-header-extra" onClick={p.onCmdK} title="로그인 / 계정" aria-label="로그인"><Icon name="login" /></button>
-        <button className="jan-header-btn jan-header-extra" onClick={tauriPin} title="항상 위에 (데스크톱)" aria-label="핀"><Icon name="pin" /></button>
-        <button className="jan-header-btn jan-header-extra" onClick={tauriMin} title="최소화" aria-label="최소화"><Icon name="window-min" /></button>
-        <button className="jan-header-btn jan-header-extra" onClick={tauriMax} title="최대화 / 복원" aria-label="최대화"><Icon name="window-max" /></button>
-        <button className="jan-header-btn jan-header-close jan-header-extra" onClick={tauriClose} title="닫기" aria-label="닫기" style={{ background: 'rgba(220,60,60,0.35)' }}><Icon name="close" /></button>
+        <button className="jan-header-btn jan-header-extra" onClick={p.onAccount} title="로그인 / 계정" aria-label="로그인"><Icon name="login" /></button>
+        {isTauri && (
+          <>
+            <button className="jan-header-btn jan-header-extra" onClick={tauriPin} title="항상 위에 (데스크톱)" aria-label="핀"><Icon name="pin" /></button>
+            <button className="jan-header-btn jan-header-extra" onClick={tauriMin} title="최소화" aria-label="최소화"><Icon name="window-min" /></button>
+            <button className="jan-header-btn jan-header-extra" onClick={tauriMax} title="최대화 / 복원" aria-label="최대화"><Icon name="window-max" /></button>
+            <button className="jan-header-btn jan-header-close jan-header-extra" onClick={tauriClose} title="닫기" aria-label="닫기" style={{ background: 'rgba(220,60,60,0.35)' }}><Icon name="close" /></button>
+          </>
+        )}
       </div>
     </header>
   )

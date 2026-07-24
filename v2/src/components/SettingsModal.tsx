@@ -31,6 +31,8 @@ import {
 
 interface SettingsModalProps {
   onClose: () => void
+  /** 열리자마자 스크롤할 섹션 — 헤더의 로그인(supabase)/동기화(byoc) 버튼용 */
+  focusSection?: 'supabase' | 'byoc' | null
 }
 
 function errorMessage(error: unknown): string {
@@ -52,7 +54,7 @@ function formatLastSyncAt(value: number): string {
   return new Date(value).toLocaleString('ko-KR')
 }
 
-export function SettingsModal({ onClose }: SettingsModalProps) {
+export function SettingsModal({ onClose, focusSection }: SettingsModalProps) {
   const [status, setStatus] = useState<string>('')
   const [supabaseUser, setSupabaseUser] = useState<string>('')
   const [checkingSession, setCheckingSession] = useState(false)
@@ -81,6 +83,13 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
     setSyncHealth(next)
     setLastSyncAt(next.lastAt)
   }
+
+  useEffect(() => {
+    if (!focusSection) return
+    const selector = focusSection === 'supabase' ? '.jan-settings-supabase-section' : '.jan-settings-byoc-section'
+    const el = document.querySelector(`.jan-settings-modal ${selector}`)
+    el?.scrollIntoView({ block: 'start' })
+  }, [focusSection])
 
   useEffect(() => {
     let cancelled = false
@@ -297,6 +306,11 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
           <h3>설정</h3>
           <button className="jan-modal-close" onClick={onClose}>닫기</button>
         </div>
+        {status && (
+          <div style={{ padding: '8px 16px', background: 'color-mix(in srgb, #2196f3 10%, transparent)', borderBottom: '1px solid rgba(0,0,0,0.06)', fontSize: 13 }} role="status">
+            {status}
+          </div>
+        )}
         <div className="jan-modal-body">
           {storageSummary && (
             <section className="jan-settings-section jan-settings-storage-section">
@@ -326,7 +340,14 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
               <label>제공자:</label>
               <select
                 value={settings.aiProvider}
-                onChange={(e) => settings.setKey('aiProvider', e.target.value)}
+                onChange={(e) => {
+                  const provider = e.target.value
+                  settings.setKey('aiProvider', provider)
+                  // 공용 aiModel 이 이전 프로바이더의 모델로 남아 API 400 이 나는 것을 방지
+                  const model = settings.aiModel
+                  if (provider === 'anthropic' && !model.startsWith('claude')) settings.setKey('aiModel', 'claude-sonnet-4-6')
+                  if (provider === 'openai' && model.startsWith('claude')) settings.setKey('aiModel', 'gpt-4o-mini')
+                }}
               >
                 <option value="none">사용 안 함</option>
                 <option value="anthropic">Anthropic Claude</option>
@@ -472,7 +493,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
             </details>
           </section>
 
-          <section className="jan-settings-section">
+          <section className="jan-settings-section jan-settings-supabase-section">
             <h4>Supabase 클라우드 동기화</h4>
             <div className="jan-settings-info">
               {supabaseStatus.configured

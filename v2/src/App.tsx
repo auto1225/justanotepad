@@ -26,6 +26,8 @@ function App() {
     document.body.classList.toggle('jan-focus-mode', focusMode)
     document.body.classList.toggle('jan-heading-numbers', headingNumbers)
     document.body.classList.toggle('jan-reading-mode', readingMode)
+    // 읽기 모드에서는 편집 잠금 (CSS 만으로는 타이핑이 막히지 않는다)
+    document.querySelectorAll('.ProseMirror').forEach((el) => el.setAttribute('contenteditable', readingMode ? 'false' : 'true'))
     document.body.classList.toggle('jan-sidebar-hidden', sidebarCollapsed)
     document.documentElement.style.setProperty('--jan-zoom', String(zoom))
     document.querySelectorAll('.ProseMirror').forEach((el) => el.setAttribute('spellcheck', spellCheck ? 'true' : 'false'))
@@ -34,8 +36,9 @@ function App() {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.isComposing || e.keyCode === 229) return
-      if (e.key === 'F11' && !e.ctrlKey && !e.altKey) { e.preventDefault(); toggleFocus() }
-      else if (e.key === 'F11' && e.shiftKey) { e.preventDefault(); toggleReading() }
+      // Shift+F11 은 읽기 모드 — shift 를 제외하지 않으면 집중 모드가 먼저 걸려 상쇄됐다
+      if (e.key === 'F11' && e.shiftKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); toggleReading() }
+      else if (e.key === 'F11' && !e.ctrlKey && !e.altKey) { e.preventDefault(); toggleFocus() }
       const ctrl = e.ctrlKey || e.metaKey
       if (ctrl && !e.shiftKey && (e.key === '=' || e.key === '+')) { e.preventDefault(); zoomIn() }
       else if (ctrl && !e.shiftKey && e.key === '-') { e.preventDefault(); zoomOut() }

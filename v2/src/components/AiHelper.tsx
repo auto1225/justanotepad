@@ -60,16 +60,16 @@ export function AiHelper({ editor, onClose }: AiHelperProps) {
   function applyToEditor() {
     if (!output || !editor) return
     if (hasSelection) {
-      editor.chain().focus().insertContentAt(selection.to, '\n' + output).run()
+      editor.chain().focus().insertContentAt(selection.to, aiOutputToHtml(output)).run()
     } else {
-      editor.chain().focus().insertContent('\n' + output).run()
+      editor.chain().focus().insertContent(aiOutputToHtml(output)).run()
     }
     onClose()
   }
 
   function replaceSelection() {
     if (!output || !editor || !hasSelection) return
-    editor.chain().focus().deleteSelection().insertContent(output).run()
+    editor.chain().focus().deleteSelection().insertContent(aiOutputToHtml(output)).run()
     onClose()
   }
 
@@ -118,4 +118,9 @@ export function AiHelper({ editor, onClose }: AiHelperProps) {
       </div>
     </div>
   )
+}
+
+function aiOutputToHtml(text: string): string {
+  const esc = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  return '<p>' + esc.replace(/\n{2,}/g, '</p><p>').replace(/\n/g, '<br>') + '</p>'
 }

@@ -105,7 +105,7 @@ export async function makeShareUrl(payload: SharePayload): Promise<string> {
   if (frag.length > 60000) {
     throw new Error('메모가 너무 커서 URL 공유 불가 (60KB 초과). Markdown export 후 별도 호스팅 권장.')
   }
-  const base = `${location.origin}/v2/`
+  const base = `${location.origin}${import.meta.env.BASE_URL || '/v2/'}`
   return `${base}#share=${frag}`
 }
 

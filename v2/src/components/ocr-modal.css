@@ -1,0 +1,285 @@
+/* OCR 모달 전용 스타일 (jan-ocr-modal 내부). index.css 는 건드리지 않는다. */
+
+/* ---- 드롭존 ---- */
+.jan-ocr-modal .ocrm-drop {
+  margin: 10px 0;
+  padding: 22px 16px;
+  border: 2px dashed rgba(0, 0, 0, 0.18);
+  border-radius: 8px;
+  text-align: center;
+  cursor: pointer;
+  color: #555;
+  background: rgba(0, 0, 0, 0.02);
+  transition: border-color 0.15s, background 0.15s;
+  user-select: none;
+}
+.jan-ocr-modal .ocrm-drop:hover,
+.jan-ocr-modal .ocrm-drop:focus-visible {
+  border-color: #d97757;
+  background: rgba(217, 119, 87, 0.05);
+}
+.jan-ocr-modal .ocrm-drop.is-over {
+  border-color: #d97757;
+  background: rgba(217, 119, 87, 0.1);
+}
+.jan-ocr-modal .ocrm-drop.is-busy {
+  opacity: 0.85;
+}
+.jan-ocr-modal .ocrm-drop-icon {
+  display: block;
+  margin: 0 auto 6px;
+  color: #d97757;
+}
+.jan-ocr-modal .ocrm-drop-main {
+  font-size: 13px;
+  font-weight: 600;
+}
+.jan-ocr-modal .ocrm-drop-sub {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #888;
+}
+
+/* ---- 큐 목록 ---- */
+.jan-ocr-modal .ocrm-queue {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  max-height: 180px;
+  overflow-y: auto;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 6px;
+}
+.jan-ocr-modal .ocrm-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+.jan-ocr-modal .ocrm-item:last-child {
+  border-bottom: none;
+}
+.jan-ocr-modal .ocrm-item.is-cancelled {
+  opacity: 0.55;
+}
+.jan-ocr-modal .ocrm-thumb {
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.06);
+}
+.jan-ocr-modal .ocrm-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.jan-ocr-modal .ocrm-item-body {
+  flex: 1;
+  min-width: 0;
+}
+.jan-ocr-modal .ocrm-item-name {
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.jan-ocr-modal .ocrm-item-meta {
+  margin-top: 2px;
+}
+.jan-ocr-modal .ocrm-badge {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 9px;
+  font-size: 10.5px;
+  background: rgba(0, 0, 0, 0.07);
+  color: #555;
+}
+.jan-ocr-modal .ocrm-badge.is-running {
+  background: rgba(217, 119, 87, 0.14);
+  color: #b05a3d;
+}
+.jan-ocr-modal .ocrm-badge.is-converting {
+  background: rgba(217, 119, 87, 0.14);
+  color: #b05a3d;
+}
+.jan-ocr-modal .ocrm-badge.is-done {
+  background: rgba(76, 175, 80, 0.15);
+  color: #2e7d32;
+}
+.jan-ocr-modal .ocrm-badge.is-error {
+  background: rgba(244, 67, 54, 0.13);
+  color: #c62828;
+}
+.jan-ocr-modal .ocrm-item-error {
+  margin-top: 3px;
+  font-size: 11px;
+  color: #c62828;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.jan-ocr-modal .ocrm-progress {
+  margin-top: 5px;
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+}
+.jan-ocr-modal .ocrm-progress-bar {
+  height: 100%;
+  background: #d97757;
+  border-radius: 3px;
+  transition: width 0.2s;
+}
+
+/* ---- 버튼 공통 ---- */
+.jan-ocr-modal .ocrm-retry,
+.jan-ocr-modal .ocrm-cancel,
+.jan-ocr-modal .ocrm-clear,
+.jan-ocr-modal .ocrm-copy,
+.jan-ocr-modal .ocrm-insert {
+  padding: 6px 12px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 4px;
+  background: transparent;
+  font-size: 12px;
+  cursor: pointer;
+  color: inherit;
+}
+.jan-ocr-modal .ocrm-retry {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  font-size: 11px;
+}
+.jan-ocr-modal .ocrm-retry:hover,
+.jan-ocr-modal .ocrm-clear:hover,
+.jan-ocr-modal .ocrm-copy:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+.jan-ocr-modal .ocrm-cancel {
+  border-color: rgba(198, 40, 40, 0.4);
+  color: #c62828;
+}
+.jan-ocr-modal .ocrm-cancel:hover {
+  background: rgba(244, 67, 54, 0.08);
+}
+.jan-ocr-modal .ocrm-insert {
+  background: #d97757;
+  border-color: #d97757;
+  color: #fff;
+}
+.jan-ocr-modal .ocrm-insert:hover:not(:disabled) {
+  background: #c9663f;
+}
+.jan-ocr-modal .ocrm-copy:disabled,
+.jan-ocr-modal .ocrm-insert:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.jan-ocr-modal .ocrm-queue-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+/* ---- 결과 영역 ---- */
+.jan-ocr-modal .ocrm-result {
+  margin-top: 14px;
+}
+.jan-ocr-modal .ocrm-result-label {
+  display: block;
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 6px;
+}
+.jan-ocr-modal .ocrm-result-text {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  resize: vertical;
+}
+.jan-ocr-modal .ocrm-result-text:focus-visible {
+  outline: 2px solid #d97757;
+  outline-offset: -1px;
+}
+.jan-ocr-modal .ocrm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* ---- 다크 테마 ---- */
+.jan-theme-dark .jan-ocr-modal .ocrm-drop {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.03);
+  color: #bbb;
+}
+.jan-theme-dark .jan-ocr-modal .ocrm-drop:hover,
+.jan-theme-dark .jan-ocr-modal .ocrm-drop:focus-visible,
+.jan-theme-dark .jan-ocr-modal .ocrm-drop.is-over {
+  border-color: #d97757;
+  background: rgba(217, 119, 87, 0.12);
+}
+.jan-theme-dark .jan-ocr-modal .ocrm-drop-sub {
+  color: #888;
+}
+.jan-theme-dark .jan-ocr-modal .ocrm-queue {
+  border-color: #444;
+}
+.jan-theme-dark .jan-ocr-modal .ocrm-item {
+  border-bottom-color: rgba(255, 255, 255, 0.07);
+}
+.jan-theme-dark .jan-ocr-modal .ocrm-thumb {
+  background: rgba(255, 255, 255, 0.08);
+}
+.jan-theme-dark .jan-ocr-modal .ocrm-badge {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ccc;
+}
+.jan-theme-dark .jan-ocr-modal .ocrm-badge.is-running,
+.jan-theme-dark .jan-ocr-modal .ocrm-badge.is-converting {
+  background: rgba(217, 119, 87, 0.22);
+  color: #e8a58c;
+}
+.jan-theme-dark .jan-ocr-modal .ocrm-badge.is-done {
+  background: rgba(76, 175, 80, 0.22);
+  color: #9ccc9f;
+}
+.jan-theme-dark .jan-ocr-modal .ocrm-badge.is-error {
+  background: rgba(244, 67, 54, 0.22);
+  color: #ef9a9a;
+}
+.jan-theme-dark .jan-ocr-modal .ocrm-item-error {
+  color: #ef9a9a;
+}
+.jan-theme-dark .jan-ocr-modal .ocrm-progress {
+  background: rgba(255, 255, 255, 0.12);
+}
+.jan-theme-dark .jan-ocr-modal .ocrm-retry,
+.jan-theme-dark .jan-ocr-modal .ocrm-cancel,
+.jan-theme-dark .jan-ocr-modal .ocrm-clear,
+.jan-theme-dark .jan-ocr-modal .ocrm-copy {
+  border-color: #555;
+}
+.jan-theme-dark .jan-ocr-modal .ocrm-retry:hover,
+.jan-theme-dark .jan-ocr-modal .ocrm-clear:hover,
+.jan-theme-dark .jan-ocr-modal .ocrm-copy:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+.jan-theme-dark .jan-ocr-modal .ocrm-cancel {
+  border-color: rgba(239, 154, 154, 0.5);
+  color: #ef9a9a;
+}
+.jan-theme-dark .jan-ocr-modal .ocrm-result-label {
+  color: #aaa;
+}

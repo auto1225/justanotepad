@@ -13,10 +13,15 @@ interface InfoPanelProps {
  * Phase 15 — 메모 정보 패널.
  * 우측 슬라이드 — 현재 메모의 메타정보 + 통계.
  */
+const EMPTY_TAGS: string[] = []
+const EMPTY_VERSIONS: never[] = []
+
 export function InfoPanel({ editor, onClose }: InfoPanelProps) {
   const memo = useMemosStore((s) => s.current())
-  const tags = useTagsStore((s) => (memo ? s.byMemo[memo.id] || [] : []))
-  const versions = useVersionsStore((s) => (memo ? s.list(memo.id) : []))
+  // 셀렉터가 매번 새 배열([])을 만들면 useSyncExternalStore 가 무한 리렌더에 빠진다 —
+  // 스토어의 원본 참조만 선택하고 빈 값은 모듈 상수로 대체
+  const tags = useTagsStore((s) => (memo ? s.byMemo[memo.id] : undefined)) ?? EMPTY_TAGS
+  const versions = useVersionsStore((s) => (memo ? s.byMemo[memo.id] : undefined)) ?? EMPTY_VERSIONS
 
   const stats = useMemo(() => {
     if (!editor) return { chars: 0, words: 0, paras: 0, headings: 0, links: 0, images: 0, tables: 0, readMin: 0 }

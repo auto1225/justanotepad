@@ -12,7 +12,7 @@ export type WebhookEvent =
 
 export async function dispatchWebhook(event: WebhookEvent): Promise<void> {
   const s = useSettingsStore.getState()
-  const urls = s.webhookUrls?.split(/\s+/).filter(Boolean) || []
+  const urls = (s.webhookUrls?.split(/\s+/).filter(Boolean) || []).filter((u) => /^https?:\/\//i.test(u))
   if (urls.length === 0) return
 
   const payload = {
@@ -34,7 +34,7 @@ export async function dispatchWebhook(event: WebhookEvent): Promise<void> {
         body: JSON.stringify(payload),
       })
     } catch (e) {
-      console.warn('[webhook] failed:', url, e)
+      console.warn('[webhook] failed:', new URL(url).origin, e)
     } finally {
       clearTimeout(t)
     }

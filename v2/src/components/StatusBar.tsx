@@ -38,6 +38,8 @@ export function StatusBar({ editor, onPageSettings, onSettings }: StatusBarProps
   const syncEnabled = useSettingsStore((s) => s.syncEnabled)
   const syncProvider = useSettingsStore((s) => s.syncProvider)
   const zoom = useUIStore((s) => s.zoom)
+  const focusMode = useUIStore((s) => s.focusMode)
+  const toggleFocus = useUIStore((s) => s.toggleFocus)
   const pageSize = useUIStore((s) => s.pageSize)
   const pageOrientation = useUIStore((s) => s.pageOrientation)
   const pageMarginMm = useUIStore((s) => s.pageMarginMm)
@@ -86,7 +88,11 @@ export function StatusBar({ editor, onPageSettings, onSettings }: StatusBarProps
   void tick
 
   let saveLabel: string, saveClass = 'jan-save-badge'
-  if (!savedAt) { saveLabel = '저장 안 됨'; saveClass += ' is-unsaved' }
+  if (!savedAt) {
+    // 파일로 저장한 적이 없어도 IndexedDB 자동 저장은 돌고 있다 — "저장 안 됨" 은 오해를 부른다
+    if (memo?.updatedAt) { saveLabel = `자동 저장 · ${new Date(memo.updatedAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}`; saveClass += ' is-saved' }
+    else { saveLabel = '저장 안 됨'; saveClass += ' is-unsaved' }
+  }
   else if (dirty) { saveLabel = '수정됨'; saveClass += ' is-dirty' }
   else { saveLabel = `저장: ${new Date(savedAt).toLocaleTimeString()}`; saveClass += ' is-saved' }
 
@@ -146,12 +152,20 @@ export function StatusBar({ editor, onPageSettings, onSettings }: StatusBarProps
         <span>{pageSummary}</span>
       </button>
       <span className="divider" />
+      {focusMode && (
+        <button type="button" className="jan-statusbar-chip" title="집중 모드 해제 (F11)" onClick={toggleFocus} style={{ background: 'rgba(217,119,87,0.15)', border: '1px solid rgba(217,119,87,0.4)', borderRadius: 4, padding: '1px 8px', fontSize: 11, cursor: 'pointer' }}>
+          집중 모드
+        </button>
+      )}
       <span className="jan-zoom-control" aria-label="페이지 줌">
         <button type="button" aria-label="상태바 줌 아웃" title="줌 아웃" onClick={() => setPageZoom(zoom - 0.1)}>
           <Icon name="zoom-out" size={12} />
         </button>
-        <button type="button" className="jan-zoom-value" aria-label="상태바 페이지 너비 맞춤" title="페이지 너비에 맞춤" onClick={() => fitPageZoom('width')}>
+        <button type="button" className="jan-zoom-value" aria-label="줌 100%로 리셋" title="100%로 리셋" onClick={() => setPageZoom(1)}>
           {Math.round(zoom * 100)}%
+        </button>
+        <button type="button" aria-label="페이지 너비에 맞춤" title="페이지 너비에 맞춤" onClick={() => fitPageZoom('width')} style={{ fontSize: 11 }}>
+          맞춤
         </button>
         <input
           type="range"

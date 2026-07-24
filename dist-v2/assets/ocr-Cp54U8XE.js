@@ -1,2 +1,0 @@
-import{m as e}from"./index-CZi4lkVc.js";var t=null;async function n(){if(t)return t;let n=await e(()=>import(`https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.esm.min.js`),[]).catch(()=>null);if(!n)throw Error(`Tesseract.js 로드 실패 — 네트워크 확인`);return t=n.default||n,t}async function r(e,t=`kor+eng`,r){let i=await(await n()).createWorker(t,1,{logger:e=>{e.status===`recognizing text`&&typeof e.progress==`number`&&r?.(e.progress)}});try{let{data:t}=await i.recognize(e);return t.text||``}finally{await i.terminate()}}export{r as t};
-//# sourceMappingURL=ocr-Cp54U8XE.js.map

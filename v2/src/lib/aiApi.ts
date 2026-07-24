@@ -5,9 +5,12 @@
  */
 import { useSettingsStore } from '../store/settingsStore'
 
-export type AiMode = 'summarize' | 'translate' | 'improve' | 'continue' | 'paper-cite'
+export type AiMode = 'summarize' | 'translate' | 'improve' | 'continue' | 'paper-cite' | 'raw'
 
 const PROMPTS: Record<AiMode, (text: string) => string> = {
+  // 이미 완성된 프롬프트를 그대로 전달 — 채팅/번역기처럼 자체 프롬프트를 만드는 호출자용.
+  // (다른 모드로 감싸면 "요약해줘" 같은 지시가 이중으로 붙어 결과가 왜곡된다)
+  raw: (t) => t,
   summarize: (t) =>
     `다음 글을 한국어로 핵심만 5줄 이내로 요약. 불필요한 군더더기 없이 정보 밀도 높게.\n\n${t}`,
   translate: (t) =>
@@ -54,6 +57,16 @@ function withTimeout(timeoutMs = TIMEOUT_MS): { signal: AbortSignal; cancel: () 
 function safeError(prefix: string, raw: string): string {
   const trimmed = raw.replace(/sk-[a-zA-Z0-9-_]+/g, '[redacted-key]').slice(0, 250)
   return `${prefix}: ${trimmed}`
+}
+
+/**
+ * 프로바이더와 모델 id 가 어긋나면 (예: Anthropic 선택 + gpt-4o-mini) 해당 프로바이더의
+ * 기본 모델로 교정한다 — 공용 aiModel 필드 하나를 쓰는 설정 구조의 방어막.
+ */
+export function resolveModelForProvider(provider: 'anthropic' | 'openai', model: string): string {
+  const isClaude = model.startsWith('claude')
+  if (provider === 'anthropic') return isClaude ? model : DEFAULT_ANTHROPIC_MODEL
+  return isClaude ? DEFAULT_OPENAI_MODEL : model || DEFAULT_OPENAI_MODEL
 }
 
 function errorName(error: unknown): string {
@@ -264,11 +277,11 @@ export async function runAi(mode: AiMode, text: string): Promise<AiCallResult> {
   const prompt = PROMPTS[mode](text)
   if (s.aiProvider === 'anthropic') {
     if (!s.anthropicKey) return { ok: false, error: '설정에서 Anthropic API 키를 입력하세요' }
-    return callAnthropic(prompt, s.aiModel || 'claude-sonnet-4-6', s.anthropicKey)
+    return callAnthropic(prompt, resolveModelForProvider('anthropic', s.aiModel || DEFAULT_ANTHROPIC_MODEL), s.anthropicKey)
   }
   if (s.aiProvider === 'openai') {
     if (!s.openaiKey) return { ok: false, error: '설정에서 OpenAI API 키를 입력하세요' }
-    return callOpenAI(prompt, s.aiModel || 'gpt-4o-mini', s.openaiKey)
+    return callOpenAI(prompt, resolveModelForProvider('openai', s.aiModel || DEFAULT_OPENAI_MODEL), s.openaiKey)
   }
   if (s.aiProvider === 'proxy') {
     // 모델 prefix 로 어느 backend 인지 추론
@@ -282,11 +295,11 @@ export async function runAiVision(prompt: string, dataUrl: string): Promise<AiCa
   const s = useSettingsStore.getState()
   if (s.aiProvider === 'anthropic') {
     if (!s.anthropicKey) return { ok: false, error: '설정에서 Anthropic API 키를 입력하세요' }
-    return callAnthropicVision(prompt, dataUrl, s.aiModel || 'claude-sonnet-4-6', s.anthropicKey)
+    return callAnthropicVision(prompt, dataUrl, resolveModelForProvider('anthropic', s.aiModel || DEFAULT_ANTHROPIC_MODEL), s.anthropicKey)
   }
   if (s.aiProvider === 'openai') {
     if (!s.openaiKey) return { ok: false, error: '설정에서 OpenAI API 키를 입력하세요' }
-    return callOpenAIVision(prompt, dataUrl, s.aiModel || 'gpt-4o-mini', s.openaiKey)
+    return callOpenAIVision(prompt, dataUrl, resolveModelForProvider('openai', s.aiModel || DEFAULT_OPENAI_MODEL), s.openaiKey)
   }
   if (s.aiProvider === 'proxy') {
     return callProxyWithFallback(prompt, s.aiModel || DEFAULT_OPENAI_MODEL, dataUrl)

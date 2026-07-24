@@ -55,9 +55,18 @@ export function htmlToMd(html: string): string {
         return `![${alt}](${src})`
       }
       case 'ul': {
+        const isTaskList = el.getAttribute('data-type') === 'taskList'
         const items = Array.from(el.children)
           .filter((c) => c.tagName.toLowerCase() === 'li')
-          .map((li) => '  '.repeat(ctx.listDepth) + '- ' + walk(li, { ...ctx, listDepth: ctx.listDepth + 1, listType: 'ul' }).trim())
+          .map((li) => {
+            const body = walk(li, { ...ctx, listDepth: ctx.listDepth + 1, listType: 'ul' }).trim()
+            if (isTaskList || li.getAttribute('data-type') === 'taskItem') {
+              // GFM 체크박스로 내보내야 체크 상태가 왕복에서 살아남는다
+              const checked = li.getAttribute('data-checked') === 'true'
+              return '  '.repeat(ctx.listDepth) + `- [${checked ? 'x' : ' '}] ` + body
+            }
+            return '  '.repeat(ctx.listDepth) + '- ' + body
+          })
           .join('\n')
         return '\n' + items + '\n\n'
       }
@@ -124,6 +133,16 @@ export function mdToHtml(md: string): string {
   // Image / link
   s = s.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img alt="$1" src="$2">')
   s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
+
+  // Task lists (- [ ] / - [x]) — 일반 리스트 규칙보다 먼저 처리해야 한다
+  s = s.replace(/(?:^- \[[ xX]\] (.+)\n?)+/gm, (m) => {
+    const items = m.trim().split('\n').map((l) => {
+      const checked = /^- \[[xX]\]/.test(l)
+      const text = l.replace(/^- \[[ xX]\] /, '')
+      return `<li data-type="taskItem" data-checked="${checked}">${text}</li>`
+    }).join('')
+    return `<ul data-type="taskList">${items}</ul>\n`
+  })
 
   // Lists (간단 — 들여쓰기 1단계)
   s = s.replace(/(?:^- (.+)\n?)+/gm, (m) => {

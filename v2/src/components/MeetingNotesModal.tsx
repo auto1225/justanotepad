@@ -29,6 +29,8 @@ interface DraftState {
   participants: string
   agenda: string
   segments: MeetingSegment[]
+  audioRef?: string
+  audioName?: string
 }
 
 const DRAFT_KEY = 'jan.v2.meeting-notes.draft'
@@ -52,6 +54,8 @@ function readDraftState(initialKind: MeetingKind): DraftState {
       participants: typeof draft.participants === 'string' ? draft.participants : fallback.participants,
       agenda: typeof draft.agenda === 'string' ? draft.agenda : fallback.agenda,
       segments: Array.isArray(draft.segments) ? draft.segments.filter(isMeetingSegment) : fallback.segments,
+      audioRef: typeof draft.audioRef === 'string' ? draft.audioRef : '',
+      audioName: typeof draft.audioName === 'string' ? draft.audioName : '',
     }
   } catch {
     return fallback
@@ -81,10 +85,12 @@ export function MeetingNotesModal({ editor, initialKind = 'meeting', onClose }: 
   const [listening, setListening] = useState(false)
   const [startedAt, setStartedAt] = useState<number | null>(null)
   const [elapsed, setElapsed] = useState(0)
-  const [audioRef, setAudioRef] = useState('')
-  const [audioName, setAudioName] = useState('')
+  const [audioRef, setAudioRef] = useState(draftSeed.audioRef || '')
+  const [audioName, setAudioName] = useState(draftSeed.audioName || '')
   const [status, setStatus] = useState('')
 
+  const mountedRef = useRef(true)
+  useEffect(() => () => { mountedRef.current = false }, [])
   const sttRef = useRef<STTHandle | null>(null)
   const recorderRef = useRef<MediaRecorder | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -95,13 +101,13 @@ export function MeetingNotesModal({ editor, initialKind = 'meeting', onClose }: 
   const canRecord = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia && typeof MediaRecorder !== 'undefined'
 
   useEffect(() => {
-    const draft: DraftState = { kind, title, participants, agenda, segments }
+    const draft: DraftState = { kind, title, participants, agenda, segments, audioRef, audioName }
     try {
       localStorage.setItem(DRAFT_KEY, JSON.stringify(draft))
     } catch {
       return
     }
-  }, [kind, title, participants, agenda, segments])
+  }, [kind, title, participants, agenda, segments, audioRef, audioName])
 
   useEffect(() => {
     if (!recording && !listening) return
@@ -257,11 +263,23 @@ export function MeetingNotesModal({ editor, initialKind = 'meeting', onClose }: 
       const blob = new Blob(chunks, { type: mimeType })
       const dataUrl = await fileToDataUrl(blob)
       const ref = await saveDataUrlAsBlobRef(dataUrl)
-      setAudioRef(ref)
-      setAudioName(`${kind}-${new Date().toISOString().replace(/[:.]/g, '-')}.${ext}`)
-      setStatus('녹음 파일을 노트에 보존 가능한 형식으로 저장했습니다.')
+      const name = `${kind}-${new Date().toISOString().replace(/[:.]/g, '-')}.${ext}`
+      if (mountedRef.current) {
+        setAudioRef(ref)
+        setAudioName(name)
+        setStatus('녹음 파일을 노트에 보존 가능한 형식으로 저장했습니다.')
+      } else {
+        // 모달이 닫힌 뒤에 녹음 저장이 끝난 경우 — draft 에 직접 반영해 다음에 열 때 복원되게 한다
+        try {
+          const raw = localStorage.getItem(DRAFT_KEY)
+          const draft = raw ? JSON.parse(raw) : {}
+          localStorage.setItem(DRAFT_KEY, JSON.stringify({ ...draft, audioRef: ref, audioName: name }))
+        } catch {
+          // localStorage 접근 불가 시 조용히 포기
+        }
+      }
     } catch (error: unknown) {
-      setStatus('녹음 저장 실패: ' + (error instanceof Error ? error.message : String(error)))
+      if (mountedRef.current) setStatus('녹음 저장 실패: ' + (error instanceof Error ? error.message : String(error)))
     }
   }
 

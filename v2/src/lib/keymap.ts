@@ -9,16 +9,37 @@ export function installWordKeymap(editor: Editor, opts: {
 }) {
   const handler = (e: KeyboardEvent) => {
     if (e.isComposing || e.keyCode === 229) return
+
+    // 다른 입력 필드(모달 검색창, 설정 input 등)에 포커스가 있으면 개입하지 않는다 —
+    // 전역 캡처 리스너라 이 가드가 없으면 팔레트/설정에서 Ctrl+L·R 등이 편집기로 포커스를 뺏어간다
+    const target = e.target as HTMLElement | null
+    const inForeignField = !!target && (
+      target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' ||
+      (target.isContentEditable && !editor.view.dom.contains(target))
+    )
+    if (inForeignField) return
+
     const ctrl = e.ctrlKey || e.metaKey
     const shift = e.shiftKey
     const alt = e.altKey
     const k = e.key.toLowerCase()
 
+    // 파일 조작은 앱 어디서나 (편집기 밖 포커스여도) 동작
     if (ctrl && !shift && !alt && k === 'n') { e.preventDefault(); opts.onNew?.(); return }
     if (ctrl && !shift && !alt && k === 's') { e.preventDefault(); opts.onSave?.(); return }
     if (ctrl && !shift && !alt && k === 'o') { e.preventDefault(); opts.onOpen?.(); return }
     if (ctrl && !shift && !alt && k === 'p') { e.preventDefault(); opts.onPrint?.(); return }
-    if (ctrl && !shift && !alt && k === 'k') { e.preventDefault(); insertLink(editor); return }
+
+    // 서식/편집 계열은 편집기에 포커스가 있을 때만 — 아니면 Ctrl+R(새로고침)·Ctrl+L(주소창) 같은
+    // 브라우저 기본 동작을 돌려준다
+    if (!editor.isFocused) return
+
+    if (ctrl && !shift && !alt && k === 'k') {
+      e.preventDefault()
+      // prompt 대신 툴바의 링크 편집 팝오버를 연다 (Toolbar 가 이 이벤트를 수신)
+      window.dispatchEvent(new CustomEvent('jan-open-link-editor'))
+      return
+    }
     if (ctrl && !shift && !alt && k === 'l') { e.preventDefault(); editor.chain().focus().setTextAlign('left').run(); return }
     if (ctrl && !shift && !alt && k === 'e') { e.preventDefault(); editor.chain().focus().setTextAlign('center').run(); return }
     if (ctrl && !shift && !alt && k === 'r') { e.preventDefault(); editor.chain().focus().setTextAlign('right').run(); return }
@@ -26,7 +47,8 @@ export function installWordKeymap(editor: Editor, opts: {
     if (ctrl && !shift && !alt && k === 'm') { e.preventDefault(); indentListItem(editor, 'in'); return }
     if (ctrl && shift && !alt && k === 'm') { e.preventDefault(); indentListItem(editor, 'out'); return }
     if (ctrl && shift && !alt && k === 'l') { e.preventDefault(); editor.chain().focus().toggleBulletList().run(); return }
-    if (ctrl && !shift && !alt && k === ' ') { e.preventDefault(); editor.chain().focus().unsetAllMarks().clearNodes().run(); return }
+    // Word 의 Ctrl+Space 는 글자 서식만 지운다 — clearNodes 까지 하면 제목/목록 구조가 날아감
+    if (ctrl && !shift && !alt && k === ' ') { e.preventDefault(); editor.chain().focus().unsetAllMarks().run(); return }
     if (!ctrl && !alt && k === 'tab' && shouldHandleListTab(editor)) {
       const moved = indentListItem(editor, shift ? 'out' : 'in')
       if (moved) e.preventDefault()
@@ -39,7 +61,6 @@ export function installWordKeymap(editor: Editor, opts: {
       editor.chain().focus().toggleHeading({ level }).run()
       return
     }
-    if (ctrl && shift && !alt && k === 'n') { e.preventDefault(); editor.chain().focus().setParagraph().run(); return }
     if (ctrl && !shift && !alt && k === 'enter') {
       e.preventDefault()
       e.stopImmediatePropagation()
@@ -79,23 +100,6 @@ function indentListItem(editor: Editor, direction: ListIndentDirection) {
     : chain.liftListItem(itemType).run()
 }
 
-function insertLink(editor: Editor) {
-  const previous = editor.getAttributes('link').href as string | undefined
-  const selected = editor.state.selection.empty ? '' : editor.state.doc.textBetween(editor.state.selection.from, editor.state.selection.to, ' ')
-  const input = window.prompt('링크 URL:', previous || 'https://')
-  if (input === null) return
-  const href = input.trim()
-  if (!href || href === 'https://') {
-    editor.chain().focus().unsetLink().run()
-    return
-  }
-  const label = selected || href
-  if (selected) {
-    editor.chain().focus().extendMarkRange('link').setLink({ href }).run()
-  } else {
-    editor.chain().focus().insertContent(`<a href="${escapeAttr(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`).run()
-  }
-}
 
 function toggleSelectionCase(editor: Editor) {
   const { from, to, empty } = editor.state.selection
@@ -121,14 +125,3 @@ function insertFootnote(editor: Editor) {
   editor.chain().focus().insertContent(`<sup class="paper-fn-ref">[${count}]</sup>`).run()
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-}
-
-function escapeAttr(value: string): string {
-  return escapeHtml(value).replace(/'/g, '&#39;')
-}

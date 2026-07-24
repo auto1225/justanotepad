@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMemosStore } from '../store/memosStore'
+import { useWorkspaceStore } from '../store/workspaceStore'
+import { flash } from '../lib/flash'
 
 interface QuickCaptureProps {
   onClose: () => void
@@ -32,13 +34,18 @@ export function QuickCapture({ onClose }: QuickCaptureProps) {
     const html = htmlFromText(t)
     if (target === 'new') {
       const id = newMemo()
+      // 현재 워크스페이스 필터가 걸려 있으면 거기 귀속 — 저장했는데 목록에 안 보이는 혼란 방지
+      const ws = useWorkspaceStore.getState()
+      if (ws.currentWsId) ws.assignMemo(id, ws.currentWsId)
       const firstLine = t.split('\n')[0].slice(0, 60)
       // updateCurrent applies to currentId — 새 메모가 currentId 가 됨
       updateCurrent({ title: firstLine, content: html })
       setCurrent(id)
+      flash('새 메모로 저장했습니다')
     } else if (memo) {
       const merged = (memo.content || '') + html
       updateCurrent({ content: merged })
+      flash('현재 메모 끝에 추가했습니다')
     }
     onClose()
   }

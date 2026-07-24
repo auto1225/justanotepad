@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { Editor } from '@tiptap/react'
+import { Icon } from './Icons'
 
 interface BubbleToolbarProps {
   editor: Editor | null
@@ -59,13 +60,7 @@ export function BubbleToolbar({ editor }: BubbleToolbarProps) {
       <button onClick={() => editor.chain().focus().toggleStrike().run()} className={isS ? 'is-active' : ''}><s>S</s></button>
       <button onClick={() => (editor.chain() as any).focus().toggleHighlight({ color: '#FFEB3B' }).run()} className={isH ? 'is-active' : ''} title="형광펜"><mark style={{ background: '#FFEB3B', padding: 0 }}>H</mark></button>
       <span className="divider" />
-      <button onClick={() => {
-        const prev = editor.getAttributes('link').href
-        const url = window.prompt('URL:', prev || '')
-        if (url == null) return
-        if (url === '') editor.chain().focus().unsetLink().run()
-        else editor.chain().focus().setLink({ href: url }).run()
-      }} title="링크">🔗</button>
+      <button onClick={() => window.dispatchEvent(new CustomEvent('jan-open-link-editor'))} title="링크 (Ctrl+K)" aria-label="링크 편집"><Icon name="link" size={13} /></button>
     </div>
   )
 }

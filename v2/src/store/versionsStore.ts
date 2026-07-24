@@ -18,7 +18,7 @@ export interface Version {
 
 interface VersionsState {
   byMemo: Record<string, Version[]> // memoId → versions desc
-  takeSnapshot: (memoId: string, title: string, content: string) => void
+  takeSnapshot: (memoId: string, title: string, content: string, opts?: { force?: boolean }) => void
   list: (memoId: string) => Version[]
   remove: (memoId: string, versionId: string) => void
   removeAll: (memoId: string) => void
@@ -32,16 +32,19 @@ export const useVersionsStore = create<VersionsState>()(
   persist(
     (set, get) => ({
       byMemo: {},
-      takeSnapshot: (memoId, title, content) => {
+      takeSnapshot: (memoId, title, content, opts) => {
         const list = get().byMemo[memoId] || []
         const last = list[0]
         const now = Date.now()
         if (last) {
-          const timeDiff = now - last.takenAt
-          const sizeDiff = Math.abs(content.length - last.size)
-          if (timeDiff < MIN_INTERVAL_MS && sizeDiff < MIN_DIFF_BYTES) return
-          // 동일 내용이면 skip
+          // 동일 내용이면 항상 skip
           if (last.content === content) return
+          // force: 복원 직전처럼 반드시 백업이 필요한 경우 간격/크기 게이트를 건너뛴다
+          if (!opts?.force) {
+            const timeDiff = now - last.takenAt
+            const sizeDiff = Math.abs(content.length - last.size)
+            if (timeDiff < MIN_INTERVAL_MS && sizeDiff < MIN_DIFF_BYTES) return
+          }
         }
         const v: Version = {
           id: 'v_' + now.toString(36) + '_' + Math.random().toString(36).slice(2, 6),

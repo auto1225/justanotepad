@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { buildPrintHtml, currentPrintPageSettings } from '../lib/pdfExport'
+import { buildPrintHtml, currentPrintPageSettings, getPagedSource } from '../lib/pdfExport'
+import { resolveBlobRefsInHtml } from '../lib/blobRefs'
 import { PAGE_PRESETS, pageMarginsSummary, useUIStore } from '../store/uiStore'
 
 interface PrintPreviewProps {
@@ -10,6 +11,13 @@ interface PrintPreviewProps {
 
 export function PrintPreview({ html, title, onClose }: PrintPreviewProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
+  // jan-blob:// 이미지 참조를 data URL 로 해석한 뒤에 렌더 (미해석 시 인쇄에서 이미지 깨짐)
+  const [resolvedHtml, setResolvedHtml] = useState<string | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    resolveBlobRefsInHtml(html).then((out) => { if (!cancelled) setResolvedHtml(out) }).catch(() => { if (!cancelled) setResolvedHtml(html) })
+    return () => { cancelled = true }
+  }, [html])
   const [status, setStatus] = useState('페이지 분할 중...')
   const paperStyle = useUIStore((s) => s.paperStyle)
   const pageSize = useUIStore((s) => s.pageSize)
@@ -33,15 +41,21 @@ export function PrintPreview({ html, title, onClose }: PrintPreviewProps) {
 
   useEffect(() => {
     const ifr = iframeRef.current
-    if (!ifr) return
-    ifr.srcdoc = buildPrintHtml(
-      html,
-      title,
-      currentPrintPageSettings(),
-      { previewChrome: true }
-    )
-    setStatus('페이지 분할 중...')
+    if (!ifr || resolvedHtml === null) return
     let cancelled = false
+    setStatus('페이지 분할 중...')
+
+    // Paged.js 를 로컬 번들에서 주입 — CDN 차단 환경에서 0페이지가 되던 문제 해결
+    void getPagedSource().then((pagedSource) => {
+      if (cancelled || !iframeRef.current) return
+      iframeRef.current.srcdoc = buildPrintHtml(
+        resolvedHtml,
+        title,
+        currentPrintPageSettings(),
+        { previewChrome: true, pagedSource }
+      )
+    })
+
     const handleLoad = () => {
       let waited = 0
       const t = setInterval(() => {
@@ -51,14 +65,15 @@ export function PrintPreview({ html, title, onClose }: PrintPreviewProps) {
           const pages = doc?.querySelectorAll('.pagedjs_page')
           if (pages && pages.length > 0) {
             clearInterval(t)
-            if (!cancelled) setStatus(`${pages.length}페이지 - 인쇄/PDF 가능`)
+            if (!cancelled) setStatus(`${pages.length}페이지 · 인쇄/PDF 가능`)
           }
         } catch {
           // The iframe can be between navigation states while Paged.js loads.
         }
         if (waited > 15000) {
           clearInterval(t)
-          if (!cancelled) setStatus('준비 완료')
+          // 15초가 지나도 페이지가 안 생기면 실패를 숨기지 않는다
+          if (!cancelled) setStatus('미리보기 생성 실패 — 인쇄 버튼으로 브라우저 인쇄를 사용하세요')
         }
       }, 200)
     }
@@ -67,7 +82,7 @@ export function PrintPreview({ html, title, onClose }: PrintPreviewProps) {
       cancelled = true
       ifr.removeEventListener('load', handleLoad)
     }
-  }, [html, title, paperStyle, pageSize, pageOrientation, pageMarginMm, pageMarginsMm, pageColumnCount, runningHeader, runningFooter])
+  }, [resolvedHtml, title, paperStyle, pageSize, pageOrientation, pageMarginMm, pageMarginsMm, pageColumnCount, runningHeader, runningFooter])
 
   function doPrint() {
     const ifr = iframeRef.current

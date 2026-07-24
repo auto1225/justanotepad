@@ -1,8 +1,17 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useTagsStore } from './tagsStore'
+import { useMemosStore, type Memo } from './memosStore'
+
+function liveMemo(id: string): Memo {
+  return { id, title: id, content: '', createdAt: 1, updatedAt: 1 }
+}
 
 beforeEach(() => {
   useTagsStore.setState({ byMemo: {} })
+  // allTags 는 살아있는 메모의 태그만 센다 — 테스트 메모를 등록해 둔다
+  useMemosStore.setState({
+    memos: { m1: liveMemo('m1'), m2: liveMemo('m2'), m3: liveMemo('m3') },
+  })
 })
 
 describe('tagsStore', () => {

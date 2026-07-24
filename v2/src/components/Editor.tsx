@@ -7,8 +7,7 @@ import Underline from '@tiptap/extension-underline'
 import Link from '@tiptap/extension-link'
 import { Table } from '@tiptap/extension-table'
 import { TableRow } from '@tiptap/extension-table-row'
-import { TableCell } from '@tiptap/extension-table-cell'
-import { TableHeader } from '@tiptap/extension-table-header'
+import { JanTableCell, JanTableHeader } from '../extensions/TableCellExt'
 import { ImageWithWidth as Image } from '../extensions/ImageWithWidth'
 import { PaginationPlus, PAGE_SIZES } from 'tiptap-pagination-plus'
 import { Collaboration } from '@tiptap/extension-collaboration'
@@ -39,6 +38,10 @@ import { MathInline } from '../extensions/Math'
 import { Mermaid } from '../extensions/Mermaid'
 import { MentionExt } from '../extensions/MentionConfig'
 import { Callout } from '../extensions/Callout'
+import { Superscript } from '../extensions/Superscript'
+import { LockedContent } from '../extensions/LockedContent'
+import { Subscript } from '../extensions/Subscript'
+import { Indent } from '../extensions/Indent'
 import { Embed } from '../extensions/Embed'
 import { useCollab } from '../hooks/useCollab'
 import { useImageDropPaste } from '../hooks/useImageDropPaste'
@@ -66,7 +69,8 @@ import {
 } from '../store/uiStore'
 import { useTypographyStore } from '../store/typographyStore'
 import { SmartTypography } from '../extensions/Typography'
-import { TextStyle } from '@tiptap/extension-text-style'
+import { TextShadow } from '../extensions/TextShadow'
+import { TextStyle, FontFamily, FontSize } from '@tiptap/extension-text-style'
 import { Color } from '@tiptap/extension-color'
 import { LinkCard } from '../extensions/LinkCard'
 import { AudioNode, VideoNode } from '../extensions/Media'
@@ -118,14 +122,15 @@ const MeetingNotesModal = lazy(() => import('./MeetingNotesModal').then((m) => (
 const CONTENT_COMMIT_DELAY_MS = 350
 
 export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
-  const { fileHandle, setFileHandle, setSavedAt, setEditor } = useDocStore()
+  const { fileHandle, fileHandleMemoId, setFileHandle, setSavedAt, setEditor } = useDocStore()
   const { currentId, current, newMemo, updateCurrent, updateMemo, updateMemoPageSettings } = useMemosStore()
   const applyTheme = useThemeStore((s) => s.apply)
   const applyTypo = useTypographyStore((s) => s.apply)
   const aiAuto = useSettingsStore((s) => s.aiAutocomplete); void aiAuto
   const collab = useCollab()
   const memo = current()
-  const contentSaveSeq = useRef(0)
+  // 메모별 저장 시퀀스 — 전역 카운터면 다른 메모의 타이핑이 이 메모의 비동기 저장(이미지 외부화)을 무효화해버린다
+  const contentSaveSeqByMemo = useRef<Record<string, number>>({})
   const activeMemoIdRef = useRef<string | null>(currentId)
   const pendingContentTimerRef = useRef<number | null>(null)
   const pendingContentEditorRef = useRef<TiptapEditor | null>(null)
@@ -162,6 +167,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   const [showInfo, setShowInfo] = useState(false)
   const [showHeatmap, setShowHeatmap] = useState(false)
   const [showQuick, setShowQuick] = useState(false)
+  const [settingsFocus, setSettingsFocus] = useState<'supabase' | 'byoc' | null>(null)
   const [showTranslate, setShowTranslate] = useState(false)
   const [showTemplates, setShowTemplates] = useState(false)
   const [showGist, setShowGist] = useState(false)
@@ -233,6 +239,10 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
 
   const initialContent = memo?.content || '<p></p>'
   const title = memo?.title || '새 메모'
+  // tiptap-pagination-plus 는 {page} 만 치환하므로 {total} 은 span 으로 바꿔두고
+  // 아래 MutationObserver effect 가 실제 페이지 수를 채운다.
+  const paginationHeader = useMemo(() => runningHeader.replace(/\{total\}/g, '<span class="jan-total-pages"></span>'), [runningHeader])
+  const paginationFooter = useMemo(() => runningFooter.replace(/\{total\}/g, '<span class="jan-total-pages"></span>'), [runningFooter])
   const runningHeaderPreview = useMemo(() => formatRunningText(runningHeader, 1, 1), [runningHeader])
   const runningFooterPreview = useMemo(() => {
     if (!runningHeader.trim() && runningFooter.trim() === DEFAULT_RUNNING_FOOTER) return ''
@@ -248,7 +258,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
     if (html.includes('data:')) {
       externalizeLargeDataUrlsInHtml(html)
         .then((storedHtml) => {
-          if (seq !== contentSaveSeq.current) return
+          if (seq !== contentSaveSeqByMemo.current[memoId]) return
           updateMemo(memoId, { content: storedHtml })
           if (storedHtml !== html && activeMemoIdRef.current === memoId && !targetEditor.isDestroyed) {
             targetEditor.commands.setContent(storedHtml, { emitUpdate: false })
@@ -256,7 +266,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
           }
         })
         .catch(() => {
-          if (seq === contentSaveSeq.current) updateMemo(memoId, { content: html })
+          if (seq === contentSaveSeqByMemo.current[memoId]) updateMemo(memoId, { content: html })
         })
       return
     }
@@ -286,7 +296,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
     const memoId = activeMemoIdRef.current
     if (!memoId) return
 
-    const seq = ++contentSaveSeq.current
+    const seq = (contentSaveSeqByMemo.current[memoId] = (contentSaveSeqByMemo.current[memoId] || 0) + 1)
     pendingContentEditorRef.current = targetEditor
     pendingContentMemoIdRef.current = memoId
     pendingContentSeqRef.current = seq
@@ -314,21 +324,29 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       Link.configure({ openOnClick: false }),
       Table.configure({ resizable: true }),
       TableRow,
-      TableHeader,
-      TableCell,
+      JanTableHeader,
+      JanTableCell,
       Image,
       MathInline,
       Mermaid,
       MentionExt,
       Callout,
+      Superscript,
+      LockedContent,
       Embed,
       LinkCard,
       AudioNode,
       VideoNode,
       Highlight.configure({ multicolor: true }),
       TextStyle,
+      // 워드급 서식: 선택 영역 단위 글꼴/크기 + 문단 줄 간격 + 들여쓰기
+      FontFamily,
+      FontSize,
+      Indent,
+      Subscript,
       Color,
       SmartTypography,
+      TextShadow,
       TaskList,
       TaskItem.configure({ nested: true }),
       PaginationPlus.configure({
@@ -344,10 +362,10 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
         pageGapBorderColor: 'transparent',
         contentMarginTop: 0,
         contentMarginBottom: 0,
-        headerLeft: runningHeader,
+        headerLeft: paginationHeader,
         headerRight: '',
         footerLeft: '',
-        footerRight: runningFooter,
+        footerRight: paginationFooter,
         customHeader: {},
         customFooter: {},
       }),
@@ -359,7 +377,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       )
     }
     return base
-  }, [collab.ydoc, collab.provider, pagePx, pageMarginPx, runningHeader, runningFooter])
+  }, [collab.ydoc, collab.provider, pagePx, pageMarginPx, paginationHeader, paginationFooter])
 
   const editor = useEditor(
     {
@@ -414,6 +432,23 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   useWheelZoom()
   useAutoSave(editor, title)
 
+  // 머리말/꼬리말의 {total} 채우기 — 페이지 수가 바뀔 때마다 실제 값으로 갱신.
+  // (같은 값이면 쓰지 않으므로 observer 가 자기 변경에 재귀하지 않는다)
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return
+    const root = editor.view.dom
+    const update = () => {
+      const total = String(root.querySelectorAll('.rm-page-break').length || 1)
+      root.querySelectorAll<HTMLElement>('.jan-total-pages').forEach((el) => {
+        if (el.textContent !== total) el.textContent = total
+      })
+    }
+    update()
+    const observer = new MutationObserver(update)
+    observer.observe(root, { childList: true, subtree: true })
+    return () => observer.disconnect()
+  }, [editor, paginationHeader, paginationFooter])
+
   const takeSnapshot = useVersionsStore((s) => s.takeSnapshot)
   const snapshotMemoId = memo?.id
   const snapshotMemoTitle = memo?.title || ''
@@ -427,6 +462,8 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
 
   useEffect(() => {
     if (editor) setEditor(editor)
+    // dev 전용 디버그 핸들 (프로덕션 번들에서는 제거됨)
+    if (import.meta.env.DEV && editor) (window as unknown as { __janEditor?: TiptapEditor }).__janEditor = editor
     applyTheme()
     applyTypo()
     tauriSyncOnBoot().catch(() => {})
@@ -522,7 +559,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
     })
     return detach
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editor, fileHandle, title, currentId])
+  }, [editor, fileHandle, fileHandleMemoId, title, currentId])
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
@@ -542,9 +579,10 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
         e.preventDefault(); setShowFind(true)
       } else if (ctrl && !e.shiftKey && !e.altKey && /^[1-9]$/.test(e.key)) {
         e.preventDefault()
-        const pinned = useMemosStore.getState().list().filter((m) => m.pinned)
+        // 명령 팔레트가 최근 메모에 표시하는 Ctrl+1~9 힌트와 같은 순서(목록 순)로 전환
+        const memos = useMemosStore.getState().list()
         const idx = parseInt(e.key, 10) - 1
-        if (pinned[idx]) useMemosStore.getState().setCurrent(pinned[idx].id)
+        if (memos[idx]) useMemosStore.getState().setCurrent(memos[idx].id)
       } else if (e.key === 'F3' && !e.shiftKey) {
         e.preventDefault(); setShowFind(true)
       } else if (e.key === 'F1' || (ctrl && e.shiftKey && e.key === '?')) {
@@ -583,10 +621,12 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
     if (!editor) return
     flushPendingEditorContent()
     const html = editor.getHTML()
-    const result = await saveToFile({ title, content: html, handle: fileHandle })
+    // 핸들이 다른 메모의 파일이면 재사용하지 않고 새로 저장 위치를 묻는다
+    const ownHandle = fileHandleMemoId && fileHandleMemoId !== currentId ? null : fileHandle
+    const result = await saveToFile({ title, content: html, handle: ownHandle })
     if (result.ok) {
       setSavedAt(Date.now())
-      if (result.handle) setFileHandle(result.handle)
+      if (result.handle) setFileHandle(result.handle, currentId)
       if (currentId) pushActiveSnapshot(currentId).catch(() => {})
       trackEvent('save_file')
       if (memo) dispatchWebhook({ type: 'memo-saved', memoId: memo.id, title: memo.title, charCount: editor.state.doc.textContent.length }).catch(() => {})
@@ -602,11 +642,11 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       const result = await openFile()
       if (!result) return
       updateCurrent({ title: result.title, content: result.content })
-      setFileHandle(result.handle ?? null)
+      setFileHandle(result.handle ?? null, currentId)
       editor.commands.setContent(result.content)
       trackEvent('open_file')
-    } catch (err: any) {
-      alert('열기 실패: ' + String(err?.message || err))
+    } catch (err) {
+      alert('열기 실패: ' + (err instanceof Error ? err.message : String(err)))
     }
   }
 
@@ -626,15 +666,16 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   return (
     <div className="jan-editor-wrap">
       <AppHeader
-        onCmdK={() => {}}
+        onAccount={() => { setSettingsFocus('supabase'); setShowSettings(true) }}
         onCmdPalette={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'P', ctrlKey: true, shiftKey: true, bubbles: true }))}
         onSearch={() => setShowWeb(true)}
-        onLanguage={() => setShowSettings(true)}
+        onSyncSettings={() => { setSettingsFocus('byoc'); setShowSettings(true) }}
+        onGlobalSearch={() => { setShowSearch(true); trackEvent('open_search') }}
         onCalendar={() => setShowQuick(true)}
         onOcr={() => setShowOcr(true)}
         onChat={() => setShowChat(true)}
         onShare={() => setShowShare(true)}
-        onSettings={() => setShowSettings(true)}
+        onSettings={() => { setSettingsFocus(null); setShowSettings(true) }}
         onHelp={() => setShowHelp(true)}
         onAbout={() => setShowAbout(true)}
         onAi={() => setShowAi(true)}
@@ -783,7 +824,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       <ImageMenu editor={editor} />
       <Suspense fallback={<ModalSkeleton />}>
         {showAi && <AiHelper editor={editor} onClose={() => setShowAi(false)} />}
-        {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+        {showSettings && <SettingsModal onClose={() => setShowSettings(false)} focusSection={settingsFocus} />}
         {showPrint && editor && <PrintPreview html={editor.getHTML()} title={title} onClose={() => setShowPrint(false)} />}
         {showRoles && <RolesPanel editor={editor} initialTool={initialRoleTool} onClose={() => { setShowRoles(false); setInitialRoleTool(null) }} />}
         {showPaper && <PaperPanel editor={editor} onClose={() => setShowPaper(false)} />}

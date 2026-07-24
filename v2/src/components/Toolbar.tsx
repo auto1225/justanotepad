@@ -1,13 +1,16 @@
 ﻿import { useState, useRef, useEffect } from 'react'
 import type { Editor } from '@tiptap/react'
+import type { Mark as PMMark } from '@tiptap/pm/model'
 import type { CSSProperties } from 'react'
 import { downloadHwpx } from '../lib/hwpxExport'
 import { downloadMd } from '../lib/markdownIO'
 import { exportToPdf } from '../lib/pdfExport'
 import { ColorPicker } from './ColorPicker'
+import { TTSButton } from './TTSButton'
+import { VoiceButton } from './VoiceButton'
 import { Icon } from './Icons'
 import type { IconName } from './Icons'
-import { normalizeFontFamily, useTypographyStore } from '../store/typographyStore'
+import { useTypographyStore } from '../store/typographyStore'
 import { PAPER_STYLES, pageMarginsSummary, useUIStore } from '../store/uiStore'
 import { useMemosStore } from '../store/memosStore'
 import { exportV2ToJson, importV2FromJsonAsync } from '../lib/v1Import'
@@ -15,6 +18,7 @@ import { fileToDataUrl } from '../lib/attachments'
 import { saveDataUrlAsBlobRef } from '../lib/blobRefs'
 import { fitPageZoom, setPageZoom } from '../lib/pageZoom'
 import { PAGE_BREAK_HTML } from '../lib/pageBreak'
+import { flash } from '../lib/flash'
 
 interface ToolbarProps {
   editor: Editor | null
@@ -57,6 +61,43 @@ interface ToolbarProps {
   onMeetingNotes: () => void
 }
 
+/** useHeadingAnchors 의 slug 규칙과 동일해야 목차 앵커가 실제 제목 id 와 일치한다 */
+function headingSlug(text: string): string {
+  return (
+    text
+      .normalize('NFKD')
+      .replace(/[̀-ͯ]/g, '')
+      .replace(/[^\wÀ-￿\s-]/g, '')
+      .trim()
+      .replace(/\s+/g, '-')
+      .toLowerCase()
+      .slice(0, 60) || 'h'
+  )
+}
+
+const FONT_FAMILY_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: '', label: '기본 글꼴' },
+  { value: '"Malgun Gothic", "맑은 고딕", sans-serif', label: '맑은 고딕' },
+  { value: '"Nanum Gothic", "나눔고딕", sans-serif', label: '나눔고딕' },
+  { value: '"Noto Sans KR", sans-serif', label: 'Noto Sans KR' },
+  { value: '"Batang", "바탕", serif', label: '바탕' },
+  { value: '"Gungsuh", "궁서", serif', label: '궁서' },
+  { value: 'Georgia, serif', label: 'Georgia' },
+  { value: '"Times New Roman", serif', label: 'Times New Roman' },
+  { value: 'Arial, sans-serif', label: 'Arial' },
+  { value: 'Verdana, sans-serif', label: 'Verdana' },
+  { value: '"Courier New", monospace', label: 'Courier New' },
+  { value: 'Consolas, "D2Coding", monospace', label: 'Consolas (코딩)' },
+]
+
+const SYMBOL_GROUPS: Array<{ label: string; chars: string[] }> = [
+  { label: '문장 부호', chars: ['—', '–', '…', '·', '•', '◦', '¶', '§', '©', '®', '™', '「', '」', '『', '』', '《', '》'] },
+  { label: '도형 · 화살표', chars: ['★', '☆', '◆', '◇', '■', '□', '▲', '▼', '→', '←', '↑', '↓', '⇒', '⇐', '↔', '✓', '✗'] },
+  { label: '수학', chars: ['°', '±', '×', '÷', '≈', '≠', '≤', '≥', '∞', '√', '∫', 'Σ', 'Π', '½', '¼', '¾', '²', '³'] },
+  { label: '그리스 문자', chars: ['α', 'β', 'γ', 'δ', 'ε', 'θ', 'λ', 'μ', 'π', 'σ', 'τ', 'φ', 'ψ', 'ω', 'Ω', 'Δ', 'Φ'] },
+  { label: '통화 · 단위', chars: ['₩', '$', '€', '¥', '£', '℃', '℉', '㎡', '㎥', '㎏', '㎜', '㎝', '㎞', '㏄'] },
+]
+
 interface MenuItem { label: string; hint?: string; icon?: IconName; divider?: string; onClick?: () => void }
 interface MenuGroup { label: string; items: MenuItem[] }
 interface MenuPosition { left: number; top: number; width: number }
@@ -72,7 +113,17 @@ export function Toolbar(p: ToolbarProps) {
   const [menuPosition, setMenuPosition] = useState<MenuPosition | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const menuButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({})
-  const typo = useTypographyStore()
+  useTypographyStore() // 문서 기본 타이포 변경 시 리렌더 (셀렉트 기본값 반영)
+  const [showLinkPop, setShowLinkPop] = useState(false)
+  const [linkDraft, setLinkDraft] = useState('')
+  const [showSymbolPop, setShowSymbolPop] = useState(false)
+
+  // Ctrl+K (keymap.ts) 도 같은 링크 편집기를 쓰도록 이벤트로 연결
+  useEffect(() => {
+    const open = () => { setLinkDraft(editor?.getAttributes('link').href || ''); setShowLinkPop(true) }
+    window.addEventListener('jan-open-link-editor', open)
+    return () => window.removeEventListener('jan-open-link-editor', open)
+  }, [editor])
   const ui = useUIStore()
 
   useEffect(() => {
@@ -138,11 +189,29 @@ export function Toolbar(p: ToolbarProps) {
     inp.click()
   }
   const toggleLink = () => {
-    const prev = editor.getAttributes('link').href
-    const url = window.prompt('링크 URL:', prev || '')
-    if (url === null) return
+    setLinkDraft(editor.getAttributes('link').href || '')
+    setShowLinkPop(true)
+  }
+  const applyLink = () => {
+    const url = linkDraft.trim()
     if (url === '') editor.chain().focus().unsetLink().run()
-    else editor.chain().focus().setLink({ href: url }).run()
+    else editor.chain().focus().setLink({ href: /^(https?:|mailto:|#)/i.test(url) ? url : 'https://' + url }).run()
+    setShowLinkPop(false)
+  }
+  const insertToc = () => {
+    const items: Array<{ level: number; text: string }> = []
+    editor.state.doc.descendants((node) => {
+      if (node.type.name === 'heading' && node.textContent.trim()) {
+        items.push({ level: (node.attrs.level as number) || 1, text: node.textContent.trim() })
+      }
+    })
+    if (!items.length) { flash('목차를 만들 제목(H1~H3)이 없습니다'); return }
+    const escapeText = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    const html = '<p><strong>목차</strong></p>' + items.map((i) =>
+      `<p data-indent="${Math.min(8, i.level - 1)}"><a href="#${headingSlug(i.text)}">${escapeText(i.text)}</a></p>`
+    ).join('') + '<p></p>'
+    insertHTML(html)
+    flash(`제목 ${items.length}개로 목차를 만들었습니다`)
   }
   const insertHr = () => editor.chain().focus().setHorizontalRule().run()
   const insertPageBreak = () => insertHTML(PAGE_BREAK_HTML)
@@ -155,44 +224,37 @@ export function Toolbar(p: ToolbarProps) {
     const url = window.prompt('YouTube URL:'); if (!url) return
     const m = url.match(/(?:v=|youtu\.be\/)([\w-]{11})/)
     if (!m) { alert('유효한 YouTube URL 이 아님'); return }
-    insertHTML(`<div class="jan-yt"><iframe src="https://www.youtube.com/embed/${m[1]}" width="560" height="315" frameborder="0" allowfullscreen></iframe></div>`)
-  }
-  const wrapAsPage = () => {
-    const html = editor.getHTML()
-    editor.commands.setContent(`<div class="jan-page-wrap">${html}</div>`)
+    // 스키마에 div/iframe 이 없어 통삽입은 조용히 사라진다 — Embed 노드를 사용
+    if (!editor.commands.setEmbed(`https://www.youtube.com/watch?v=${m[1]}`)) alert('임베드 삽입 실패')
   }
 
   /* === 논문 구성 요소 === */
   const insertAuthorBlock = () => insertHTML(`
-<div class="paper-authors" style="text-align:center;margin:1em 0;">
-  <p style="font-weight:600;font-size:1.05em;">저자 1<sup>1</sup>, 저자 2<sup>2</sup>, 교신저자 3<sup>1,*</sup></p>
-  <p style="font-size:0.9em;color:#555;"><sup>1</sup>소속 1, 도시, 국가 · <sup>2</sup>소속 2, 도시, 국가</p>
-  <p style="font-size:0.85em;color:#777;"><sup>*</sup>교신저자: example@email.com</p>
-</div><p></p>`)
+<p style="text-align:center"><strong>저자 1<sup>1</sup>, 저자 2<sup>2</sup>, 교신저자 3<sup>1,*</sup></strong></p>
+<p style="text-align:center"><sup>1</sup>소속 1, 도시, 국가 · <sup>2</sup>소속 2, 도시, 국가</p>
+<p style="text-align:center"><sup>*</sup>교신저자: example@email.com</p><p></p>`)
   const insertAbstract = () => insertHTML(`
-<div class="paper-abstract" style="border:1px solid #ddd;background:#fafafa;padding:1em 1.2em;margin:1em 0;border-radius:4px;">
-  <strong style="letter-spacing:0.05em;">ABSTRACT</strong>
-  <p style="margin:0.4em 0 0;font-size:0.95em;line-height:1.6;">여기에 초록을 작성하세요. 연구 배경 · 방법 · 결과 · 결론을 200단어 내외로 요약합니다.</p>
-</div><p></p>`)
+<blockquote><p><strong>ABSTRACT</strong></p><p>여기에 초록을 작성하세요. 연구 배경 · 방법 · 결과 · 결론을 200단어 내외로 요약합니다.</p></blockquote><p></p>`)
   const insertKeywords = () => insertHTML(`
 <p class="paper-keywords" style="margin:0.5em 0 1em;font-size:0.95em;"><strong>KEYWORDS</strong>&nbsp;&nbsp;키워드1 · 키워드2 · 키워드3 · 키워드4 · 키워드5</p>`)
   const insertAcknowledgments = () => insertHTML(`
 <h2 style="font-size:1.1em;margin-top:1.5em;">Acknowledgments</h2>
 <p>본 연구는 [기관명/과제번호] 의 지원으로 수행되었습니다. ...</p>`)
+  const countFootnoteRefs = () => {
+    let count = 0
+    editor.state.doc.descendants((node) => {
+      if (node.isText && node.marks.some((m) => m.type.name === 'superscript' && m.attrs.class === 'paper-fn-ref')) count++
+    })
+    return count
+  }
   const insertFootnote = () => {
-    const n = (document.querySelectorAll('.paper-footnote').length || 0) + 1
-    /* 1) 커서 위치에 sup 삽입 */
+    const n = countFootnoteRefs() + 1
+    // 커서 위치에 참조 삽입 (Superscript 마크가 등록돼 있어 sup+class 가 보존된다)
     insertHTML(`<sup class="paper-fn-ref">[${n}]</sup>`)
-    /* 2) 문서 끝에 footnote 블록 추가 */
-    const root = document.querySelector('.ProseMirror') as HTMLElement | null
-    if (root) {
-      const div = document.createElement('div')
-      div.className = 'paper-footnote'
-      div.style.cssText = 'font-size:0.85em;color:#444;border-top:1px solid #ccc;padding-top:0.4em;margin-top:1em;'
-      div.textContent = `[${n}] 각주 내용 — 더블클릭해서 편집`  
-      root.appendChild(div)
-      editor.commands.setContent(root.innerHTML)
-    }
+    // 문서 끝에 각주 본문 추가 — DOM 을 읽어 setContent 하면 페이지네이션
+    // 위젯까지 본문으로 재주입되므로 절대 하지 않는다
+    const end = editor.state.doc.content.size
+    editor.chain().insertContentAt(end, `<p><sup class="paper-fn-ref">[${n}]</sup> 각주 내용 — 클릭해서 편집</p>`).run()
   }
   const insertCitation = () => {
     const cite = window.prompt('인용 (예: Smith, 2024):', 'Author, 2024')
@@ -203,10 +265,19 @@ export function Toolbar(p: ToolbarProps) {
     if (ref) insertHTML(`<div class="paper-ref" style="text-indent:-1.5em;padding-left:1.5em;font-size:0.9em;margin:0.3em 0;">${ref}</div>`)
   }
   const renumberFootnotes = () => {
-    const root = document.querySelector('.ProseMirror'); if (!root) return
-    const fns = root.querySelectorAll('.paper-fn-ref'); fns.forEach((el, i) => el.textContent = `[${i+1}]`)
-    const notes = root.querySelectorAll('.paper-footnote'); notes.forEach((el, i) => { const t = (el.textContent||'').replace(/^\[\d+\]\s*/, ''); el.textContent = `[${i+1}] ${t}` })
-    editor.commands.setContent(root.innerHTML)
+    const { state } = editor
+    const refs: Array<{ from: number; to: number; marks: readonly PMMark[] }> = []
+    state.doc.descendants((node, pos) => {
+      if (node.isText && node.marks.some((m) => m.type.name === 'superscript' && m.attrs.class === 'paper-fn-ref')) {
+        refs.push({ from: pos, to: pos + node.nodeSize, marks: node.marks })
+      }
+    })
+    if (!refs.length) return
+    let tr = state.tr
+    for (let i = refs.length - 1; i >= 0; i--) {
+      tr = tr.replaceWith(refs[i].from, refs[i].to, state.schema.text(`[${i + 1}]`, refs[i].marks as PMMark[]))
+    }
+    editor.view.dispatch(tr)
   }
   const cyclePageColumns = () => {
     const current = ui.pageColumnCount || 1
@@ -232,34 +303,31 @@ export function Toolbar(p: ToolbarProps) {
   /* === 책갈피 / 텍스트 상자 / 구분선 스타일 === */
   const insertBookmark = () => {
     const id = window.prompt('책갈피 ID (앵커):', 'bm-' + Date.now()); if (!id) return
-    insertHTML(`<a id="${id}" class="paper-bookmark" title="책갈피: ${id}">⚓</a>`)
+    // 스키마에 커스텀 앵커 노드가 없어 원시 HTML 은 텍스트로 노출된다 — 눈에 보이는 라벨로 삽입
+    const safe = id.replace(/[<>&"]/g, '')
+    insertHTML(`<span data-bookmark="${safe}" style="background:rgba(217,119,87,0.15);border-radius:3px;padding:0 4px;font-size:0.85em;">[${safe}]</span>&nbsp;`)
+    flash(`책갈피 "${safe}" 를 삽입했습니다`)
   }
-  const insertTextBox = () => insertHTML(`
-<div class="text-box" style="border:1px solid #ccc;background:#fafafa;padding:1em;margin:1em 0;border-radius:6px;">
-  여기에 텍스트를 입력하세요.
-</div>`)
+  const insertTextBox = () => insertHTML('<div data-callout data-kind="info"><p>여기에 텍스트를 입력하세요.</p></div>')
   const insertHrStyle = () => {
     const s = window.prompt('구분선 스타일 (1=실선, 2=점선, 3=이중선, 4=별표):', '1')
     const styles: Record<string, string> = {
-      '1': '<hr style="border:0;border-top:1px solid #888;margin:1em 0;" />',
-      '2': '<hr style="border:0;border-top:1px dashed #888;margin:1em 0;" />',
-      '3': '<hr style="border:0;border-top:3px double #888;margin:1em 0;" />',
-      '4': '<p style="text-align:center;color:#888;letter-spacing:0.6em;margin:1em 0;">＊ ＊ ＊</p>',
+      '1': '<hr data-variant="solid" />',
+      '2': '<hr data-variant="dashed" />',
+      '3': '<hr data-variant="double" />',
+      '4': '<p style="text-align:center">＊ ＊ ＊</p>',
     }
     if (s && styles[s]) insertHTML(styles[s])
   }
 
   /* === 특수 문자 === */
-  const insertSymbol = () => {
-    const popular = '— – … · • ◦ ★ ☆ ◆ ◇ ▲ ▼ → ← ↑ ↓ ⇒ ⇐ ✓ ✗ ✦ ✧ ¶ § © ® ™ ° ± × ÷ ≈ ≠ ≤ ≥ ∞ Σ Π ∫ √ α β γ δ ε ζ η θ λ μ π σ τ φ ψ ω Ω'
-    const c = window.prompt('특수 문자 (복사 붙여넣기):\n' + popular, '—')
-    if (c) editor.chain().focus().insertContent(c).run()
-  }
+  const insertSymbol = () => setShowSymbolPop(true)
 
   /* === 한국어 타이포 인라인 === */
   const setLetterSpacing = () => {
     const v = window.prompt('자간 (em, 예: -0.05 좁게 / 0.1 넓게):', localStorage.getItem('jan-letter-spacing') || '0')
     if (v === null) return
+    if (Number.isNaN(Number(v))) { alert('숫자를 입력하세요 (예: -0.05, 0.1)'); return }
     localStorage.setItem('jan-letter-spacing', v)
     const id = 'jan-letter-spacing-style'
     const s = document.getElementById(id) || (() => { const e = document.createElement('style'); e.id = id; document.head.appendChild(e); return e })()
@@ -268,6 +336,8 @@ export function Toolbar(p: ToolbarProps) {
   const setCharScale = () => {
     const v = window.prompt('장평 (% — 기본 100):', localStorage.getItem('jan-char-scale') || '100')
     if (v === null) return
+    const scaleNum = Number(v)
+    if (Number.isNaN(scaleNum) || scaleNum < 20 || scaleNum > 200) { alert('20~200 사이 숫자를 입력하세요'); return }
     localStorage.setItem('jan-char-scale', v)
     const id = 'jan-char-scale-style'
     const s = document.getElementById(id) || (() => { const e = document.createElement('style'); e.id = id; document.head.appendChild(e); return e })()
@@ -287,29 +357,28 @@ export function Toolbar(p: ToolbarProps) {
   const setParagraphSpacing = () => {
     const v = window.prompt('단락 간격 (em, 예: 0.8):', localStorage.getItem('jan-para-space') || '0.6')
     if (v === null) return
+    if (Number.isNaN(Number(v)) || Number(v) < 0) { alert('0 이상의 숫자를 입력하세요 (예: 0.8)'); return }
     localStorage.setItem('jan-para-space', v)
     const id = 'jan-para-space-style'
     const s = document.getElementById(id) || (() => { const e = document.createElement('style'); e.id = id; document.head.appendChild(e); return e })()
     s.textContent = `.ProseMirror p { margin: ${v}em 0; }`
   }
   const setTextEffect = () => {
-    const v = window.prompt('글자 효과 (1=그림자, 2=네온, 3=조각, 0=해제):', '1')
-    const effects: Record<string, string> = {
+    if (editor.state.selection.empty) { flash('효과를 적용할 텍스트를 먼저 선택하세요'); return }
+    const v = window.prompt('글자 효과 (1=그림자, 2=네온, 3=음각, 0=해제):', '1')
+    if (v === null) return
+    const shadows: Record<string, string> = {
       '0': '',
-      '1': 'text-shadow: 1px 1px 2px rgba(0,0,0,0.25);',
-      '2': 'text-shadow: 0 0 4px #ff0, 0 0 8px #ff0; color:#600;',
-      '3': 'text-shadow: 1px 1px 0 #fff, -1px -1px 0 #999; color:#666;',
+      '1': '1px 1px 2px rgba(0,0,0,0.35)',
+      '2': '0 0 4px #ff0, 0 0 8px #fc0',
+      '3': '1px 1px 0 #fff, -1px -1px 0 #999',
     }
-    if (v && effects[v] !== undefined) {
-      const id = 'jan-text-effect-style'
-      const s = document.getElementById(id) || (() => { const e = document.createElement('style'); e.id = id; document.head.appendChild(e); return e })()
-      s.textContent = effects[v] ? `.ProseMirror { ${effects[v]} }` : ''
-    }
+    if (shadows[v] === undefined) return
+    // 선택 영역에만 적용 (전역 .ProseMirror 스타일은 실효 없고 문서 전체에 번짐)
+    editor.chain().focus().setMark('textStyle', { textShadow: shadows[v] || null }).run()
+    flash(v === '0' ? '글자 효과를 해제했습니다' : '선택 영역에 글자 효과를 적용했습니다')
   }
-  const insertHighlightBox = () => insertHTML(`
-<div class="highlight-box" style="background:#FFF8C4;border-left:4px solid #FAE100;padding:0.8em 1em;margin:1em 0;border-radius:4px;">
-  <strong>강조 :</strong> 여기에 강조 내용을 작성하세요.
-</div>`)
+  const insertHighlightBox = () => insertHTML('<div data-callout data-kind="tip"><p><strong>강조 :</strong> 여기에 강조 내용을 작성하세요.</p></div>')
 
   /* === 미디어 / Web API === */
   const captureScreen = async () => {
@@ -379,13 +448,11 @@ export function Toolbar(p: ToolbarProps) {
   }
   const meetingNote = () => {
     insertHTML(`
-<div class="meeting-note" style="border:1px solid #ddd;padding:1em;margin:1em 0;border-radius:6px;background:#fcfcfc;">
-  <h3 style="margin:0 0 0.5em;">회의 노트 — ${new Date().toLocaleString('ko-KR')}</h3>
-  <p><strong>참석자:</strong> </p>
-  <p><strong>안건:</strong> </p>
-  <p><strong>결정사항:</strong> </p>
-  <p><strong>액션 아이템:</strong> </p>
-</div>`)
+<h3>회의 노트 — ${new Date().toLocaleString('ko-KR')}</h3>
+<p><strong>참석자:</strong> </p>
+<p><strong>안건:</strong> </p>
+<p><strong>결정사항:</strong> </p>
+<p><strong>액션 아이템:</strong> </p>`)
   }
   const aiImageStub = () => {
     const prompt = window.prompt('AI 이미지 프롬프트:', '오브젝트의 단순한 라인아트')
@@ -531,19 +598,18 @@ export function Toolbar(p: ToolbarProps) {
     /* 1. 논문 */
     {
       label: '논문', items: [
-        { label: '논문 시작 (Science 포맷 샘플)', hint: '3페이지', icon: 'file-text', onClick: () => run(p.onPaper) },
-        { label: '논문 포맷으로 자동 변환', icon: 'wand', onClick: () => run(p.onPaper) },
+        { label: '논문 인용 관리 패널', icon: 'file-text', onClick: () => run(p.onPaper) },
         { label: '변환 되돌리기', hint: 'Ctrl+Z', icon: 'undo', onClick: () => run(() => editor.chain().focus().undo().run()) },
         { divider: '논문 구성 요소', label: '' },
         { label: '저자 · 소속 · 교신 블록', icon: 'user', onClick: () => run(insertAuthorBlock) },
         { label: 'Abstract 박스', icon: 'file-text', onClick: () => run(insertAbstract) },
         { label: 'Keywords 블록', icon: 'hash', onClick: () => run(insertKeywords) },
-        { label: 'TOC (목차) 자동 생성', icon: 'list-bullet', onClick: () => run(p.onToggleOutline) },
+        { label: '목차 삽입 (제목 기반)', icon: 'list-numbered', onClick: () => run(insertToc) },
+        { label: '문서 개요 패널', icon: 'list-bullet', onClick: () => run(p.onToggleOutline) },
         { label: 'Acknowledgments (감사의 말)', icon: 'heart', onClick: () => run(insertAcknowledgments) },
         { divider: '레이아웃', label: '' },
         { label: `다단 레이아웃: ${pageColumnLabel}`, icon: 'columns', onClick: () => run(cyclePageColumns) },
         { label: '페이지 구분 삽입', hint: 'Ctrl+Enter', icon: 'page-break', onClick: () => run(insertPageBreak) },
-        { label: '페이지로 감싸기', icon: 'page', onClick: () => run(wrapAsPage) },
         { label: '러닝 헤더 · 꼬리말 설정', icon: 'pin', onClick: () => run(setRunningHeader) },
         { divider: '참조 & 인용', label: '' },
         { label: '각주 삽입', icon: 'sup', onClick: () => run(insertFootnote) },
@@ -595,6 +661,7 @@ export function Toolbar(p: ToolbarProps) {
         { label: '이미지 URL', icon: 'image', onClick: () => run(insertImageURL) },
         { label: '이미지 업로드', icon: 'image', onClick: () => run(uploadImage) },
         { label: '링크', hint: 'Ctrl+K', icon: 'link', onClick: () => run(toggleLink) },
+        { label: '목차 (제목 기반 자동 생성)', icon: 'list-numbered', onClick: () => run(insertToc) },
         { label: '구분선', icon: 'minus', onClick: () => run(insertHr) },
         { divider: '리스트', label: '' },
         { label: '글머리 기호', icon: 'list-bullet', onClick: () => run(() => editor.chain().focus().toggleBulletList().run()) },
@@ -603,7 +670,7 @@ export function Toolbar(p: ToolbarProps) {
         { label: '인용', icon: 'quote', onClick: () => run(() => editor.chain().focus().toggleBlockquote().run()) },
         { label: '코드 블록', icon: 'code', onClick: () => run(() => editor.chain().focus().toggleCodeBlock().run()) },
         { divider: '논문 요소', label: '' },
-        { label: '목차 (TOC) 자동 생성', icon: 'list-bullet', onClick: () => run(p.onToggleOutline) },
+        { label: '문서 개요 패널', icon: 'list-bullet', onClick: () => run(p.onToggleOutline) },
         { label: '각주 삽입', icon: 'sup', onClick: () => run(insertFootnote) },
         { label: '인용 번호 삽입', icon: 'quote', onClick: () => run(insertCitation) },
         { label: '책갈피 삽입', icon: 'pin', onClick: () => run(insertBookmark) },
@@ -631,7 +698,6 @@ export function Toolbar(p: ToolbarProps) {
         { divider: '페이지 동작', label: '' },
         { label: '페이지 구분 삽입', hint: 'Ctrl+Enter', icon: 'page-break', onClick: () => run(insertPageBreak) },
         { label: `다단 레이아웃: ${pageColumnLabel}`, icon: 'columns', onClick: () => run(cyclePageColumns) },
-        { label: '페이지로 감싸기', icon: 'page', onClick: () => run(wrapAsPage) },
         { label: '러닝 헤더 · 꼬리말', icon: 'pin', onClick: () => run(setRunningHeader) },
         { divider: '미리보기 / 인쇄', label: '' },
         { label: '엔터 표시(¶) 켬/끔', icon: 'paragraph', onClick: () => run(togglePilcrow) },
@@ -801,22 +867,42 @@ export function Toolbar(p: ToolbarProps) {
     <div className="jan-toolbar-row" ref={containerRef}>
       <select
         className="jan-toolbar-select"
-        value={typo.fontFamily}
-        onChange={(e) => typo.setFontFamily(normalizeFontFamily(e.target.value))}
-        title="글꼴"
+        value={editor.getAttributes('textStyle').fontFamily || ''}
+        onChange={(e) => {
+          const v = e.target.value
+          if (v) editor.chain().focus().setFontFamily(v).run()
+          else editor.chain().focus().unsetFontFamily().run()
+        }}
+        title="글꼴 (선택 영역에 적용 — 문서 기본값은 문서 스타일에서)"
       >
-        <option value="sans">기본 폰트</option>
-        <option value="serif">명조</option>
-        <option value="mono">고정폭</option>
+        {FONT_FAMILY_OPTIONS.map((f) => <option key={f.label} value={f.value}>{f.label}</option>)}
       </select>
       <select
         className="jan-toolbar-select"
-        value={typo.fontSize}
-        onChange={(e) => typo.setFontSize(Number(e.target.value))}
-        title="글자 크기"
+        value={editor.getAttributes('textStyle').fontSize || ''}
+        onChange={(e) => {
+          const v = e.target.value
+          if (v) editor.chain().focus().setFontSize(v).run()
+          else editor.chain().focus().unsetFontSize().run()
+        }}
+        title="글자 크기 (선택 영역에 적용)"
         style={{ minWidth: 56 }}
       >
-        {[10, 11, 12, 13, 14, 16, 18, 20, 22].map((n) => <option key={n} value={n}>{n}</option>)}
+        <option value="">기본</option>
+        {[8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48].map((n) => <option key={n} value={`${n}px`}>{n}</option>)}
+      </select>
+      <select
+        className="jan-toolbar-select"
+        value={editor.getAttributes('paragraph').lineHeight || editor.getAttributes('heading').lineHeight || ''}
+        onChange={(e) => {
+          const v = e.target.value
+          editor.chain().focus().setParagraphLineHeight(v || null).run()
+        }}
+        title="줄 간격 (현재 문단)"
+        style={{ minWidth: 58 }}
+      >
+        <option value="">줄간격</option>
+        {['1', '1.15', '1.5', '1.7', '2', '2.5'].map((n) => <option key={n} value={n}>{n}</option>)}
       </select>
       <span className="divider" />
 
@@ -824,6 +910,8 @@ export function Toolbar(p: ToolbarProps) {
       <button onClick={() => editor.chain().focus().toggleItalic().run()} className={editor.isActive('italic') ? 'is-active' : ''} title="기울임 (Ctrl+I)"><Icon name="italic" /></button>
       <button onClick={() => editor.chain().focus().toggleUnderline().run()} className={editor.isActive('underline') ? 'is-active' : ''} title="밑줄 (Ctrl+U)"><Icon name="underline" /></button>
       <button onClick={() => editor.chain().focus().toggleStrike().run()} className={editor.isActive('strike') ? 'is-active' : ''} title="취소선"><Icon name="strike" /></button>
+      <button onClick={() => editor.chain().focus().toggleSuperscript().run()} className={editor.isActive('superscript') ? 'is-active' : ''} title="위 첨자" aria-label="위 첨자"><span style={{ fontSize: 12 }}>X<sup style={{ fontSize: 8 }}>2</sup></span></button>
+      <button onClick={() => editor.chain().focus().toggleSubscript().run()} className={editor.isActive('subscript') ? 'is-active' : ''} title="아래 첨자" aria-label="아래 첨자"><span style={{ fontSize: 12 }}>X<sub style={{ fontSize: 8 }}>2</sub></span></button>
       <button onClick={() => (editor.chain() as any).focus().toggleHighlight({ color: '#FFEB3B' }).run()} className={editor.isActive('highlight') ? 'is-active' : ''} title="형광펜"><Icon name="highlight" /></button>
       <ColorPicker editor={editor} />
       <span className="divider" />
@@ -831,6 +919,8 @@ export function Toolbar(p: ToolbarProps) {
       <button onClick={() => editor.chain().focus().setTextAlign('left').run()} className={editor.isActive({ textAlign: 'left' }) ? 'is-active' : ''} title="왼쪽 정렬"><Icon name="align-left" /></button>
       <button onClick={() => editor.chain().focus().setTextAlign('center').run()} className={editor.isActive({ textAlign: 'center' }) ? 'is-active' : ''} title="가운데 정렬"><Icon name="align-center" /></button>
       <button onClick={() => editor.chain().focus().setTextAlign('right').run()} className={editor.isActive({ textAlign: 'right' }) ? 'is-active' : ''} title="오른쪽 정렬"><Icon name="align-right" /></button>
+      <button onClick={() => editor.chain().focus().outdentParagraph().run()} title="내어쓰기" aria-label="내어쓰기"><Icon name="chevron-left" /></button>
+      <button onClick={() => editor.chain().focus().indentParagraph().run()} title="들여쓰기" aria-label="들여쓰기"><Icon name="chevron-right" /></button>
       <span className="divider" />
 
       <button onClick={() => editor.chain().focus().toggleBulletList().run()} className={editor.isActive('bulletList') ? 'is-active' : ''} title="글머리 기호"><Icon name="list-bullet" /></button>
@@ -840,10 +930,57 @@ export function Toolbar(p: ToolbarProps) {
 
       <button onClick={() => editor.chain().focus().undo().run()} title="실행 취소 (Ctrl+Z)"><Icon name="undo" /></button>
       <button onClick={() => editor.chain().focus().redo().run()} title="다시 실행 (Ctrl+Shift+Z)"><Icon name="redo" /></button>
+      <span className="divider" />
+      <TTSButton editor={editor} />
+      <VoiceButton editor={editor} />
 
       <span className="jan-spacer" />
 
       {groups.map((g) => <MenuButton key={g.label} group={g} />)}
+
+      {showLinkPop && (
+        <div className="jan-link-popover" role="dialog" aria-label="링크 편집" style={{ position: 'fixed', top: 96, left: '50%', transform: 'translateX(-50%)', background: 'var(--jan-bg, #fff)', border: '1px solid rgba(0,0,0,0.15)', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.18)', padding: 12, zIndex: 500, display: 'flex', gap: 6, alignItems: 'center' }}>
+          <input
+            autoFocus
+            type="url"
+            placeholder="https:// 또는 mailto: 주소"
+            value={linkDraft}
+            onChange={(e) => setLinkDraft(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') applyLink(); if (e.key === 'Escape') setShowLinkPop(false) }}
+            style={{ width: 320, padding: '6px 10px', border: '1px solid #ccc', borderRadius: 6, fontSize: 13 }}
+            aria-label="링크 URL"
+          />
+          <button onClick={applyLink} style={{ padding: '6px 12px' }}>{linkDraft.trim() ? '적용' : '링크 해제'}</button>
+          {editor.getAttributes('link').href && (
+            <button onClick={() => { window.open(editor.getAttributes('link').href, '_blank', 'noopener'); }} style={{ padding: '6px 10px' }}>열기</button>
+          )}
+          <button onClick={() => setShowLinkPop(false)} aria-label="닫기" style={{ padding: '6px 10px' }}>취소</button>
+        </div>
+      )}
+
+      {showSymbolPop && (
+        <div role="dialog" aria-label="특수 문자 삽입" style={{ position: 'fixed', top: 96, left: '50%', transform: 'translateX(-50%)', width: 420, maxWidth: '90vw', maxHeight: '60vh', overflowY: 'auto', background: 'var(--jan-bg, #fff)', border: '1px solid rgba(0,0,0,0.15)', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.18)', padding: 12, zIndex: 500 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <strong style={{ fontSize: 13 }}>특수 문자</strong>
+            <button onClick={() => setShowSymbolPop(false)} aria-label="닫기">닫기</button>
+          </div>
+          {SYMBOL_GROUPS.map((g) => (
+            <div key={g.label} style={{ marginBottom: 8 }}>
+              <div style={{ fontSize: 11, color: '#888', margin: '4px 0' }}>{g.label}</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                {g.chars.map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => { editor.chain().focus().insertContent(c).run(); setShowSymbolPop(false) }}
+                    title={c}
+                    style={{ minWidth: 32, height: 32, fontSize: 15, border: '1px solid rgba(0,0,0,0.12)', borderRadius: 6, background: 'transparent', cursor: 'pointer' }}
+                  >{c}</button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

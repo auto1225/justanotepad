@@ -109,7 +109,8 @@ export const useMemosStore = create<MemosState>()(
             pageSettings: patch.pageSettings ? normalizeMemoPageSettings(patch.pageSettings) : cur.pageSettings,
             updatedAt: Date.now(),
           }
-          const newOrder = [id, ...s.order.filter((memoId) => memoId !== id)]
+          // 수동(드래그) 정렬에서는 편집이 배열 순서를 건드리면 안 된다 — 타이핑 한 번에 배치가 무너진다
+          const newOrder = s.sortMode === 'manual' ? s.order : [id, ...s.order.filter((memoId) => memoId !== id)]
           return { memos: { ...s.memos, [id]: next }, order: newOrder }
         })
       },
@@ -125,7 +126,7 @@ export const useMemosStore = create<MemosState>()(
             pageSettings: patch.pageSettings ? normalizeMemoPageSettings(patch.pageSettings) : cur.pageSettings,
             updatedAt: Date.now(),
           }
-          const newOrder = [s.currentId, ...s.order.filter((id) => id !== s.currentId)]
+          const newOrder = s.sortMode === 'manual' ? s.order : [s.currentId, ...s.order.filter((id) => id !== s.currentId)]
           return { memos: { ...s.memos, [s.currentId]: next }, order: newOrder }
         })
       },
@@ -137,7 +138,7 @@ export const useMemosStore = create<MemosState>()(
           const nextPageSettings = normalizeMemoPageSettings(pageSettings)
           if (sameMemoPageSettings(cur.pageSettings, nextPageSettings)) return s
           const next: Memo = { ...cur, pageSettings: nextPageSettings, updatedAt: Date.now() }
-          const newOrder = [id, ...s.order.filter((memoId) => memoId !== id)]
+          const newOrder = s.sortMode === 'manual' ? s.order : [id, ...s.order.filter((memoId) => memoId !== id)]
           return { memos: { ...s.memos, [id]: next }, order: newOrder }
         })
       },
@@ -223,13 +224,17 @@ export const useMemosStore = create<MemosState>()(
 
       purgeOldTrash: () => {
         const now = Date.now()
+        const purged: string[] = []
         set((s) => {
           const next: Record<string, TrashedMemo> = {}
           for (const [id, t] of Object.entries(s.trashed)) {
             if (now - t.trashedAt < TRASH_TTL_MS) next[id] = t
+            else purged.push(id)
           }
           return { trashed: next }
         })
+        // 태그·워크스페이스·버전·첨부 잔재도 함께 정리 (순환 import 방지를 위해 동적 로드)
+        if (purged.length) void import('../lib/memoCleanup').then((m) => m.purgeMemoArtifacts(purged))
       },
 
       setSortMode: (m) => set({ sortMode: m }),

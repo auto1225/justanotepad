@@ -450,7 +450,10 @@ export function BusinessCardsModal({ editor, onClose }: BusinessCardsModalProps)
       setStatus('내보낼 명함이 없습니다')
       return
     }
-    downloadText('justanotepad-contacts.vcf', cardsToExport.map(cardToVCard).join('\r\n'), 'text/vcard;charset=utf-8')
+    const vcfName = cardsToExport.length === 1
+      ? `${(cardsToExport[0].name || cardsToExport[0].nameEn || '명함').replace(/[\\/:*?"<>|]/g, '_')}.vcf`
+      : 'justanotepad-contacts.vcf'
+    downloadText(vcfName, cardsToExport.map((c) => cardToVCard(c)).join('\r\n'), 'text/vcard;charset=utf-8')
     setStatus(`${cardsToExport.length}개 명함을 vCard로 내보냈습니다`)
   }
 

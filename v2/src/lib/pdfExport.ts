@@ -1,3 +1,4 @@
+import { resolveBlobRefsInHtml } from './blobRefs'
 import {
   DEFAULT_RUNNING_FOOTER,
   pageMarginsCss,
@@ -12,6 +13,21 @@ import {
 import { getTypographyFontStack, useTypographyStore, type FontFamily } from '../store/typographyStore'
 
 const PAGED_CDN = 'https://unpkg.com/pagedjs/dist/paged.polyfill.js'
+
+// Paged.js 를 로컬 번들에서 인라인 주입 — CDN 이 막힌 환경(오프라인·사내망)에서
+// 인쇄 미리보기가 조용히 0페이지가 되던 문제의 근본 해결. 동적 import 라 코드 스플릿됨.
+let pagedSourceCache: string | null = null
+export async function getPagedSource(): Promise<string | null> {
+  if (pagedSourceCache) return pagedSourceCache
+  try {
+    // pagedjs 의 exports 맵에 서브패스가 없어 패키지 경로로는 접근 불가 — 상대 경로로 raw 로드
+    const mod = await import('../../node_modules/pagedjs/dist/paged.polyfill.js?raw')
+    pagedSourceCache = mod.default
+    return pagedSourceCache
+  } catch {
+    return null
+  }
+}
 
 export interface PrintPageSettings {
   paperStyle: PaperStyle
@@ -48,6 +64,8 @@ export function currentPrintPageSettings(): PrintPageSettings {
 }
 
 export async function exportToPdf(html: string, title: string): Promise<void> {
+  // jan-blob:// 이미지 참조 해석 — 인쇄 iframe 은 이 스킴을 읽지 못한다
+  html = await resolveBlobRefsInHtml(html)
   const settings = currentPrintPageSettings()
   const page = pageDimensions(settings.pageSize, settings.pageOrientation)
   const iframe = document.createElement('iframe')
@@ -58,7 +76,7 @@ export async function exportToPdf(html: string, title: string): Promise<void> {
   iframe.style.height = `${page.heightMm}mm`
   iframe.setAttribute('aria-hidden', 'true')
   document.body.appendChild(iframe)
-  iframe.srcdoc = buildPrintHtml(html, title, settings, { includeHeaderTitle: false })
+  iframe.srcdoc = buildPrintHtml(html, title, settings, { includeHeaderTitle: false, pagedSource: await getPagedSource() })
 
   await new Promise<void>((resolve) => {
     iframe.addEventListener('load', () => {
@@ -85,6 +103,8 @@ export async function exportToPdf(html: string, title: string): Promise<void> {
 interface BuildPrintHtmlOptions {
   includeHeaderTitle?: boolean
   previewChrome?: boolean
+  /** Paged.js 소스를 인라인 주입 (CDN 의존 제거) */
+  pagedSource?: string | null
 }
 
 export function buildPrintHtml(
@@ -152,7 +172,7 @@ ${columnCss}
 @media print{body{background:white;}.pagedjs_page{box-shadow:none !important;margin:0 !important;}}
 </style></head><body data-paper="${settings.paperStyle}">
 <div id="content" data-paper="${settings.paperStyle}" data-columns="${pageColumnCount}">${html}</div>
-<script src="${PAGED_CDN}"></script>
+${options.pagedSource ? `<script>${options.pagedSource.replace(/<\/script/gi, '<\\/script')}</script>` : `<script src="${PAGED_CDN}"></script>`}
 </body></html>`
 }
 
