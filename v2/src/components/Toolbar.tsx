@@ -24,6 +24,7 @@ import { applyPaperFormat, PAPER_FORMATS } from '../lib/paperFormats'
 import { insertNumberedEquation, insertFigureCaption, insertTableCaption, insertCrossRef, paperTargetCount, renumberWithFeedback } from '../lib/paperRefs'
 import { pickMathTemplate, lintPaper, showLintReport, insertCreditBlock, insertCoiBlock, insertDataAvailabilityBlock, insertListOfFigures, insertListOfTables, insertAcronymList } from '../lib/paperTools'
 import { downloadLatex } from '../lib/latexExport'
+import { MathStudio } from './MathStudio'
 
 interface ToolbarProps {
   editor: Editor | null
@@ -127,12 +128,29 @@ export function Toolbar(p: ToolbarProps) {
   const [showLinkPop, setShowLinkPop] = useState(false)
   const [linkDraft, setLinkDraft] = useState('')
   const [showSymbolPop, setShowSymbolPop] = useState(false)
+  const [mathStudio, setMathStudio] = useState<null | { initial: string; onSave?: (latex: string) => void }>(null)
 
   // Ctrl+K (keymap.ts) 도 같은 링크 편집기를 쓰도록 이벤트로 연결
   useEffect(() => {
     const open = () => { setLinkDraft(editor?.getAttributes('link').href || ''); setShowLinkPop(true) }
     window.addEventListener('jan-open-link-editor', open)
     return () => window.removeEventListener('jan-open-link-editor', open)
+  }, [editor])
+
+  // 수식 노드 더블클릭 → 수식 스튜디오에서 편집
+  useEffect(() => {
+    const onEdit = (e: Event) => {
+      const { latex, pos } = (e as CustomEvent<{ latex: string; pos: number }>).detail
+      setMathStudio({
+        initial: latex,
+        onSave: (next) => {
+          if (!editor) return
+          editor.chain().focus().setNodeSelection(pos).updateAttributes('mathInline', { latex: next }).run()
+        },
+      })
+    }
+    window.addEventListener('jan-math-edit', onEdit)
+    return () => window.removeEventListener('jan-math-edit', onEdit)
   }, [editor])
   const ui = useUIStore()
 
@@ -658,6 +676,7 @@ export function Toolbar(p: ToolbarProps) {
           onClick: () => run(() => applyFormat(f.key)),
         })),
         { divider: '수식 · 그림 · 표', label: '' },
+        { label: '수식 스튜디오 (전 분야 기호·공식)', icon: 'hash', onClick: () => run(() => setMathStudio({ initial: '' })) },
         { label: '번호 수식 삽입 (n)', icon: 'hash', onClick: () => run(() => { void eqNumbered() }) },
         { label: '수식 템플릿 (분수·적분·행렬·화학식...)', icon: 'hash', onClick: () => run(() => { void eqFromTemplate() }) },
         { label: '그림 캡션 (Fig. n)', icon: 'image', onClick: () => run(() => { void figCaption() }) },
@@ -1053,6 +1072,14 @@ export function Toolbar(p: ToolbarProps) {
             </div>
           ))}
         </div>
+      )}
+      {mathStudio && (
+        <MathStudio
+          editor={editor}
+          initial={mathStudio.initial}
+          onSave={mathStudio.onSave}
+          onClose={() => setMathStudio(null)}
+        />
       )}
     </div>
   )

@@ -61,7 +61,7 @@ export const MathInline = Node.create<MathOptions>({
   },
 
   addNodeView() {
-    return ({ node, getPos, editor }) => {
+    return ({ node, getPos }) => {
       const dom = document.createElement('span')
       dom.className = 'jan-math-inline'
       dom.dataset.math = 'inline'
@@ -72,15 +72,10 @@ export const MathInline = Node.create<MathOptions>({
         dom.textContent = node.attrs.latex
       }
       dom.addEventListener('dblclick', () => {
-        // 앱 스타일 입력 모달 (window.prompt 대체)
-        import('../lib/promptModal').then(({ askText }) => {
-          askText('LaTeX 편집:', node.attrs.latex, { placeholder: 'E = mc^2' }).then((next) => {
-            if (next == null) return
-            const pos = typeof getPos === 'function' ? getPos() : null
-            if (pos == null) return
-            editor.chain().focus().setNodeSelection(pos).updateAttributes('mathInline', { latex: next }).run()
-          })
-        })
+        // 수식 스튜디오에서 편집 (Toolbar 가 이벤트를 받아 모달을 연다)
+        const pos = typeof getPos === 'function' ? getPos() : null
+        if (pos == null) return
+        window.dispatchEvent(new CustomEvent('jan-math-edit', { detail: { latex: node.attrs.latex as string, pos } }))
       })
       return { dom }
     }

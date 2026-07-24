@@ -5326,3 +5326,70 @@ html, body, #root {
 .jan-theme-dark .jan-paper-cancel,
 .jan-theme-dark .jan-paper-bib-import textarea { background: #2e2e2e; border-color: #4a4a4a; color: #e0e0e0; }
 .jan-theme-dark .jan-lint-summary { border-color: rgba(255,255,255,0.12); }
+
+/* ── 수식 스튜디오 ── */
+.jan-math-studio { width: min(860px, 95vw); max-width: min(860px, 95vw); display: flex; flex-direction: column; max-height: 92vh; }
+.jan-ms-body { display: flex; flex-direction: column; gap: 10px; padding: 12px 16px; overflow: hidden; }
+.jan-ms-preview {
+  min-height: 84px; display: flex; align-items: center; justify-content: center;
+  padding: 14px; border: 1px solid var(--paper-edge, #e2e2e2); border-radius: 10px;
+  background: var(--paper, #fff); font-size: 20px; overflow-x: auto;
+}
+.jan-ms-preview .jan-ms-err { color: #C62828; font-size: 12.5px; font-family: Consolas, monospace; }
+.jan-ms-preview .jan-ms-hint { color: #999; font-size: 13px; }
+.jan-ms-input {
+  width: 100%; box-sizing: border-box; padding: 10px 12px; resize: vertical;
+  border: 1px solid var(--paper-edge, #ddd); border-radius: 8px;
+  font-family: Consolas, 'D2Coding', monospace; font-size: 13.5px; line-height: 1.5;
+}
+.jan-ms-toolrow { display: flex; gap: 8px; }
+.jan-ms-search {
+  flex: 1; padding: 7px 12px; border: 1px solid var(--paper-edge, #ddd); border-radius: 7px; font-size: 13px; font-family: inherit;
+}
+.jan-ms-tabs { display: flex; flex-wrap: wrap; gap: 3px; }
+.jan-ms-tabs button {
+  padding: 4px 10px; border: 1px solid transparent; background: transparent; border-radius: 6px;
+  font-size: 12px; cursor: pointer; color: inherit; font-family: inherit;
+}
+.jan-ms-tabs button:hover { background: rgba(0,0,0,0.05); }
+.jan-ms-tabs button.is-active { background: var(--accent, #D97757); color: #fff; }
+.jan-ms-palette {
+  display: flex; flex-wrap: wrap; gap: 5px; overflow-y: auto; min-height: 120px; max-height: 240px;
+  padding: 8px; border: 1px solid var(--paper-edge, #eee); border-radius: 8px; align-content: flex-start;
+}
+.jan-ms-sym {
+  display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  min-width: 44px; min-height: 40px; padding: 5px 9px;
+  border: 1px solid var(--paper-edge, #e4e4e4); border-radius: 7px; background: var(--paper, #fff);
+  cursor: pointer; font-size: 14px;
+}
+.jan-ms-sym:hover { border-color: var(--accent, #D97757); background: rgba(217,119,87,0.06); }
+.jan-ms-sym small { font-size: 10px; color: #888; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jan-ms-empty { padding: 20px; color: #999; font-size: 13px; }
+.jan-ms-recent { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; font-size: 12px; color: #888; }
+.jan-ms-recent button {
+  padding: 3px 8px; border: 1px solid var(--paper-edge, #e4e4e4); border-radius: 6px;
+  background: var(--paper, #fff); cursor: pointer;
+}
+.jan-ms-recent button:hover { border-color: var(--accent, #D97757); }
+.jan-ms-foot {
+  display: flex; align-items: center; gap: 8px; padding: 10px 16px;
+  border-top: 1px solid rgba(0,0,0,0.07);
+}
+.jan-ms-note { font-size: 11.5px; opacity: 0.65; }
+.jan-ms-btn {
+  padding: 8px 16px; border: 1px solid var(--paper-edge, #ccc); background: var(--paper, #fff);
+  border-radius: 7px; font-size: 13px; cursor: pointer; font-family: inherit;
+}
+.jan-ms-btn:disabled { opacity: 0.45; cursor: default; }
+.jan-ms-btn-primary { background: var(--accent, #D97757); border-color: var(--accent, #D97757); color: #fff; font-weight: 600; }
+.jan-ms-btn-primary:hover:not(:disabled) { background: #c76646; }
+
+.jan-theme-dark .jan-ms-preview,
+.jan-theme-dark .jan-ms-input,
+.jan-theme-dark .jan-ms-search,
+.jan-theme-dark .jan-ms-palette,
+.jan-theme-dark .jan-ms-sym,
+.jan-theme-dark .jan-ms-recent button,
+.jan-theme-dark .jan-ms-btn:not(.jan-ms-btn-primary) { background: #2c2c2c; border-color: #4a4a4a; color: #e0e0e0; }
+.jan-theme-dark .jan-ms-tabs button:hover { background: rgba(255,255,255,0.08); }
