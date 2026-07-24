@@ -3859,6 +3859,17 @@ html, body, #root {
   background: var(--jan-bg, #f7f7f7) !important;
   border-color: var(--jan-bg, #f7f7f7) !important;
 }
+/* 갭의 상하 1px 테두리가 페이지 리듬(용지 높이)에 오차를 누적시키므로 제거 */
+.jan-editor-pages .rm-pagination-gap {
+  border-top-width: 0 !important;
+  border-bottom-width: 0 !important;
+}
+.jan-page-settings-hint {
+  margin: 6px 0 0;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: color-mix(in srgb, var(--jan-fg, #444) 62%, transparent);
+}
 
 .jan-theme-dark .jan-editor-pages {
   --jan-note-line: rgba(255,255,255,0.12);

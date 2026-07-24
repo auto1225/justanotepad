@@ -12,13 +12,18 @@ const OPEN_TABS_KEY = 'jan-v2-open-tabs'
 export function MemoTabs() {
   const { memos, currentId, setCurrent, newMemo } = useMemosStore()
   const [openIds, setOpenIds] = useState<string[]>(() => {
-    try { return JSON.parse(localStorage.getItem(OPEN_TABS_KEY) || '[]') } catch { return [] }
+    try {
+      const parsed = JSON.parse(localStorage.getItem(OPEN_TABS_KEY) || '[]')
+      // 과거 버전에서 중복이 영속화됐을 수 있으므로 로드 시 정리
+      return Array.isArray(parsed) ? [...new Set(parsed as string[])] : []
+    } catch { return [] }
   })
 
-  // currentId 가 openIds 에 없으면 추가
+  // currentId 가 openIds 에 없으면 추가.
+  // 중복 검사는 함수형 업데이트 안에서 해야 StrictMode 이중 실행·경합에도 안전하다.
   useEffect(() => {
-    if (currentId && !openIds.includes(currentId) && memos[currentId]) {
-      setOpenIds((ids) => [...ids, currentId])
+    if (currentId && memos[currentId]) {
+      setOpenIds((ids) => (ids.includes(currentId) ? ids : [...ids, currentId]))
     }
   }, [currentId, memos])
 

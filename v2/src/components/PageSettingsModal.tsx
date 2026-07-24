@@ -216,6 +216,9 @@ export function PageSettingsModal({ onClose }: PageSettingsModalProps) {
                   )
                 })}
               </div>
+              {pageColumnCount > 1 && (
+                <p className="jan-page-settings-hint">다단에서는 연속 시트로 표시됩니다 — 페이지 분할은 1단에서 동작합니다.</p>
+              )}
             </section>
 
             <section className="jan-page-settings-section">

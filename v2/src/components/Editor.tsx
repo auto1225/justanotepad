@@ -251,6 +251,8 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   }, [runningFooter, runningHeader])
   const hasRunningPreview = !!(runningHeaderPreview || runningFooterPreview)
   const shouldShowRulers = viewLayout === 'print' && showRulers
+  // 페이지 분할은 1단 + 인쇄 보기에서만 (다단 CSS column 과 float 페이지 기구는 공존 불가)
+  const paginationEnabled = viewLayout === 'print' && pageColumnCount === 1
 
   const commitEditorContent = useCallback((targetEditor: TiptapEditor, memoId: string | null, seq: number) => {
     if (!memoId || targetEditor.isDestroyed) return
@@ -350,27 +352,33 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       TextShadow,
       TaskList,
       TaskItem.configure({ nested: true }),
-      PaginationPlus.configure({
-        ...PAGE_SIZES.A4,
-        ...pagePx,
-        marginTop: pageMarginPx.top,
-        marginBottom: pageMarginPx.bottom,
-        marginLeft: pageMarginPx.left,
-        marginRight: pageMarginPx.right,
-        pageGap: 24,
-        pageBreakBackground: 'var(--jan-bg)',
-        pageGapBorderSize: 0,
-        pageGapBorderColor: 'transparent',
-        contentMarginTop: 0,
-        contentMarginBottom: 0,
-        headerLeft: paginationHeader,
-        headerRight: '',
-        footerLeft: '',
-        footerRight: paginationFooter,
-        customHeader: {},
-        customFooter: {},
-      }),
     ]
+    // 페이지 분할(PaginationPlus)은 float 기반이라 CSS 다단(column)과 공존 불가
+    // — 다단(2/3단)·초안 보기에서는 연속 시트로 표시하고, 1단 인쇄 보기에서만 켠다.
+    if (paginationEnabled) {
+      base.push(
+        PaginationPlus.configure({
+          ...PAGE_SIZES.A4,
+          ...pagePx,
+          marginTop: pageMarginPx.top,
+          marginBottom: pageMarginPx.bottom,
+          marginLeft: pageMarginPx.left,
+          marginRight: pageMarginPx.right,
+          pageGap: 24,
+          pageBreakBackground: 'var(--jan-bg)',
+          pageGapBorderSize: 0,
+          pageGapBorderColor: 'transparent',
+          contentMarginTop: 0,
+          contentMarginBottom: 0,
+          headerLeft: paginationHeader,
+          headerRight: '',
+          footerLeft: '',
+          footerRight: paginationFooter,
+          customHeader: {},
+          customFooter: {},
+        }),
+      )
+    }
     if (collab.ydoc && collab.provider) {
       base.push(
         Collaboration.configure({ document: collab.ydoc }),
@@ -378,7 +386,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       )
     }
     return base
-  }, [collab.ydoc, collab.provider, pagePx, pageMarginPx, paginationHeader, paginationFooter])
+  }, [collab.ydoc, collab.provider, pagePx, pageMarginPx, paginationHeader, paginationFooter, paginationEnabled])
 
   const editor = useEditor(
     {
@@ -406,7 +414,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   }, [editor, spellCheck])
 
   useEffect(() => {
-    if (!editor) return
+    if (!editor || !paginationEnabled) return
     try {
       editor
         .chain()
@@ -422,7 +430,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
     } catch {
       // PaginationPlus may not be ready during the first hydration frame.
     }
-  }, [editor, pagePx.pageWidth, pagePx.pageHeight, pageMarginPx])
+  }, [editor, paginationEnabled, pagePx.pageWidth, pagePx.pageHeight, pageMarginPx])
 
   useImageDropPaste(editor)
   useMacroExpansion(editor)
