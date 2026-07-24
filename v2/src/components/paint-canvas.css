@@ -1,8 +1,8 @@
 /* 그림판(PaintCanvas) 전용 스타일 — 윈도우 그림판 스타일 리본 */
 
 .jan-paint-modal {
-  width: min(1120px, 97vw);
-  max-width: min(1120px, 97vw);
+  width: min(1240px, 97vw);
+  max-width: min(1240px, 97vw);
   display: flex;
   flex-direction: column;
   max-height: 94vh;
@@ -124,7 +124,7 @@
   display: grid;
   grid-template-rows: repeat(2, 1fr);
   grid-auto-flow: column;
-  grid-auto-columns: 26px;
+  grid-auto-columns: 24px;
   align-content: center;
   gap: 2px;
 }
@@ -132,8 +132,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   border: 1px solid transparent;
   background: transparent;
@@ -147,16 +147,15 @@
   border-color: var(--jan-accent, #d97757);
   color: var(--jan-accent, #d97757);
 }
-.pcx-fill-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  white-space: nowrap;
-  cursor: pointer;
+.pcx-fill-select {
+  padding: 3px 4px;
+  border: 1px solid rgba(0, 0, 0, 0.16);
+  border-radius: 5px;
+  font-size: 11.5px;
+  font-family: inherit;
+  max-width: 84px;
 }
-.pcx-fill-toggle.is-disabled { opacity: 0.4; cursor: default; }
-.pcx-fill-toggle input { cursor: inherit; }
+.pcx-fill-select:disabled { opacity: 0.45; }
 
 /* 드롭다운 (브러시 메뉴) */
 .pcx-dd { position: relative; display: inline-flex; }
@@ -189,16 +188,65 @@
 }
 .pcx-menu button:hover { background: rgba(0, 0, 0, 0.06); }
 .pcx-menu button.is-active { background: var(--jan-accent, #d97757); color: #fff; }
+.pcx-menu-up { top: auto; bottom: calc(100% + 4px); }
+
+/* 크기 패널 */
+.pcx-panel { min-width: 200px; gap: 6px; padding: 8px; }
+.pcx-panel-title { font-size: 11px; opacity: 0.6; padding: 2px 2px 0; }
+.pcx-panel-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+}
+.pcx-panel-row input[type='number'] {
+  width: 62px;
+  padding: 4px 6px;
+  border: 1px solid rgba(0, 0, 0, 0.16);
+  border-radius: 5px;
+  font-size: 12px;
+  font-family: inherit;
+}
 
 /* 색 그룹 */
 .pcx-color-area { gap: 8px; }
-.pcx-current-color {
-  width: 34px;
-  height: 34px;
-  border-radius: 7px;
-  border: 1px solid rgba(0, 0, 0, 0.25);
+/* 전경/배경색 겹친 사각형 + 교환 버튼 */
+.pcx-fgbg {
+  position: relative;
+  width: 40px;
+  height: 40px;
   flex-shrink: 0;
 }
+.pcx-fg,
+.pcx-bg {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid rgba(0, 0, 0, 0.3);
+  border-radius: 5px;
+  cursor: default;
+}
+.pcx-fg { left: 0; top: 0; z-index: 2; }
+.pcx-bg { right: 0; bottom: 0; z-index: 1; }
+.pcx-swap {
+  position: absolute;
+  right: -2px;
+  top: -4px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #777;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.pcx-swap:hover { color: #333; background: rgba(0, 0, 0, 0.07); }
 .pcx-swatch-grid {
   display: grid;
   grid-template-rows: repeat(2, 1fr);
@@ -286,6 +334,46 @@
 .pcx-size-dot { border-radius: 50%; display: block; border: 1px solid rgba(0, 0, 0, 0.15); }
 .pcx-canvas-sizes,
 .pcx-zoom { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; white-space: nowrap; }
+.pcx-zoom-val { min-width: 42px; text-align: right; font-variant-numeric: tabular-nums; }
+.pcx-hex {
+  width: 76px;
+  padding: 4px 6px;
+  border: 1px solid rgba(0, 0, 0, 0.16);
+  border-radius: 5px;
+  font-size: 12px;
+  font-family: Consolas, monospace;
+}
+.pcx-grid-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.pcx-b { font-weight: 700; }
+.pcx-i { font-style: italic; }
+.pcx-grid-overlay {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, rgba(30, 136, 229, 0.14) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(30, 136, 229, 0.14) 1px, transparent 1px);
+}
+.pcx-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  opacity: 0.65;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.pcx-status-sep { width: 1px; height: 12px; background: rgba(0, 0, 0, 0.25); }
 .flex-spacer { flex: 1; }
 .pcx-mini {
   padding: 4px 9px;
@@ -421,6 +509,12 @@
 .jan-theme-dark .pcx-slider select { background: #2e2e2e; border-color: #4a4a4a; color: #e0e0e0; }
 .jan-theme-dark .pcx-color-custom span { color: #ccc; }
 .jan-theme-dark .pcx-confirm { background: rgba(198, 40, 40, 0.16); border-color: rgba(198, 40, 40, 0.5); }
+.jan-theme-dark .pcx-fill-select,
+.jan-theme-dark .pcx-hex,
+.jan-theme-dark .pcx-panel-row input[type='number'] { background: #2e2e2e; border-color: #4a4a4a; color: #e0e0e0; }
+.jan-theme-dark .pcx-swap { color: #aaa; }
+.jan-theme-dark .pcx-swap:hover { color: #eee; background: rgba(255, 255, 255, 0.1); }
+.jan-theme-dark .pcx-status-sep { background: rgba(255, 255, 255, 0.3); }
 
 /* ── 모바일 ── */
 @media (max-width: 720px) {

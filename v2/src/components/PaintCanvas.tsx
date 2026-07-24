@@ -12,10 +12,13 @@ type ShapeType =
   | 'line' | 'curve' | 'ellipse' | 'rect' | 'rrect'
   | 'triangle' | 'rtriangle' | 'diamond' | 'pentagon' | 'hexagon'
   | 'arrow' | 'star' | 'heart' | 'lightning' | 'callout'
+  | 'arrowL' | 'arrowR' | 'arrowU' | 'arrowD' | 'plus' | 'star4' | 'star6'
 
 type BrushType = 'round' | 'highlighter' | 'marker' | 'airbrush' | 'crayon' | 'calligraphy'
-
 type Tool = 'pen' | 'brush' | 'eraser' | 'fill' | 'eyedropper' | 'text' | 'select' | 'zoom' | 'shape'
+type FillMode = 'outline' | 'both' | 'fill'
+type LineStyle = 'solid' | 'dash' | 'dot'
+type MenuKey = 'brush' | 'transform' | 'filter' | 'size' | 'export' | null
 
 const SHAPES: ReadonlyArray<{ id: ShapeType; label: string; icon: string }> = [
   { id: 'line', label: '직선', icon: 'line' },
@@ -29,7 +32,14 @@ const SHAPES: ReadonlyArray<{ id: ShapeType; label: string; icon: string }> = [
   { id: 'pentagon', label: '오각형', icon: 'pentagon' },
   { id: 'hexagon', label: '육각형', icon: 'hexagon' },
   { id: 'arrow', label: '화살표', icon: 'arrow' },
-  { id: 'star', label: '별', icon: 'star' },
+  { id: 'arrowR', label: '오른쪽 블록화살표', icon: 'arrowR' },
+  { id: 'arrowL', label: '왼쪽 블록화살표', icon: 'arrowL' },
+  { id: 'arrowU', label: '위쪽 블록화살표', icon: 'arrowU' },
+  { id: 'arrowD', label: '아래쪽 블록화살표', icon: 'arrowD' },
+  { id: 'plus', label: '십자', icon: 'plus' },
+  { id: 'star', label: '별 (5)', icon: 'star' },
+  { id: 'star4', label: '별 (4)', icon: 'star4' },
+  { id: 'star6', label: '별 (6)', icon: 'star6' },
   { id: 'heart', label: '하트', icon: 'heart' },
   { id: 'lightning', label: '번개', icon: 'lightning' },
   { id: 'callout', label: '말풍선', icon: 'callout' },
@@ -44,9 +54,25 @@ const BRUSHES: ReadonlyArray<{ id: BrushType; label: string }> = [
   { id: 'calligraphy', label: '캘리그래피' },
 ]
 
-const PALETTE = [
-  '#000000', '#7F7F7F', '#880015', '#ED1C24', '#FF7F27', '#FFF200', '#22B14C', '#00A2E8', '#3F48CC', '#A349A4',
-  '#FFFFFF', '#C3C3C3', '#B97A57', '#FFAEC9', '#FFC90E', '#EFE4B0', '#B5E61D', '#99D9EA', '#7092BE', '#C8BFE7',
+const FILTERS: ReadonlyArray<{ label: string; f: string }> = [
+  { label: '흑백', f: 'grayscale(1)' },
+  { label: '색 반전', f: 'invert(1)' },
+  { label: '세피아', f: 'sepia(0.85)' },
+  { label: '밝게', f: 'brightness(1.15)' },
+  { label: '어둡게', f: 'brightness(0.85)' },
+  { label: '대비 높이기', f: 'contrast(1.25)' },
+  { label: '대비 낮추기', f: 'contrast(0.82)' },
+  { label: '채도 높이기', f: 'saturate(1.4)' },
+  { label: '채도 낮추기', f: 'saturate(0.65)' },
+  { label: '흐리게', f: 'blur(2px)' },
+]
+
+const FONT_FAMILIES: ReadonlyArray<{ label: string; css: string }> = [
+  { label: '맑은 고딕', css: '"Malgun Gothic", "맑은 고딕", sans-serif' },
+  { label: '굴림', css: 'Gulim, "굴림", sans-serif' },
+  { label: '바탕', css: 'Batang, "바탕", serif' },
+  { label: '세리프', css: 'Georgia, "Times New Roman", serif' },
+  { label: '고정폭', css: 'Consolas, "D2Coding", monospace' },
 ]
 
 const CANVAS_SIZES = [
@@ -54,12 +80,12 @@ const CANVAS_SIZES = [
   { key: 'medium', label: '중', title: '캔버스 크기 중 (900×560)', w: 900, h: 560 },
   { key: 'large', label: '대', title: '캔버스 크기 대 (1200×720)', w: 1200, h: 720 },
 ] as const
-type SizeKey = (typeof CANVAS_SIZES)[number]['key']
 
-const ZOOMS = [1, 2, 4] as const
 const MAX_HISTORY = 50
 const FILL_TOLERANCE = 32
 const FONT_SIZES = [12, 16, 20, 28, 36, 48, 64]
+const ZOOM_MIN = 25
+const ZOOM_MAX = 800
 
 interface Pt { x: number; y: number; p: number }
 interface Rect { x: number; y: number; w: number; h: number }
@@ -159,6 +185,18 @@ function lightningPolygon(x0: number, y0: number, x1: number, y1: number): [numb
   ]
   return unit.map(([ux, uy]) => [x0 + ux * (x1 - x0), y0 + uy * (y1 - y0)])
 }
+/** 단위 좌표(0..1) 다각형을 드래그 박스에 매핑 */
+function unitPolygon(unit: ReadonlyArray<[number, number]>, x0: number, y0: number, x1: number, y1: number): [number, number][] {
+  const x = Math.min(x0, x1), y = Math.min(y0, y1), w = Math.abs(x1 - x0), h = Math.abs(y1 - y0)
+  return unit.map(([ux, uy]) => [x + ux * w, y + uy * h])
+}
+const ARROW_R_UNIT: ReadonlyArray<[number, number]> = [[0, 0.32], [0.62, 0.32], [0.62, 0.05], [1, 0.5], [0.62, 0.95], [0.62, 0.68], [0, 0.68]]
+const ARROW_L_UNIT: ReadonlyArray<[number, number]> = ARROW_R_UNIT.map(([x, y]) => [1 - x, y] as [number, number])
+const ARROW_U_UNIT: ReadonlyArray<[number, number]> = ARROW_R_UNIT.map(([x, y]) => [y, 1 - x] as [number, number])
+const ARROW_D_UNIT: ReadonlyArray<[number, number]> = ARROW_R_UNIT.map(([x, y]) => [y, x] as [number, number])
+const PLUS_UNIT: ReadonlyArray<[number, number]> = [
+  [0.35, 0], [0.65, 0], [0.65, 0.35], [1, 0.35], [1, 0.65], [0.65, 0.65], [0.65, 1], [0.35, 1], [0.35, 0.65], [0, 0.65], [0, 0.35], [0.35, 0.35],
+]
 
 function tracePolygon(ctx: CanvasRenderingContext2D, pts: [number, number][], close = true) {
   ctx.beginPath()
@@ -192,26 +230,38 @@ function calloutPath(ctx: CanvasRenderingContext2D, x0: number, y0: number, x1: 
   ctx.closePath()
 }
 
-function drawArrow(ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number, w: number) {
+function drawArrowLine(ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number, w: number) {
   const head = Math.max(8, w * 3)
   const ang = Math.atan2(y2 - y1, x2 - x1)
   ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke()
+  ctx.save()
+  ctx.setLineDash([])
   ctx.beginPath()
   ctx.moveTo(x2, y2)
   ctx.lineTo(x2 - head * Math.cos(ang - Math.PI / 6), y2 - head * Math.sin(ang - Math.PI / 6))
   ctx.lineTo(x2 - head * Math.cos(ang + Math.PI / 6), y2 - head * Math.sin(ang + Math.PI / 6))
   ctx.closePath(); ctx.fill()
+  ctx.restore()
 }
 
-/** 폐곡선 도형을 채우기 옵션에 맞춰 그림 */
-function fillStrokeClosed(ctx: CanvasRenderingContext2D, fill: boolean) {
-  if (fill) ctx.fill()
-  ctx.stroke()
-}
+const CLOSED_SHAPES: ReadonlyArray<ShapeType> = [
+  'rect', 'rrect', 'ellipse', 'triangle', 'rtriangle', 'diamond', 'pentagon', 'hexagon',
+  'star', 'star4', 'star6', 'heart', 'lightning', 'callout', 'arrowL', 'arrowR', 'arrowU', 'arrowD', 'plus',
+]
 
-function drawShape(ctx: CanvasRenderingContext2D, type: ShapeType, x0: number, y0: number, x1: number, y1: number, lineW: number, fill: boolean, curveCtrl?: { x: number; y: number }) {
+interface ShapePaint { fillMode: FillMode; fg: string; bg: string }
+
+function drawShape(ctx: CanvasRenderingContext2D, type: ShapeType, x0: number, y0: number, x1: number, y1: number, lineW: number, paintOpt: ShapePaint, curveCtrl?: { x: number; y: number }) {
   ctx.lineJoin = 'round'
   ctx.lineCap = 'round'
+  ctx.strokeStyle = paintOpt.fg
+  const closed = CLOSED_SHAPES.includes(type)
+  const finish = () => {
+    if (closed) {
+      if (paintOpt.fillMode !== 'outline') { ctx.fillStyle = paintOpt.fillMode === 'both' ? paintOpt.bg : paintOpt.fg; ctx.fill() }
+      if (paintOpt.fillMode !== 'fill') ctx.stroke()
+    } else ctx.stroke()
+  }
   switch (type) {
     case 'line': ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke(); return
     case 'curve': {
@@ -219,46 +269,50 @@ function drawShape(ctx: CanvasRenderingContext2D, type: ShapeType, x0: number, y
       const cy = curveCtrl ? curveCtrl.y : (y0 + y1) / 2
       ctx.beginPath(); ctx.moveTo(x0, y0); ctx.quadraticCurveTo(cx, cy, x1, y1); ctx.stroke(); return
     }
-    case 'arrow': drawArrow(ctx, x0, y0, x1, y1, lineW); return
-    case 'rect': { ctx.beginPath(); ctx.rect(Math.min(x0, x1), Math.min(y0, y1), Math.abs(x1 - x0), Math.abs(y1 - y0)); fillStrokeClosed(ctx, fill); return }
-    case 'rrect': roundedRectPath(ctx, x0, y0, x1, y1, Math.min(Math.abs(x1 - x0), Math.abs(y1 - y0)) * 0.2); fillStrokeClosed(ctx, fill); return
-    case 'ellipse': {
+    case 'arrow': ctx.fillStyle = paintOpt.fg; drawArrowLine(ctx, x0, y0, x1, y1, lineW); return
+    case 'rect': ctx.beginPath(); ctx.rect(Math.min(x0, x1), Math.min(y0, y1), Math.abs(x1 - x0), Math.abs(y1 - y0)); finish(); return
+    case 'rrect': roundedRectPath(ctx, x0, y0, x1, y1, Math.min(Math.abs(x1 - x0), Math.abs(y1 - y0)) * 0.2); finish(); return
+    case 'ellipse':
       ctx.beginPath()
       ctx.ellipse((x0 + x1) / 2, (y0 + y1) / 2, Math.abs(x1 - x0) / 2, Math.abs(y1 - y0) / 2, 0, 0, Math.PI * 2)
-      fillStrokeClosed(ctx, fill); return
-    }
-    case 'triangle': tracePolygon(ctx, [[(x0 + x1) / 2, Math.min(y0, y1)], [Math.min(x0, x1), Math.max(y0, y1)], [Math.max(x0, x1), Math.max(y0, y1)]]); fillStrokeClosed(ctx, fill); return
-    case 'rtriangle': tracePolygon(ctx, [[Math.min(x0, x1), Math.min(y0, y1)], [Math.min(x0, x1), Math.max(y0, y1)], [Math.max(x0, x1), Math.max(y0, y1)]]); fillStrokeClosed(ctx, fill); return
-    case 'diamond': tracePolygon(ctx, boxPolygon(x0, y0, x1, y1, 4)); fillStrokeClosed(ctx, fill); return
-    case 'pentagon': tracePolygon(ctx, boxPolygon(x0, y0, x1, y1, 5)); fillStrokeClosed(ctx, fill); return
-    case 'hexagon': tracePolygon(ctx, boxPolygon(x0, y0, x1, y1, 6)); fillStrokeClosed(ctx, fill); return
-    case 'star': tracePolygon(ctx, starPolygon(x0, y0, x1, y1, 5, 0.42)); fillStrokeClosed(ctx, fill); return
-    case 'heart': tracePolygon(ctx, heartPolygon(x0, y0, x1, y1)); fillStrokeClosed(ctx, fill); return
-    case 'lightning': tracePolygon(ctx, lightningPolygon(x0, y0, x1, y1)); fillStrokeClosed(ctx, fill); return
-    case 'callout': calloutPath(ctx, x0, y0, x1, y1); fillStrokeClosed(ctx, fill); return
+      finish(); return
+    case 'triangle': tracePolygon(ctx, [[(x0 + x1) / 2, Math.min(y0, y1)], [Math.min(x0, x1), Math.max(y0, y1)], [Math.max(x0, x1), Math.max(y0, y1)]]); finish(); return
+    case 'rtriangle': tracePolygon(ctx, [[Math.min(x0, x1), Math.min(y0, y1)], [Math.min(x0, x1), Math.max(y0, y1)], [Math.max(x0, x1), Math.max(y0, y1)]]); finish(); return
+    case 'diamond': tracePolygon(ctx, boxPolygon(x0, y0, x1, y1, 4)); finish(); return
+    case 'pentagon': tracePolygon(ctx, boxPolygon(x0, y0, x1, y1, 5)); finish(); return
+    case 'hexagon': tracePolygon(ctx, boxPolygon(x0, y0, x1, y1, 6)); finish(); return
+    case 'star': tracePolygon(ctx, starPolygon(x0, y0, x1, y1, 5, 0.42)); finish(); return
+    case 'star4': tracePolygon(ctx, starPolygon(x0, y0, x1, y1, 4, 0.35)); finish(); return
+    case 'star6': tracePolygon(ctx, starPolygon(x0, y0, x1, y1, 6, 0.55)); finish(); return
+    case 'heart': tracePolygon(ctx, heartPolygon(x0, y0, x1, y1)); finish(); return
+    case 'lightning': tracePolygon(ctx, lightningPolygon(x0, y0, x1, y1)); finish(); return
+    case 'callout': calloutPath(ctx, x0, y0, x1, y1); finish(); return
+    case 'arrowR': tracePolygon(ctx, unitPolygon(ARROW_R_UNIT, x0, y0, x1, y1)); finish(); return
+    case 'arrowL': tracePolygon(ctx, unitPolygon(ARROW_L_UNIT, x0, y0, x1, y1)); finish(); return
+    case 'arrowU': tracePolygon(ctx, unitPolygon(ARROW_U_UNIT, x0, y0, x1, y1)); finish(); return
+    case 'arrowD': tracePolygon(ctx, unitPolygon(ARROW_D_UNIT, x0, y0, x1, y1)); finish(); return
+    case 'plus': tracePolygon(ctx, unitPolygon(PLUS_UNIT, x0, y0, x1, y1)); finish(); return
   }
 }
-
-const CLOSED_SHAPES: ReadonlyArray<ShapeType> = ['rect', 'rrect', 'ellipse', 'triangle', 'rtriangle', 'diamond', 'pentagon', 'hexagon', 'star', 'heart', 'lightning', 'callout']
 
 function toolHint(tool: Tool, shape: ShapeType, brush: BrushType): string {
   switch (tool) {
-    case 'select': return '영역을 끌어 선택 → 안쪽을 드래그해 이동, Delete 삭제, Ctrl+C 복사'
-    case 'text': return '캔버스를 클릭해 위치를 정하고 입력 → Enter 로 확정 (Shift+Enter 줄바꿈)'
-    case 'eyedropper': return '캔버스를 클릭하면 그 지점 색을 가져옵니다'
-    case 'fill': return '닫힌 영역을 클릭해 현재 색으로 채웁니다'
-    case 'eraser': return '원형 지우개 — 굵기 슬라이더로 크기 조절'
-    case 'zoom': return '캔버스를 클릭하면 확대(100→200→400→100%)됩니다'
-    case 'brush': return `${BRUSHES.find((b) => b.id === brush)?.label ?? '붓'} — 드래그해서 그립니다`
+    case 'select': return '드래그 선택 → 안쪽 드래그·화살표 키로 이동, Delete 삭제, Ctrl+C 복사'
+    case 'text': return '캔버스를 클릭해 입력 → Enter 확정 (Shift+Enter 줄바꿈)'
+    case 'eyedropper': return '클릭: 전경색 추출 · 우클릭: 배경색 추출'
+    case 'fill': return '클릭: 전경색 채우기 · 우클릭: 배경색 채우기'
+    case 'eraser': return '원형 지우개 — 배경색으로 지움, 굵기로 크기 조절'
+    case 'zoom': return '클릭 확대 · 우클릭 축소 (Ctrl+휠, Ctrl+= / Ctrl+- 도 가능)'
+    case 'brush': return `${BRUSHES.find((b) => b.id === brush)?.label ?? '붓'} — 우클릭은 배경색으로 그리기`
     case 'shape': {
-      if (shape === 'curve') return '① 시작→끝을 드래그해 선을 그리고 ② 움직여 휘게 한 뒤 클릭해 확정'
-      return `${SHAPES.find((s) => s.id === shape)?.label ?? '도형'} — 드래그해서 그립니다 (Shift: 정비율)`
+      if (shape === 'curve') return '① 드래그로 선 → ② 마우스로 휘고 클릭 확정'
+      return `${SHAPES.find((s) => s.id === shape)?.label ?? '도형'} — Shift: 정비율, 우클릭: 배경색`
     }
-    default: return '이미지 붙여넣기(Ctrl+V)·파일 열기(Ctrl+O) 지원'
+    default: return '펜 — 우클릭은 배경색 · 붙여넣기(Ctrl+V) · 열기(Ctrl+O)'
   }
 }
 
-/** 도구/동작 아이콘 — 윈도우 그림판 스타일 (크기 명시, 이모지 미사용) */
+/** 도구/동작 아이콘 — 크기 명시, 이모지 미사용 */
 function ToolIcon({ name }: { name: string }) {
   const p = { width: 20, height: 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, 'aria-hidden': true }
   switch (name) {
@@ -266,12 +320,11 @@ function ToolIcon({ name }: { name: string }) {
     case 'selectAll': return <svg {...p}><rect x="3.5" y="3.5" width="17" height="17" rx="1.5" strokeDasharray="3 3" /><rect x="8" y="8" width="8" height="8" rx="1" /></svg>
     case 'open': return <svg {...p}><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="8.5" cy="10" r="1.5" /><path d="M21 16l-5-5-5 5-2-2-4 4" /></svg>
     case 'crop': return <svg {...p}><path d="M6 2v16h16" /><path d="M2 6h16v16" /></svg>
-    case 'rotate': return <svg {...p}><path d="M20 11a8 8 0 1 0-2.3 5.7" /><path d="M20 4v6h-6" /></svg>
-    case 'flip': return <svg {...p}><path d="M12 3v18" /><path d="M8 7l-4 5 4 5V7z" fill="currentColor" stroke="none" /><path d="M16 7l4 5-4 5V7z" /></svg>
+    case 'transform': return <svg {...p}><path d="M20 11a8 8 0 1 0-2.3 5.7" /><path d="M20 4v6h-6" /><path d="M8 12l-3 3 3 3" opacity="0.001" /></svg>
+    case 'filter': return <svg {...p}><path d="M3 5h18l-7 8v5l-4 2v-7z" /></svg>
     case 'resize': return <svg {...p}><rect x="3" y="3" width="14" height="14" rx="1" /><path d="M21 21l-6-6M21 15v6h-6" /></svg>
     case 'pen': return <svg {...p}><path d="M4 20l1.2-4L16 5.2a2 2 0 0 1 2.8 2.8L8 18.8 4 20z" /><path d="M14 7l3 3" /></svg>
     case 'brush': return <svg {...p}><path d="M4 20c2 0 3-1 3-3 0-1.2 1-2 2-2s2 .8 2 2c0 3-3 4-7 3z" /><path d="M9 15L18 6a2 2 0 0 0-3-3L6 12" /></svg>
-    case 'highlighter': return <svg {...p}><path d="M4 20h6" /><path d="M13 4.5l6.5 6.5-7 7H8.5L6 15.5z" /><path d="M11 6.5l6.5 6.5" /></svg>
     case 'eraser': return <svg {...p}><path d="M8.5 20H20" /><path d="M15.5 4.5l4 4L10 18H6.5L4 15.5z" /><path d="M9.5 8.5l6 6" /></svg>
     case 'fill': return <svg {...p}><path d="M11 3l8 8-7.2 7.2a2 2 0 0 1-2.8 0L3.8 12a2 2 0 0 1 0-2.8z" /><path d="M6 8h10" /><path d="M20 14s2 2.4 2 3.8a2 2 0 1 1-4 0c0-1.4 2-3.8 2-3.8z" fill="currentColor" stroke="none" /></svg>
     case 'eyedropper': return <svg {...p}><path d="M15 5l4 4" /><path d="M14 6L5 15l-1.2 4L8 17.8 17 8.8" /><path d="M13.5 4.5a2.1 2.1 0 0 1 3 3L15 9l-3-3z" fill="currentColor" stroke="none" /></svg>
@@ -280,6 +333,7 @@ function ToolIcon({ name }: { name: string }) {
     case 'undo': return <svg {...p}><path d="M4 9h9a6 6 0 0 1 0 12H9" /><path d="M8 5L4 9l4 4" /></svg>
     case 'redo': return <svg {...p}><path d="M20 9h-9a6 6 0 0 0 0 12h4" /><path d="M16 5l4 4-4 4" /></svg>
     case 'clear': return <svg {...p}><path d="M4 7h16" /><path d="M9 7V4h6v3" /><path d="M6.5 7l1 13h9l1-13" /></svg>
+    case 'swap': return <svg {...p}><path d="M7 10L3 14l4 4" /><path d="M3 14h13" /><path d="M17 4l4 4-4 4" /><path d="M21 8H8" /></svg>
     // 도형 아이콘
     case 'line': return <svg {...p}><path d="M4 20L20 4" /></svg>
     case 'curve': return <svg {...p}><path d="M4 18c6-14 10 0 16-12" /></svg>
@@ -292,7 +346,14 @@ function ToolIcon({ name }: { name: string }) {
     case 'pentagon': return <svg {...p}><path d="M12 3l8.5 6.2-3.2 10H6.7l-3.2-10z" /></svg>
     case 'hexagon': return <svg {...p}><path d="M7 4h10l5 8-5 8H7l-5-8z" /></svg>
     case 'arrow': return <svg {...p}><path d="M4 20L20 4" /><path d="M11 4h9v9" /></svg>
+    case 'arrowR': return <svg {...p}><path d="M3 9h9V5l9 7-9 7v-4H3z" /></svg>
+    case 'arrowL': return <svg {...p}><path d="M21 9h-9V5l-9 7 9 7v-4h9z" /></svg>
+    case 'arrowU': return <svg {...p}><path d="M9 21v-9H5l7-9 7 9h-4v9z" /></svg>
+    case 'arrowD': return <svg {...p}><path d="M9 3v9H5l7 9 7-9h-4V3z" /></svg>
+    case 'plus': return <svg {...p}><path d="M9 3h6v6h6v6h-6v6H9v-6H3V9h6z" /></svg>
     case 'star': return <svg {...p}><path d="M12 3l2.6 5.6L21 9.3l-4.5 4.3 1.1 6.4L12 17l-5.6 3 1.1-6.4L3 9.3l6.4-.7z" /></svg>
+    case 'star4': return <svg {...p}><path d="M12 3l2 7 7 2-7 2-2 7-2-7-7-2 7-2z" /></svg>
+    case 'star6': return <svg {...p}><path d="M12 3l2.2 4.4L19 8l-3 3.6L17.2 17 12 14.8 6.8 17 8 11.6 5 8l4.8-.6z" /></svg>
     case 'heart': return <svg {...p}><path d="M12 20S4 14.5 4 9a4 4 0 0 1 8-1 4 4 0 0 1 8 1c0 5.5-8 11-8 11z" /></svg>
     case 'lightning': return <svg {...p}><path d="M13 3L5 13h5l-1 8 8-11h-5z" /></svg>
     case 'callout': return <svg {...p}><path d="M4 5h16v10H10l-4 4v-4H4z" /></svg>
@@ -300,29 +361,39 @@ function ToolIcon({ name }: { name: string }) {
   }
 }
 
-/** 그림판 — 윈도우 그림판 수준의 전체 기능 */
+/** 그림판 — 리본 UI + 변형/필터/자유줌/전경·배경색/선스타일/불투명도 등 확장판 */
 export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const overlayRef = useRef<HTMLCanvasElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const cursorPosRef = useRef<HTMLSpanElement>(null)
 
   const [tool, setTool] = useState<Tool>('pen')
   const [shape, setShape] = useState<ShapeType>('rect')
   const [brush, setBrush] = useState<BrushType>('round')
-  const [shapeFill, setShapeFill] = useState(false)
+  const [fillMode, setFillMode] = useState<FillMode>('outline')
+  const [lineStyle, setLineStyle] = useState<LineStyle>('solid')
   const [color, setColor] = useState('#000000')
+  const [bgColor, setBgColor] = useState('#ffffff')
+  const [hexDraft, setHexDraft] = useState('#000000')
+  const [opacity, setOpacity] = useState(100)
   const [size, setSize] = useState(4)
   const [fontSize, setFontSize] = useState(28)
-  const [sizeKey, setSizeKey] = useState<SizeKey>('medium')
-  const [zoom, setZoom] = useState(1)
+  const [fontFamily, setFontFamily] = useState(FONT_FAMILIES[0].css)
+  const [fontBold, setFontBold] = useState(false)
+  const [fontItalic, setFontItalic] = useState(false)
+  const [dims, setDims] = useState({ w: 900, h: 560 })
+  const [zoomPct, setZoomPct] = useState(100)
+  const [showGrid, setShowGrid] = useState(false)
   const [recent, setRecent] = useState<string[]>([])
   const [histLen, setHistLen] = useState({ undo: 0, redo: 0 })
   const [dirty, setDirty] = useState(false)
   const [confirm, setConfirm] = useState<'none' | 'clear' | 'close'>('none')
   const [textDraft, setTextDraft] = useState<TextDraft | null>(null)
-  const [shapeMenuOpen, setShapeMenuOpen] = useState(false)
-  const [brushMenuOpen, setBrushMenuOpen] = useState(false)
-  const shapeWrapRef = useRef<HTMLDivElement>(null)
-  const brushWrapRef = useRef<HTMLDivElement>(null)
+  const [menuOpen, setMenuOpen] = useState<MenuKey>(null)
+  const [customW, setCustomW] = useState('900')
+  const [customH, setCustomH] = useState('560')
+  const [scalePct, setScalePct] = useState('100')
 
   const drawing = useRef(false)
   const startPt = useRef<Pt | null>(null)
@@ -334,28 +405,43 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
   const toolRef = useRef(tool)
   const shapeRef = useRef(shape)
   const brushRef = useRef(brush)
-  const shapeFillRef = useRef(shapeFill)
+  const fillModeRef = useRef(fillMode)
+  const lineStyleRef = useRef(lineStyle)
   const colorRef = useRef(color)
+  const bgColorRef = useRef(bgColor)
+  const opacityRef = useRef(opacity)
   const sizeRef = useRef(size)
   const fontSizeRef = useRef(fontSize)
+  const fontFamilyRef = useRef(fontFamily)
+  const fontBoldRef = useRef(fontBold)
+  const fontItalicRef = useRef(fontItalic)
   const shiftRef = useRef(false)
   const selection = useRef<Selection | null>(null)
   const textDraftRef = useRef<TextDraft | null>(null)
   const curveStage = useRef<0 | 1>(0)
   const curveLine = useRef<{ x0: number; y0: number; x1: number; y1: number } | null>(null)
+  const strokeColor = useRef('#000000') // pointerdown 때 결정 (좌클릭 전경/우클릭 배경)
 
   toolRef.current = tool
   shapeRef.current = shape
   brushRef.current = brush
-  shapeFillRef.current = shapeFill
+  fillModeRef.current = fillMode
+  lineStyleRef.current = lineStyle
   colorRef.current = color
+  bgColorRef.current = bgColor
+  opacityRef.current = opacity
   sizeRef.current = size
   fontSizeRef.current = fontSize
+  fontFamilyRef.current = fontFamily
+  fontBoldRef.current = fontBold
+  fontItalicRef.current = fontItalic
   textDraftRef.current = textDraft
 
   const getCtx = useCallback(() => canvasRef.current?.getContext('2d', { willReadFrequently: true }) ?? null, [])
   const getOverlay = useCallback(() => overlayRef.current?.getContext('2d') ?? null, [])
   const syncHistLen = useCallback(() => setHistLen({ undo: undoStack.current.length, redo: redoStack.current.length }), [])
+
+  useEffect(() => { setHexDraft(color) }, [color])
 
   useEffect(() => {
     const ctx = getCtx()
@@ -391,6 +477,17 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
     clearOverlay()
   }
 
+  function floatSelection() {
+    const sel = selection.current
+    const ctx = getCtx()
+    if (!sel || sel.floated || !ctx) return
+    pushHistory()
+    ctx.fillStyle = bgColorRef.current
+    ctx.fillRect(sel.rect.x, sel.rect.y, sel.rect.w, sel.rect.h)
+    sel.floated = true
+    setDirty(true)
+  }
+
   function commitText() {
     const draft = textDraftRef.current
     const ctx = getCtx()
@@ -398,13 +495,18 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
     if (draft.value.trim()) {
       pushHistory()
       ctx.fillStyle = colorRef.current
-      ctx.font = `${fontSizeRef.current}px "Malgun Gothic", "맑은 고딕", sans-serif`
+      ctx.font = `${fontItalicRef.current ? 'italic ' : ''}${fontBoldRef.current ? 'bold ' : ''}${fontSizeRef.current}px ${fontFamilyRef.current}`
       ctx.textBaseline = 'top'
       draft.value.split('\n').forEach((line, i) => ctx.fillText(line, draft.cx, draft.cy + i * fontSizeRef.current * 1.25))
       setDirty(true)
       rememberColor(colorRef.current)
     }
     setTextDraft(null)
+  }
+
+  function applyDims(w: number, h: number) {
+    setDims({ w, h })
+    setCustomW(String(w)); setCustomH(String(h))
   }
 
   const undo = useCallback(() => {
@@ -418,8 +520,7 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
       c.width = prev.width; c.height = prev.height
       const ov = overlayRef.current
       if (ov) { ov.width = prev.width; ov.height = prev.height }
-      const found = CANVAS_SIZES.find((s) => s.w === prev.width && s.h === prev.height)
-      if (found) setSizeKey(found.key)
+      applyDims(prev.width, prev.height)
     }
     ctx.putImageData(prev, 0, 0)
     selection.current = null
@@ -438,8 +539,7 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
       c.width = next.width; c.height = next.height
       const ov = overlayRef.current
       if (ov) { ov.width = next.width; ov.height = next.height }
-      const found = CANVAS_SIZES.find((s) => s.w === next.width && s.h === next.height)
-      if (found) setSizeKey(found.key)
+      applyDims(next.width, next.height)
     }
     ctx.putImageData(next, 0, 0)
     syncHistLen()
@@ -463,46 +563,53 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
     return Math.max(0.5, sizeRef.current * (0.6 + p * 0.8))
   }
 
+  function dashFor(style: LineStyle, w: number): number[] {
+    if (style === 'dash') return [Math.max(4, w * 3), Math.max(3, w * 2)]
+    if (style === 'dot') return [Math.max(1, w), Math.max(3, w * 1.8)]
+    return []
+  }
+
   // ── 자유곡선(연필/브러시/지우개) 렌더 ──
   function paintFreehand(ctx: CanvasRenderingContext2D, last: Pt, pt: Pt) {
     const t = toolRef.current
     const s = sizeRef.current
+    const col = strokeColor.current
+    const op = opacityRef.current / 100
     if (t === 'eraser') {
-      ctx.globalAlpha = 1; ctx.strokeStyle = '#ffffff'; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = s * 3
+      ctx.globalAlpha = 1; ctx.strokeStyle = bgColorRef.current; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = s * 3
       strokeQuad(ctx, last, pt); return
     }
     if (t === 'pen') {
-      ctx.globalAlpha = 1; ctx.strokeStyle = colorRef.current; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = penWidth(pt.p)
-      strokeQuad(ctx, last, pt); return
+      ctx.globalAlpha = op; ctx.strokeStyle = col; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = penWidth(pt.p)
+      strokeQuad(ctx, last, pt); ctx.globalAlpha = 1; return
     }
-    // brush
     const b = brushRef.current
     if (b === 'highlighter') {
-      ctx.globalAlpha = 0.32; ctx.strokeStyle = colorRef.current; ctx.lineCap = 'square'; ctx.lineJoin = 'round'; ctx.lineWidth = s * 3
+      ctx.globalAlpha = 0.32 * op; ctx.strokeStyle = col; ctx.lineCap = 'square'; ctx.lineJoin = 'round'; ctx.lineWidth = s * 3
       strokeQuad(ctx, last, pt); ctx.globalAlpha = 1; return
     }
     if (b === 'marker') {
-      ctx.globalAlpha = 0.9; ctx.strokeStyle = colorRef.current; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = s * 2
+      ctx.globalAlpha = 0.9 * op; ctx.strokeStyle = col; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = s * 2
       strokeQuad(ctx, last, pt); ctx.globalAlpha = 1; return
     }
     if (b === 'round') {
-      ctx.globalAlpha = 1; ctx.strokeStyle = colorRef.current; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = s * 1.6
-      strokeQuad(ctx, last, pt); return
+      ctx.globalAlpha = op; ctx.strokeStyle = col; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = s * 1.6
+      strokeQuad(ctx, last, pt); ctx.globalAlpha = 1; return
     }
     if (b === 'calligraphy') {
-      // 45° 기울어진 납작한 획: 짧은 선분을 각도 고정 폭으로 stamp
       const steps = Math.max(1, Math.hypot(pt.x - last.x, pt.y - last.y) / 2)
-      ctx.strokeStyle = colorRef.current; ctx.globalAlpha = 1; ctx.lineCap = 'butt'; ctx.lineWidth = Math.max(1, s * 0.5)
+      ctx.strokeStyle = col; ctx.globalAlpha = op; ctx.lineCap = 'butt'; ctx.lineWidth = Math.max(1, s * 0.5)
       const nib = s * 1.4
       for (let i = 0; i <= steps; i++) {
         const x = last.x + (pt.x - last.x) * (i / steps)
         const y = last.y + (pt.y - last.y) * (i / steps)
         ctx.beginPath(); ctx.moveTo(x - nib * 0.7, y + nib * 0.7); ctx.lineTo(x + nib * 0.7, y - nib * 0.7); ctx.stroke()
       }
+      ctx.globalAlpha = 1
       return
     }
     if (b === 'airbrush') {
-      ctx.fillStyle = colorRef.current; ctx.globalAlpha = 1
+      ctx.fillStyle = col; ctx.globalAlpha = op
       const radius = s * 2
       const dots = Math.round(radius * 1.5)
       for (let i = 0; i < dots; i++) {
@@ -510,15 +617,16 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
         const rr = Math.sqrt(Math.random()) * radius
         ctx.beginPath(); ctx.arc(pt.x + Math.cos(a) * rr, pt.y + Math.sin(a) * rr, 0.6, 0, Math.PI * 2); ctx.fill()
       }
+      ctx.globalAlpha = 1
       return
     }
     if (b === 'crayon') {
-      ctx.strokeStyle = colorRef.current; ctx.lineCap = 'round'; ctx.lineJoin = 'round'
+      ctx.strokeStyle = col; ctx.lineCap = 'round'; ctx.lineJoin = 'round'
       const steps = Math.max(1, Math.hypot(pt.x - last.x, pt.y - last.y) / 1.5)
       for (let i = 0; i <= steps; i++) {
         const x = last.x + (pt.x - last.x) * (i / steps)
         const y = last.y + (pt.y - last.y) * (i / steps)
-        ctx.globalAlpha = 0.25 + Math.random() * 0.35
+        ctx.globalAlpha = (0.25 + Math.random() * 0.35) * op
         const jx = (Math.random() - 0.5) * s, jy = (Math.random() - 0.5) * s
         ctx.lineWidth = 1 + Math.random() * (s * 0.4)
         ctx.beginPath(); ctx.moveTo(x + jx, y + jy); ctx.lineTo(x + jx + 0.1, y + jy + 0.1); ctx.stroke()
@@ -554,26 +662,48 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
     return { ex, ey }
   }
 
+  function shapePaintOpt(): ShapePaint {
+    // 우클릭 드로잉이면 전경/배경 역할을 맞바꾼다 (MS 그림판 방식)
+    const swapped = strokeColor.current === bgColorRef.current && bgColorRef.current !== colorRef.current
+    return {
+      fillMode: fillModeRef.current,
+      fg: strokeColor.current,
+      bg: swapped ? colorRef.current : bgColorRef.current,
+    }
+  }
+
+  function drawShapePreview(ctx: CanvasRenderingContext2D, start: Pt, ex: number, ey: number) {
+    const sh = shapeRef.current
+    ctx.globalAlpha = opacityRef.current / 100
+    ctx.lineWidth = sizeRef.current
+    ctx.setLineDash(dashFor(lineStyleRef.current, sizeRef.current))
+    drawShape(ctx, sh, start.x, start.y, ex, ey, sizeRef.current, shapePaintOpt())
+    ctx.setLineDash([])
+    ctx.globalAlpha = 1
+  }
+
   function handlePointerDown(e: React.PointerEvent<HTMLCanvasElement>) {
-    if (!e.isPrimary || e.button !== 0) return
+    if (!e.isPrimary) return
+    if (e.button !== 0 && e.button !== 2) return
+    const rightBtn = e.button === 2
     const c = canvasRef.current
     const ctx = getCtx()
     if (!c || !ctx) return
     setConfirm('none')
-    setShapeMenuOpen(false); setBrushMenuOpen(false)
+    setMenuOpen(null)
     const pt = toCanvas(e)
     const t = toolRef.current
+    strokeColor.current = rightBtn ? bgColorRef.current : colorRef.current
 
     if (t === 'zoom') {
-      const idx = ZOOMS.indexOf(zoom as (typeof ZOOMS)[number])
-      setZoom(ZOOMS[(idx + 1) % ZOOMS.length])
+      setZoomPct((z) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, rightBtn ? z / 2 : z * 2)))
       return
     }
 
     if (t === 'eyedropper') {
       const px = ctx.getImageData(Math.max(0, Math.floor(pt.x)), Math.max(0, Math.floor(pt.y)), 1, 1).data
       const hex = rgbToHex(px[0], px[1], px[2])
-      setColor(hex); rememberColor(hex); setTool('pen')
+      if (rightBtn) { setBgColor(hex) } else { setColor(hex); rememberColor(hex); setTool('pen') }
       return
     }
 
@@ -589,8 +719,8 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
 
     if (t === 'fill') {
       pushHistory()
-      const changed = floodFill(ctx, Math.floor(pt.x), Math.floor(pt.y), colorRef.current)
-      if (changed) { setDirty(true); rememberColor(colorRef.current) }
+      const changed = floodFill(ctx, Math.floor(pt.x), Math.floor(pt.y), strokeColor.current)
+      if (changed) { setDirty(true); rememberColor(strokeColor.current) }
       else { undoStack.current.pop(); syncHistLen() }
       return
     }
@@ -601,20 +731,15 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
       curveLine.current = null
       snapshot.current = null
       setDirty(true)
-      rememberColor(colorRef.current)
+      rememberColor(strokeColor.current)
       return
     }
 
     if (t === 'select') {
+      if (rightBtn) return
       const sel = selection.current
       if (sel && pt.x >= sel.rect.x && pt.x <= sel.rect.x + sel.rect.w && pt.y >= sel.rect.y && pt.y <= sel.rect.y + sel.rect.h) {
-        if (!sel.floated) {
-          pushHistory()
-          ctx.fillStyle = '#ffffff'
-          ctx.fillRect(sel.rect.x, sel.rect.y, sel.rect.w, sel.rect.h)
-          sel.floated = true
-          setDirty(true)
-        }
+        floatSelection()
         sel.dragging = true
         sel.offsetX = pt.x - sel.rect.x
         sel.offsetY = pt.y - sel.rect.y
@@ -638,12 +763,14 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
     snapshot.current = ctx.getImageData(0, 0, c.width, c.height)
 
     if (t === 'pen') {
-      ctx.fillStyle = colorRef.current
+      ctx.globalAlpha = opacityRef.current / 100
+      ctx.fillStyle = strokeColor.current
       ctx.beginPath(); ctx.arc(pt.x, pt.y, penWidth(pt.p) / 2, 0, Math.PI * 2); ctx.fill()
+      ctx.globalAlpha = 1
     } else if (t === 'brush' && brushRef.current !== 'airbrush') {
       paintFreehand(ctx, pt, pt)
     } else if (t === 'eraser') {
-      ctx.fillStyle = '#ffffff'
+      ctx.fillStyle = bgColorRef.current
       ctx.beginPath(); ctx.arc(pt.x, pt.y, sizeRef.current * 1.5, 0, Math.PI * 2); ctx.fill()
     }
   }
@@ -655,12 +782,19 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
     const pt = toCanvas(e)
     const t = toolRef.current
 
+    // 상태바 좌표 (리렌더 없이 직접 갱신)
+    if (cursorPosRef.current) cursorPosRef.current.textContent = `${Math.max(0, Math.round(pt.x))}, ${Math.max(0, Math.round(pt.y))}px`
+
     // 곡선 2단계 미리보기
     if (t === 'shape' && shapeRef.current === 'curve' && curveStage.current === 1 && curveLine.current) {
       if (snapshot.current) ctx.putImageData(snapshot.current, 0, 0)
-      ctx.strokeStyle = colorRef.current; ctx.lineWidth = sizeRef.current
       const l = curveLine.current
-      drawShape(ctx, 'curve', l.x0, l.y0, l.x1, l.y1, sizeRef.current, false, { x: pt.x, y: pt.y })
+      ctx.globalAlpha = opacityRef.current / 100
+      ctx.strokeStyle = strokeColor.current; ctx.lineWidth = sizeRef.current
+      ctx.setLineDash(dashFor(lineStyleRef.current, sizeRef.current))
+      drawShape(ctx, 'curve', l.x0, l.y0, l.x1, l.y1, sizeRef.current, shapePaintOpt(), { x: pt.x, y: pt.y })
+      ctx.setLineDash([])
+      ctx.globalAlpha = 1
       return
     }
 
@@ -694,12 +828,7 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
     if (t === 'shape') {
       if (snapshot.current) ctx.putImageData(snapshot.current, 0, 0)
       const { ex, ey } = snapEnd(start, pt)
-      ctx.strokeStyle = colorRef.current
-      ctx.fillStyle = colorRef.current
-      ctx.lineWidth = sizeRef.current
-      const sh = shapeRef.current
-      const fillOn = shapeFillRef.current && CLOSED_SHAPES.includes(sh)
-      drawShape(ctx, sh, start.x, start.y, ex, ey, sizeRef.current, fillOn)
+      drawShapePreview(ctx, start, ex, ey)
     }
   }
 
@@ -745,13 +874,14 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
     if (drawing.current) {
       drawing.current = false
       setDirty(true)
-      if (t !== 'eraser') rememberColor(colorRef.current)
+      if (t !== 'eraser') rememberColor(strokeColor.current)
       try { if (c) c.releasePointerCapture(e.pointerId) } catch { /* 이미 해제됨 */ }
     }
   }
 
   function handlePointerLeave() {
     if (!drawing.current && toolRef.current !== 'select') clearOverlay()
+    if (cursorPosRef.current) cursorPosRef.current.textContent = '—'
   }
 
   function drawCursorPreview(pt: Pt) {
@@ -796,17 +926,17 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
   function selectTool(t: Tool) {
     commitText()
     curveStage.current = 0; curveLine.current = null
-    setShapeMenuOpen(false); setBrushMenuOpen(false)
+    setMenuOpen(null)
     setTool(t)
   }
   function pickShape(s: ShapeType) {
     commitText()
     curveStage.current = 0; curveLine.current = null
-    setShape(s); setTool('shape'); setShapeMenuOpen(false)
+    setShape(s); setTool('shape'); setMenuOpen(null)
   }
   function pickBrush(b: BrushType) {
     commitText()
-    setBrush(b); setTool('brush'); setBrushMenuOpen(false)
+    setBrush(b); setTool('brush'); setMenuOpen(null)
   }
 
   function openImageFile() {
@@ -879,12 +1009,26 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
       if (ctrl && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) { e.preventDefault(); redo(); return }
       if (ctrl && e.key.toLowerCase() === 'o') { e.preventDefault(); openImageFile(); return }
       if (ctrl && e.key.toLowerCase() === 'a') { e.preventDefault(); selectAll(); return }
+      if (ctrl && (e.key === '=' || e.key === '+')) { e.preventDefault(); setZoomPct((z) => Math.min(ZOOM_MAX, z + 25)); return }
+      if (ctrl && (e.key === '-' || e.key === '_')) { e.preventDefault(); setZoomPct((z) => Math.max(ZOOM_MIN, z - 25)); return }
+      if (selection.current && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+        e.preventDefault()
+        floatSelection()
+        const step = e.shiftKey ? 10 : 1
+        const sel = selection.current!
+        if (e.key === 'ArrowLeft') sel.rect.x -= step
+        else if (e.key === 'ArrowRight') sel.rect.x += step
+        else if (e.key === 'ArrowUp') sel.rect.y -= step
+        else sel.rect.y += step
+        renderSelectionOverlay()
+        return
+      }
       if ((e.key === 'Delete' || e.key === 'Backspace') && selection.current) {
         e.preventDefault()
         const ctx = getCtx()
         const sel = selection.current
         if (ctx) {
-          if (!sel.floated) { pushHistory(); ctx.fillStyle = '#ffffff'; ctx.fillRect(sel.rect.x, sel.rect.y, sel.rect.w, sel.rect.h) }
+          if (!sel.floated) { pushHistory(); ctx.fillStyle = bgColorRef.current; ctx.fillRect(sel.rect.x, sel.rect.y, sel.rect.w, sel.rect.h) }
           setDirty(true)
         }
         selection.current = null
@@ -894,6 +1038,7 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
       if (ctrl && e.key.toLowerCase() === 'c' && selection.current) { e.preventDefault(); copySelectionToClipboard(); return }
       if (e.key === 'Escape') {
         e.preventDefault()
+        if (menuOpen) { setMenuOpen(null); return }
         if (textDraftRef.current) { commitText(); return }
         if (curveStage.current === 1) { curveStage.current = 0; curveLine.current = null; snapshot.current = null; setDirty(true); return }
         if (selection.current) { commitFloatingSelection(); return }
@@ -903,7 +1048,7 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [undo, redo])
+  }, [undo, redo, menuOpen])
 
   async function copySelectionToClipboard() {
     const sel = selection.current
@@ -920,6 +1065,20 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
     } catch { /* 클립보드 권한 없으면 무시 */ }
   }
 
+  async function copyCanvasToClipboard() {
+    const c = canvasRef.current
+    if (!c) return
+    commitText(); commitFloatingSelection()
+    try {
+      const blob = await new Promise<Blob | null>((res) => c.toBlob(res, 'image/png'))
+      if (blob && navigator.clipboard && 'write' in navigator.clipboard) {
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+        flash('캔버스를 클립보드에 복사했습니다')
+      }
+    } catch { flash('클립보드 복사에 실패했습니다') }
+    setMenuOpen(null)
+  }
+
   useEffect(() => {
     const down = (e: KeyboardEvent) => { if (e.key === 'Shift') shiftRef.current = true }
     const up = (e: KeyboardEvent) => { if (e.key === 'Shift') shiftRef.current = false }
@@ -930,36 +1089,129 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
 
   // 드롭다운 바깥 클릭 시 닫기
   useEffect(() => {
-    if (!shapeMenuOpen && !brushMenuOpen) return
+    if (!menuOpen) return
     const onDown = (e: PointerEvent) => {
-      if (shapeMenuOpen && shapeWrapRef.current && !shapeWrapRef.current.contains(e.target as Node)) setShapeMenuOpen(false)
-      if (brushMenuOpen && brushWrapRef.current && !brushWrapRef.current.contains(e.target as Node)) setBrushMenuOpen(false)
+      if (!(e.target as HTMLElement | null)?.closest?.('.pcx-dd')) setMenuOpen(null)
     }
     document.addEventListener('pointerdown', onDown)
     return () => document.removeEventListener('pointerdown', onDown)
-  }, [shapeMenuOpen, brushMenuOpen])
+  }, [menuOpen])
 
-  function changeSize(key: SizeKey) {
-    const target = CANVAS_SIZES.find((s) => s.key === key)!
+  // Ctrl+휠 줌 (스크롤 영역)
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey) return
+      e.preventDefault()
+      setZoomPct((z) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z + (e.deltaY < 0 ? 25 : -25))))
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [])
+
+  function resizeCanvasTo(w: number, h: number) {
     const c = canvasRef.current
     const ov = overlayRef.current
     const ctx = getCtx()
-    if (!c || !ctx || (c.width === target.w && c.height === target.h)) { setSizeKey(key); return }
+    if (!c || !ctx) return
+    w = Math.round(Math.min(4000, Math.max(50, w)))
+    h = Math.round(Math.min(4000, Math.max(50, h)))
+    if (c.width === w && c.height === h) return
     commitFloatingSelection()
     pushHistory()
     const old = document.createElement('canvas')
     old.width = c.width; old.height = c.height
     old.getContext('2d')!.drawImage(c, 0, 0)
-    c.width = target.w; c.height = target.h
-    if (ov) { ov.width = target.w; ov.height = target.h }
+    c.width = w; c.height = h
+    if (ov) { ov.width = w; ov.height = h }
     ctx.fillStyle = '#ffffff'
-    ctx.fillRect(0, 0, c.width, c.height)
+    ctx.fillRect(0, 0, w, h)
     ctx.drawImage(old, 0, 0)
-    setSizeKey(key)
+    applyDims(w, h)
     setDirty(true)
   }
 
-  // ── 이미지 편집 ──
+  /** 이미지 배율 조절 — 내용까지 함께 확대/축소 */
+  function scaleImage(pct: number) {
+    const c = canvasRef.current
+    const ov = overlayRef.current
+    const ctx = getCtx()
+    if (!c || !ctx || !Number.isFinite(pct)) return
+    const f = Math.min(4, Math.max(0.1, pct / 100))
+    if (Math.abs(f - 1) < 0.001) return
+    commitFloatingSelection()
+    pushHistory()
+    const old = document.createElement('canvas')
+    old.width = c.width; old.height = c.height
+    old.getContext('2d')!.drawImage(c, 0, 0)
+    const nw = Math.max(50, Math.round(c.width * f))
+    const nh = Math.max(50, Math.round(c.height * f))
+    c.width = nw; c.height = nh
+    if (ov) { ov.width = nw; ov.height = nh }
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, nw, nh)
+    ctx.imageSmoothingQuality = 'high'
+    ctx.drawImage(old, 0, 0, nw, nh)
+    applyDims(nw, nh)
+    setScalePct('100')
+    setDirty(true)
+    setMenuOpen(null)
+  }
+
+  // ── 변형 ──
+  type TransformKind = 'cw' | 'ccw' | 'r180' | 'flipH' | 'flipV'
+  function applyTransform(kind: TransformKind) {
+    const c = canvasRef.current
+    const ov = overlayRef.current
+    const ctx = getCtx()
+    if (!c || !ctx) return
+    commitFloatingSelection()
+    pushHistory()
+    const old = document.createElement('canvas')
+    old.width = c.width; old.height = c.height
+    old.getContext('2d')!.drawImage(c, 0, 0)
+    const rotated = kind === 'cw' || kind === 'ccw'
+    const nw = rotated ? c.height : c.width
+    const nh = rotated ? c.width : c.height
+    c.width = nw; c.height = nh
+    if (ov) { ov.width = nw; ov.height = nh }
+    ctx.save()
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, nw, nh)
+    switch (kind) {
+      case 'cw': ctx.translate(nw, 0); ctx.rotate(Math.PI / 2); break
+      case 'ccw': ctx.translate(0, nh); ctx.rotate(-Math.PI / 2); break
+      case 'r180': ctx.translate(nw, nh); ctx.rotate(Math.PI); break
+      case 'flipH': ctx.translate(nw, 0); ctx.scale(-1, 1); break
+      case 'flipV': ctx.translate(0, nh); ctx.scale(1, -1); break
+    }
+    ctx.drawImage(old, 0, 0)
+    ctx.restore()
+    if (rotated) applyDims(nw, nh)
+    setDirty(true)
+    setMenuOpen(null)
+  }
+
+  // ── 필터 ──
+  function applyFilter(f: string) {
+    const c = canvasRef.current
+    const ctx = getCtx()
+    if (!c || !ctx) return
+    commitFloatingSelection()
+    pushHistory()
+    const old = document.createElement('canvas')
+    old.width = c.width; old.height = c.height
+    old.getContext('2d')!.drawImage(c, 0, 0)
+    ctx.save()
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, c.width, c.height)
+    ctx.filter = f
+    ctx.drawImage(old, 0, 0)
+    ctx.restore()
+    ctx.filter = 'none'
+    setDirty(true)
+    setMenuOpen(null)
+  }
+
   function cropToSelection() {
     const sel = selection.current
     const c = canvasRef.current
@@ -975,45 +1227,7 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
     ctx.putImageData(cut, 0, 0)
     selection.current = null
     clearOverlay()
-    setSizeKey((CANVAS_SIZES.find((s) => s.w === c.width && s.h === c.height)?.key) ?? sizeKey)
-    setDirty(true)
-  }
-
-  function rotate90() {
-    const c = canvasRef.current
-    const ctx = getCtx()
-    const ov = overlayRef.current
-    if (!c || !ctx) return
-    commitFloatingSelection()
-    pushHistory()
-    const old = document.createElement('canvas')
-    old.width = c.width; old.height = c.height
-    old.getContext('2d')!.drawImage(c, 0, 0)
-    const nw = c.height, nh = c.width
-    c.width = nw; c.height = nh
-    if (ov) { ov.width = nw; ov.height = nh }
-    ctx.save()
-    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, nw, nh)
-    ctx.translate(nw, 0); ctx.rotate(Math.PI / 2)
-    ctx.drawImage(old, 0, 0)
-    ctx.restore()
-    setSizeKey((CANVAS_SIZES.find((s) => s.w === nw && s.h === nh)?.key) ?? sizeKey)
-    setDirty(true)
-  }
-
-  function flipH() {
-    const c = canvasRef.current
-    const ctx = getCtx()
-    if (!c || !ctx) return
-    commitFloatingSelection()
-    pushHistory()
-    const old = document.createElement('canvas')
-    old.width = c.width; old.height = c.height
-    old.getContext('2d')!.drawImage(c, 0, 0)
-    ctx.save()
-    ctx.translate(c.width, 0); ctx.scale(-1, 1)
-    ctx.drawImage(old, 0, 0)
-    ctx.restore()
+    applyDims(c.width, c.height)
     setDirty(true)
   }
 
@@ -1045,16 +1259,18 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
     return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`
   }
 
-  function downloadPng() {
+  function downloadAs(type: 'png' | 'jpeg' | 'webp') {
     commitText(); commitFloatingSelection()
     const c = canvasRef.current
     if (!c) return
+    const ext = type === 'jpeg' ? 'jpg' : type
     const a = document.createElement('a')
-    a.href = c.toDataURL('image/png')
-    a.download = `그림-${fileStamp()}.png`
+    a.href = c.toDataURL(`image/${type}`, type === 'png' ? undefined : 0.92)
+    a.download = `그림-${fileStamp()}.${ext}`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
+    setMenuOpen(null)
   }
 
   function insertToMemo() {
@@ -1072,12 +1288,22 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
     onClose()
   }
 
-  const activeSize = CANVAS_SIZES.find((s) => s.key === sizeKey)!
-  const dispW = activeSize.w * zoom
-  const dispH = activeSize.h * zoom
-  const canFill = tool === 'shape' && CLOSED_SHAPES.includes(shape)
+  function applyHex(v: string) {
+    const s = v.trim()
+    if (/^#[0-9a-fA-F]{6}$/.test(s)) { setColor(s.toLowerCase()); rememberColor(s.toLowerCase()) }
+    else setHexDraft(color)
+  }
 
+  const zoom = zoomPct / 100
+  const dispW = dims.w * zoom
+  const dispH = dims.h * zoom
+  const isShapeTool = tool === 'shape' && CLOSED_SHAPES.includes(shape)
   const tileClass = (active: boolean) => 'pcx-tile' + (active ? ' is-active' : '')
+
+  const PALETTE = [
+    '#000000', '#7F7F7F', '#880015', '#ED1C24', '#FF7F27', '#FFF200', '#22B14C', '#00A2E8', '#3F48CC', '#A349A4',
+    '#FFFFFF', '#C3C3C3', '#B97A57', '#FFAEC9', '#FFC90E', '#EFE4B0', '#B5E61D', '#99D9EA', '#7092BE', '#C8BFE7',
+  ]
 
   return (
     <div className="jan-modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) requestClose() }}>
@@ -1088,7 +1314,7 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
         </div>
 
         <div className="pcx-body">
-          {/* ── 리본 (윈도우 그림판 스타일 그룹) ── */}
+          {/* ── 리본 ── */}
           <div className="pcx-ribbon" role="toolbar" aria-label="그림판 도구">
             {/* 편집 */}
             <div className="pcx-group">
@@ -1116,8 +1342,56 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
               <div className="pcx-tiles pcx-tiles-grid">
                 <button type="button" className="pcx-tile" onClick={openImageFile} title="이미지 파일 열기 (Ctrl+O)" aria-label="열기"><ToolIcon name="open" /></button>
                 <button type="button" className="pcx-tile" onClick={cropToSelection} title="선택 영역으로 자르기" aria-label="자르기"><ToolIcon name="crop" /></button>
-                <button type="button" className="pcx-tile" onClick={rotate90} title="90° 회전" aria-label="회전"><ToolIcon name="rotate" /></button>
-                <button type="button" className="pcx-tile" onClick={flipH} title="좌우 대칭" aria-label="대칭"><ToolIcon name="flip" /></button>
+
+                <div className="pcx-dd">
+                  <button type="button" className="pcx-tile" aria-haspopup="menu" aria-expanded={menuOpen === 'transform'} title="회전·대칭" aria-label="회전·대칭" onClick={() => setMenuOpen(menuOpen === 'transform' ? null : 'transform')}><ToolIcon name="transform" /></button>
+                  {menuOpen === 'transform' && (
+                    <div className="pcx-menu" role="menu" aria-label="회전·대칭">
+                      <button type="button" onClick={() => applyTransform('cw')}>시계 방향 90°</button>
+                      <button type="button" onClick={() => applyTransform('ccw')}>반시계 방향 90°</button>
+                      <button type="button" onClick={() => applyTransform('r180')}>180° 회전</button>
+                      <button type="button" onClick={() => applyTransform('flipH')}>좌우 대칭</button>
+                      <button type="button" onClick={() => applyTransform('flipV')}>상하 대칭</button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="pcx-dd">
+                  <button type="button" className="pcx-tile" aria-haspopup="menu" aria-expanded={menuOpen === 'filter'} title="필터·색 보정" aria-label="필터" onClick={() => setMenuOpen(menuOpen === 'filter' ? null : 'filter')}><ToolIcon name="filter" /></button>
+                  {menuOpen === 'filter' && (
+                    <div className="pcx-menu" role="menu" aria-label="필터">
+                      {FILTERS.map((f) => (
+                        <button key={f.label} type="button" onClick={() => applyFilter(f.f)}>{f.label}</button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="pcx-dd">
+                  <button type="button" className="pcx-tile" aria-haspopup="menu" aria-expanded={menuOpen === 'size'} title="캔버스·이미지 크기" aria-label="크기" onClick={() => setMenuOpen(menuOpen === 'size' ? null : 'size')}><ToolIcon name="resize" /></button>
+                  {menuOpen === 'size' && (
+                    <div className="pcx-menu pcx-panel" role="menu" aria-label="크기 조절">
+                      <div className="pcx-panel-title">캔버스 크기</div>
+                      <div className="pcx-panel-row">
+                        {CANVAS_SIZES.map((s) => (
+                          <button key={s.key} type="button" className="pcx-mini" title={s.title} onClick={() => { resizeCanvasTo(s.w, s.h); setMenuOpen(null) }}>{s.label}</button>
+                        ))}
+                      </div>
+                      <div className="pcx-panel-row">
+                        <input type="number" min={50} max={4000} value={customW} onChange={(e) => setCustomW(e.target.value)} aria-label="캔버스 너비" />
+                        <span>×</span>
+                        <input type="number" min={50} max={4000} value={customH} onChange={(e) => setCustomH(e.target.value)} aria-label="캔버스 높이" />
+                        <button type="button" className="pcx-mini" onClick={() => { resizeCanvasTo(Number(customW), Number(customH)); setMenuOpen(null) }}>적용</button>
+                      </div>
+                      <div className="pcx-panel-title">이미지 배율 (내용 포함)</div>
+                      <div className="pcx-panel-row">
+                        <input type="number" min={10} max={400} value={scalePct} onChange={(e) => setScalePct(e.target.value)} aria-label="이미지 배율 %" />
+                        <span>%</span>
+                        <button type="button" className="pcx-mini" onClick={() => scaleImage(Number(scalePct))}>적용</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="pcx-group-label">이미지</div>
             </div>
@@ -1130,8 +1404,8 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
                 <button type="button" className={tileClass(tool === 'fill')} onClick={() => selectTool('fill')} title="채우기" aria-label="채우기"><ToolIcon name="fill" /></button>
                 <button type="button" className={tileClass(tool === 'text')} onClick={() => selectTool('text')} title="텍스트" aria-label="텍스트"><ToolIcon name="text" /></button>
                 <button type="button" className={tileClass(tool === 'eraser')} onClick={() => selectTool('eraser')} title="지우개" aria-label="지우개"><ToolIcon name="eraser" /></button>
-                <button type="button" className={tileClass(tool === 'eyedropper')} onClick={() => selectTool('eyedropper')} title="스포이드" aria-label="스포이드"><ToolIcon name="eyedropper" /></button>
-                <button type="button" className={tileClass(tool === 'zoom')} onClick={() => selectTool('zoom')} title="돋보기" aria-label="돋보기"><ToolIcon name="zoom" /></button>
+                <button type="button" className={tileClass(tool === 'eyedropper')} onClick={() => selectTool('eyedropper')} title="스포이드 (클릭: 전경, 우클릭: 배경)" aria-label="스포이드"><ToolIcon name="eyedropper" /></button>
+                <button type="button" className={tileClass(tool === 'zoom')} onClick={() => selectTool('zoom')} title="돋보기 (클릭 확대·우클릭 축소)" aria-label="돋보기"><ToolIcon name="zoom" /></button>
               </div>
               <div className="pcx-group-label">도구</div>
             </div>
@@ -1140,13 +1414,13 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
             {/* 브러시 */}
             <div className="pcx-group">
               <div className="pcx-tiles">
-                <div className="pcx-dd" ref={brushWrapRef}>
-                  <button type="button" className={'pcx-brush-big' + (tool === 'brush' ? ' is-active' : '')} aria-haspopup="menu" aria-expanded={brushMenuOpen} title="브러시 선택" onClick={() => setBrushMenuOpen((v) => !v)}>
+                <div className="pcx-dd">
+                  <button type="button" className={'pcx-brush-big' + (tool === 'brush' ? ' is-active' : '')} aria-haspopup="menu" aria-expanded={menuOpen === 'brush'} title="브러시 선택" onClick={() => setMenuOpen(menuOpen === 'brush' ? null : 'brush')}>
                     <ToolIcon name="brush" />
                     <span className="pcx-brush-name">{BRUSHES.find((b) => b.id === brush)?.label ?? '붓'}</span>
                     <svg className="pcx-caret" viewBox="0 0 10 6" width="10" height="6" aria-hidden="true"><path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
                   </button>
-                  {brushMenuOpen && (
+                  {menuOpen === 'brush' && (
                     <div className="pcx-menu" role="menu" aria-label="브러시 종류">
                       {BRUSHES.map((b) => (
                         <button key={b.id} type="button" role="menuitemradio" aria-checked={tool === 'brush' && brush === b.id} className={tool === 'brush' && brush === b.id ? 'is-active' : ''} onClick={() => pickBrush(b.id)}>{b.label}</button>
@@ -1175,10 +1449,18 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
                     ><ToolIcon name={s.icon} /></button>
                   ))}
                 </div>
-                <label className={'pcx-fill-toggle' + (canFill ? '' : ' is-disabled')} title="도형 안쪽을 색으로 채우기">
-                  <input type="checkbox" checked={shapeFill} disabled={!canFill} onChange={(e) => setShapeFill(e.target.checked)} />
-                  <span>채우기</span>
-                </label>
+                <select
+                  className="pcx-fill-select"
+                  value={fillMode}
+                  disabled={!isShapeTool}
+                  onChange={(e) => setFillMode(e.target.value as FillMode)}
+                  aria-label="도형 채우기 방식"
+                  title="도형 채우기 — 윤곽선: 전경색 / 채우기: 배경색"
+                >
+                  <option value="outline">윤곽선</option>
+                  <option value="both">윤곽+채움</option>
+                  <option value="fill">채우기만</option>
+                </select>
               </div>
               <div className="pcx-group-label">도형</div>
             </div>
@@ -1187,20 +1469,36 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
             {/* 색 */}
             <div className="pcx-group">
               <div className="pcx-color-area">
-                <div className="pcx-current-color" title="현재 색" style={{ background: color }} aria-hidden="true" />
-                <div className="pcx-swatch-grid" role="group" aria-label="색상 팔레트">
+                <div className="pcx-fgbg" title="전경색(위)·배경색(아래) — 우클릭 그리기는 배경색">
+                  <button type="button" className="pcx-fg" style={{ background: color }} aria-label={`전경색 ${color}`} onClick={() => setMenuOpen(null)} />
+                  <button type="button" className="pcx-bg" style={{ background: bgColor }} aria-label={`배경색 ${bgColor}`} onClick={() => setMenuOpen(null)} />
+                  <button type="button" className="pcx-swap" title="전경·배경색 교환" aria-label="전경 배경색 교환" onClick={() => { const f = color; setColor(bgColor); setBgColor(f) }}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 10L3 14l4 4" /><path d="M3 14h13" /><path d="M17 4l4 4-4 4" /><path d="M21 8H8" /></svg>
+                  </button>
+                </div>
+                <div className="pcx-swatch-grid" role="group" aria-label="색상 팔레트 (클릭: 전경, 우클릭: 배경)">
                   {PALETTE.map((c) => (
-                    <button key={c} type="button" className={'pcx-swatch' + (color === c ? ' is-active' : '')} style={{ background: c }} aria-label={`색상 ${c}`} aria-pressed={color === c} title={c} onClick={() => setColor(c)} />
+                    <button
+                      key={c}
+                      type="button"
+                      className={'pcx-swatch' + (color === c ? ' is-active' : '')}
+                      style={{ background: c }}
+                      aria-label={`색상 ${c}`}
+                      aria-pressed={color === c}
+                      title={`${c} (클릭: 전경 / 우클릭: 배경)`}
+                      onClick={() => setColor(c)}
+                      onContextMenu={(e) => { e.preventDefault(); setBgColor(c) }}
+                    />
                   ))}
                 </div>
-                <label className="pcx-color-custom" title="사용자 지정 색상">
+                <label className="pcx-color-custom" title="사용자 지정 색상 (전경색)">
                   <input type="color" value={color} onChange={(e) => setColor(e.target.value)} aria-label="사용자 지정 색상" />
                   <span>+</span>
                 </label>
                 {recent.length > 0 && (
                   <div className="pcx-recent" role="group" aria-label="최근 색상">
                     {recent.slice(0, 10).map((c, i) => (
-                      <button key={c + i} type="button" className="pcx-swatch pcx-swatch-sm" style={{ background: c }} aria-label={`최근 색상 ${c}`} title={c} onClick={() => setColor(c)} />
+                      <button key={c + i} type="button" className="pcx-swatch pcx-swatch-sm" style={{ background: c }} aria-label={`최근 색상 ${c}`} title={c} onClick={() => setColor(c)} onContextMenu={(e) => { e.preventDefault(); setBgColor(c) }} />
                     ))}
                   </div>
                 )}
@@ -1209,7 +1507,7 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
             </div>
           </div>
 
-          {/* ── 굵기/글자크기/줌 옵션 줄 ── */}
+          {/* ── 서브바 ── */}
           <div className="pcx-subbar">
             <div className="pcx-slider">
               <label>
@@ -1219,45 +1517,90 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
                 <b>{size}</b>
               </label>
             </div>
-            {tool === 'text' && (
-              <div className="pcx-slider">
-                <label>
-                  <span>글자 크기</span>
-                  <select value={fontSize} onChange={(e) => setFontSize(Number(e.target.value))} aria-label="글자 크기">
-                    {FONT_SIZES.map((n) => <option key={n} value={n}>{n}px</option>)}
-                  </select>
-                </label>
-              </div>
-            )}
-            <span className="flex-spacer" />
-            <div className="pcx-canvas-sizes" role="group" aria-label="캔버스 크기">
-              <span>캔버스</span>
-              {CANVAS_SIZES.map((s) => (
-                <button key={s.key} type="button" className={'pcx-mini' + (sizeKey === s.key ? ' is-active' : '')} aria-pressed={sizeKey === s.key} title={s.title} onClick={() => changeSize(s.key)}>{s.label}</button>
-              ))}
+            <div className="pcx-slider">
+              <label>
+                <span>불투명도</span>
+                <input type="range" min={5} max={100} value={opacity} onChange={(e) => setOpacity(Number(e.target.value))} aria-label="불투명도" style={{ width: 90 }} />
+                <b>{opacity}%</b>
+              </label>
             </div>
+            <div className="pcx-slider">
+              <label>
+                <span>선 스타일</span>
+                <select value={lineStyle} onChange={(e) => setLineStyle(e.target.value as LineStyle)} aria-label="선 스타일 (도형·직선에 적용)">
+                  <option value="solid">실선</option>
+                  <option value="dash">파선</option>
+                  <option value="dot">점선</option>
+                </select>
+              </label>
+            </div>
+            <div className="pcx-slider">
+              <label>
+                <span>HEX</span>
+                <input
+                  className="pcx-hex"
+                  value={hexDraft}
+                  onChange={(e) => setHexDraft(e.target.value)}
+                  onBlur={(e) => applyHex(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyHex((e.target as HTMLInputElement).value) } e.stopPropagation() }}
+                  aria-label="HEX 색상 코드"
+                  placeholder="#000000"
+                  maxLength={7}
+                />
+              </label>
+            </div>
+            {tool === 'text' && (
+              <>
+                <div className="pcx-slider">
+                  <label>
+                    <span>글꼴</span>
+                    <select value={fontFamily} onChange={(e) => setFontFamily(e.target.value)} aria-label="글꼴">
+                      {FONT_FAMILIES.map((f) => <option key={f.label} value={f.css}>{f.label}</option>)}
+                    </select>
+                    <select value={fontSize} onChange={(e) => setFontSize(Number(e.target.value))} aria-label="글자 크기">
+                      {FONT_SIZES.map((n) => <option key={n} value={n}>{n}px</option>)}
+                    </select>
+                  </label>
+                </div>
+                <button type="button" className={'pcx-mini pcx-b' + (fontBold ? ' is-active' : '')} aria-pressed={fontBold} title="굵게" onClick={() => setFontBold((v) => !v)}>B</button>
+                <button type="button" className={'pcx-mini pcx-i' + (fontItalic ? ' is-active' : '')} aria-pressed={fontItalic} title="기울임" onClick={() => setFontItalic((v) => !v)}>I</button>
+              </>
+            )}
+            <label className="pcx-grid-toggle" title="20px 격자 표시 (그리기 보조선, 저장에는 포함되지 않음)">
+              <input type="checkbox" checked={showGrid} onChange={(e) => setShowGrid(e.target.checked)} />
+              <span>격자</span>
+            </label>
+            <span className="flex-spacer" />
             <div className="pcx-zoom" role="group" aria-label="확대">
               <span>확대</span>
-              {ZOOMS.map((z) => (
-                <button key={z} type="button" className={'pcx-mini' + (zoom === z ? ' is-active' : '')} aria-pressed={zoom === z} onClick={() => setZoom(z)}>{z * 100}%</button>
-              ))}
+              <input type="range" min={ZOOM_MIN} max={ZOOM_MAX} step={25} value={zoomPct} onChange={(e) => setZoomPct(Number(e.target.value))} aria-label="확대 비율" style={{ width: 120 }} />
+              <b className="pcx-zoom-val">{zoomPct}%</b>
+              <button type="button" className="pcx-mini" onClick={() => setZoomPct(100)} title="100%로 재설정">100%</button>
             </div>
           </div>
 
-          <div className="pcx-canvas-scroll">
+          <div className="pcx-canvas-scroll" ref={scrollRef}>
             <div className="pcx-canvas-box" style={{ width: dispW, height: dispH }}>
               <canvas
                 ref={canvasRef}
-                width={activeSize.w}
-                height={activeSize.h}
+                width={dims.w}
+                height={dims.h}
                 className={'pcx-canvas pcx-tool-' + tool}
                 style={{ width: dispW, height: dispH, touchAction: 'none' }}
                 onPointerDown={handlePointerDown}
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerUp}
                 onPointerLeave={handlePointerLeave}
+                onContextMenu={(e) => e.preventDefault()}
               />
-              <canvas ref={overlayRef} width={activeSize.w} height={activeSize.h} className="pcx-overlay" style={{ width: dispW, height: dispH }} aria-hidden="true" />
+              <canvas ref={overlayRef} width={dims.w} height={dims.h} className="pcx-overlay" style={{ width: dispW, height: dispH }} aria-hidden="true" />
+              {showGrid && (
+                <div
+                  className="pcx-grid-overlay"
+                  aria-hidden="true"
+                  style={{ backgroundSize: `${20 * zoom}px ${20 * zoom}px` }}
+                />
+              )}
               {textDraft && (
                 <textarea
                   className="pcx-text-input"
@@ -1272,7 +1615,16 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
                   }}
                   aria-label="캔버스에 넣을 텍스트 입력"
                   placeholder="입력 후 Enter (Shift+Enter 줄바꿈)"
-                  style={{ left: textDraft.dx * zoom, top: textDraft.dy * zoom, color, fontSize: fontSize * textDraft.scale, lineHeight: 1.25 }}
+                  style={{
+                    left: textDraft.dx,
+                    top: textDraft.dy,
+                    color,
+                    fontSize: fontSize * textDraft.scale,
+                    lineHeight: 1.25,
+                    fontFamily,
+                    fontWeight: fontBold ? 700 : 400,
+                    fontStyle: fontItalic ? 'italic' : 'normal',
+                  }}
                 />
               )}
             </div>
@@ -1282,7 +1634,24 @@ export function PaintCanvas({ editor, onClose }: PaintCanvasProps) {
         <div className="pcx-foot">
           <span className="pcx-foot-note">{toolHint(tool, shape, brush)}</span>
           <span className="flex-spacer" />
-          <button type="button" className="pcx-btn" onClick={downloadPng} aria-label="PNG 파일로 다운로드" title="PNG 다운로드">PNG 다운로드</button>
+          <span className="pcx-status" aria-label="상태">
+            <span ref={cursorPosRef}>—</span>
+            <span className="pcx-status-sep" />
+            <span>{dims.w}×{dims.h}px</span>
+            <span className="pcx-status-sep" />
+            <span>{zoomPct}%</span>
+          </span>
+          <div className="pcx-dd">
+            <button type="button" className="pcx-btn" aria-haspopup="menu" aria-expanded={menuOpen === 'export'} onClick={() => setMenuOpen(menuOpen === 'export' ? null : 'export')} title="다른 형식으로 내보내기">내보내기</button>
+            {menuOpen === 'export' && (
+              <div className="pcx-menu pcx-menu-up" role="menu" aria-label="내보내기">
+                <button type="button" onClick={() => downloadAs('png')}>PNG 다운로드</button>
+                <button type="button" onClick={() => downloadAs('jpeg')}>JPG 다운로드</button>
+                <button type="button" onClick={() => downloadAs('webp')}>WebP 다운로드</button>
+                <button type="button" onClick={copyCanvasToClipboard}>클립보드에 복사</button>
+              </div>
+            )}
+          </div>
           <button type="button" className="pcx-btn pcx-btn-primary" onClick={insertToMemo} disabled={!editor} aria-label="메모에 삽입" title="메모에 이미지로 삽입">메모에 삽입</button>
         </div>
 
