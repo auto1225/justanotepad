@@ -5393,3 +5393,30 @@ html, body, #root {
 .jan-theme-dark .jan-ms-recent button,
 .jan-theme-dark .jan-ms-btn:not(.jan-ms-btn-primary) { background: #2c2c2c; border-color: #4a4a4a; color: #e0e0e0; }
 .jan-theme-dark .jan-ms-tabs button:hover { background: rgba(255,255,255,0.08); }
+
+/* 수식 스튜디오 2단계 — 자동완성·분야 필터 */
+.jan-ms-input-wrap { position: relative; }
+.jan-ms-ac {
+  position: absolute; left: 8px; top: calc(100% + 2px); z-index: 40;
+  display: flex; flex-direction: column; min-width: 320px; max-width: 90%;
+  background: var(--paper, #fff); border: 1px solid var(--paper-edge, #ccc);
+  border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.18); overflow: hidden;
+}
+.jan-ms-ac button {
+  display: flex; align-items: center; gap: 10px; padding: 6px 10px;
+  border: 0; background: transparent; cursor: pointer; text-align: left; font-family: inherit;
+}
+.jan-ms-ac button.is-sel { background: rgba(217,119,87,0.14); }
+.jan-ms-ac button code { font-size: 12px; font-family: Consolas, monospace; color: var(--accent, #D97757); min-width: 110px; }
+.jan-ms-ac button small { font-size: 10.5px; color: #888; margin-left: auto; }
+.jan-ms-fields { display: flex; flex-wrap: wrap; gap: 3px; }
+.jan-ms-fields button {
+  padding: 3px 9px; border: 1px solid var(--paper-edge, #ddd); background: var(--paper, #fff);
+  border-radius: 20px; font-size: 11.5px; cursor: pointer; font-family: inherit; color: inherit;
+}
+.jan-ms-fields button.is-active { background: var(--accent, #D97757); border-color: var(--accent, #D97757); color: #fff; }
+.jan-theme-dark .jan-ms-ac { background: #2c2c2c; border-color: #4a4a4a; }
+.jan-theme-dark .jan-ms-ac button.is-sel { background: rgba(217,119,87,0.25); }
+.jan-theme-dark .jan-ms-fields button { background: #2c2c2c; border-color: #4a4a4a; }
+.jan-theme-dark .jan-ms-fields button.is-active { background: var(--accent, #D97757); }
+.jan-ms-sym-render { max-width: 340px; overflow-x: hidden; display: inline-block; }

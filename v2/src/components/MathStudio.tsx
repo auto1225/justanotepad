@@ -1,9 +1,28 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Editor } from '@tiptap/react'
 import katex from 'katex'
-import { MATH_SYMBOL_GROUPS, MATH_TEMPLATES2, MATH_SNIPPETS, type Sym } from '../lib/mathSymbols'
+import { MATH_SYMBOL_GROUPS, MATH_TEMPLATES2, type Sym } from '../lib/mathSymbols'
+import { FORMULA_LIBRARY, FORMULA_FIELDS, PHYSICAL_CONSTANTS } from '../lib/formulaLibrary'
 import { insertNumberedEquation } from '../lib/paperRefs'
 import { flash } from '../lib/flash'
+
+/** 자동완성 후보 — 팔레트 전 항목에서 \명령 만 추출 + 자주 쓰는 명령 보강 */
+const AUTOCOMPLETE_COMMANDS: Sym[] = (() => {
+  const seen = new Map<string, Sym>()
+  const add = (tex: string, tip: string) => {
+    const m = tex.match(/^\\[a-zA-Z]+/)
+    if (!m) return
+    if (!seen.has(tex)) seen.set(tex, { tex, tip })
+  }
+  for (const g of MATH_SYMBOL_GROUPS) for (const s of g.items) add(s.tex, s.tip)
+  for (const s of MATH_TEMPLATES2) add(s.tex, s.tip)
+  ;[
+    ['\\frac{□}{□}', 'fraction'], ['\\sqrt{□}', 'sqrt'], ['\\text{□}', 'text'], ['\\mathbf{□}', 'bold'],
+    ['\\mathrm{□}', 'roman'], ['\\mathcal{□}', 'calligraphic'], ['\\mathbb{□}', 'blackboard'], ['\\boldsymbol{□}', 'bold symbol'],
+    ['\\ce{□}', 'chemistry'], ['\\cdots', 'cdots'], ['\\ldots', 'ldots'], ['\\quad', 'quad space'], ['\\qquad', 'wide space'],
+  ].forEach(([t, tip]) => add(t, tip))
+  return [...seen.values()]
+})()
 
 /**
  * 수식 스튜디오 — 전 이공계 수식 편집기.
@@ -70,18 +89,62 @@ export function MathStudio({ editor, onClose, initial = '', onSave }: MathStudio
   const [tab, setTab] = useState<string>('templates')
   const [query, setQuery] = useState('')
   const [recent, setRecent] = useState<Sym[]>(() => loadRecent())
+  const [fieldFilter, setFieldFilter] = useState<string>('전체')
+  const [ac, setAc] = useState<{ items: Sym[]; sel: number; word: string } | null>(null)
   const taRef = useRef<HTMLTextAreaElement>(null)
+
+  /** 자동완성 — 커서 앞의 \명령 조각을 찾아 후보 제시 */
+  function updateAutocomplete(value: string, caret: number) {
+    const before = value.slice(0, caret)
+    const m = before.match(/\\([a-zA-Z]{1,20})$/)
+    if (!m) { setAc(null); return }
+    const word = m[0] // 예: \fr
+    const items = AUTOCOMPLETE_COMMANDS
+      .filter((c) => c.tex.toLowerCase().startsWith(word.toLowerCase()) && c.tex !== word)
+      .slice(0, 8)
+    setAc(items.length ? { items, sel: 0, word } : null)
+  }
+
+  function acceptAutocomplete(item: Sym) {
+    const ta = taRef.current
+    if (!ta || !ac) return
+    const caret = ta.selectionStart ?? 0
+    const before = latex.slice(0, caret - ac.word.length)
+    const after = latex.slice(caret)
+    const next = before + item.tex + after
+    setLatex(next)
+    setAc(null)
+    requestAnimationFrame(() => {
+      ta.focus()
+      const phIdx = next.indexOf(PLACEHOLDER, before.length)
+      if (phIdx >= 0 && phIdx < before.length + item.tex.length) ta.setSelectionRange(phIdx, phIdx + 1)
+      else { const p = before.length + item.tex.length; ta.setSelectionRange(p, p) }
+    })
+  }
+
+  const acOpenRef = useRef(false)
+  acOpenRef.current = !!ac
 
   useEffect(() => {
     taRef.current?.focus()
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (acOpenRef.current) { e.stopPropagation(); window.dispatchEvent(new Event('jan-ms-close-ac')); return }
+        onClose()
+      }
+    }
+    const closeAc = () => setAc(null)
     document.addEventListener('keydown', onKey, true)
-    return () => document.removeEventListener('keydown', onKey, true)
+    window.addEventListener('jan-ms-close-ac', closeAc)
+    return () => {
+      document.removeEventListener('keydown', onKey, true)
+      window.removeEventListener('jan-ms-close-ac', closeAc)
+    }
   }, [onClose])
 
   const previewHtml = useMemo(() => (latex.trim() ? renderKatex(latex, true) : '<span class="jan-ms-hint">기호를 클릭하거나 LaTeX 를 입력하세요</span>'), [latex])
 
-  /** 통합 검색 — 모든 그룹·템플릿·공식에서 */
+  /** 통합 검색 — 기호·구조·공식 110+·물리상수 전부에서 (한글·영문·별칭·LaTeX) */
   const searchResults = useMemo(() => {
     const q = query.trim().toLowerCase()
     if (!q) return null
@@ -94,9 +157,14 @@ export function MathStudio({ editor, onClose, initial = '', onSave }: MathStudio
     for (const s of MATH_TEMPLATES2) {
       if (s.tip.toLowerCase().includes(q) || s.tex.toLowerCase().includes(q)) out.push({ ...s, badge: '구조' })
     }
-    for (const s of MATH_SNIPPETS) {
-      if (s.label.toLowerCase().includes(q) || s.field.toLowerCase().includes(q) || s.tex.toLowerCase().includes(q)) {
-        out.push({ tex: s.tex, tip: `${s.field} · ${s.label}`, badge: '공식' })
+    for (const f of FORMULA_LIBRARY) {
+      if (f.label.toLowerCase().includes(q) || f.field.toLowerCase().includes(q) || (f.alias || '').toLowerCase().includes(q) || f.tex.toLowerCase().includes(q)) {
+        out.push({ tex: f.tex, tip: `${f.field} · ${f.label}`, badge: '공식' })
+      }
+    }
+    for (const c of PHYSICAL_CONSTANTS) {
+      if (c.label.toLowerCase().includes(q) || c.sym.toLowerCase().includes(q) || c.value.toLowerCase().includes(q)) {
+        out.push({ tex: c.value, tip: `상수 · ${c.label}`, badge: '상수' })
       }
     }
     return out.slice(0, 60)
@@ -109,8 +177,13 @@ export function MathStudio({ editor, onClose, initial = '', onSave }: MathStudio
     setRecent(loadRecent())
   }
 
-  /** Tab: 다음 □ 선택, Shift+Tab: 이전 □ */
+  /** 자동완성 내비게이션 + Tab: 다음 □ 선택, Shift+Tab: 이전 □ */
   function onTaKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (ac) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setAc({ ...ac, sel: (ac.sel + 1) % ac.items.length }); return }
+      if (e.key === 'ArrowUp') { e.preventDefault(); setAc({ ...ac, sel: (ac.sel - 1 + ac.items.length) % ac.items.length }); return }
+      if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); acceptAutocomplete(ac.items[ac.sel]); return }
+    }
     if (e.key !== 'Tab') return
     const ta = taRef.current
     if (!ta || !ta.value.includes(PLACEHOLDER)) return
@@ -154,9 +227,13 @@ export function MathStudio({ editor, onClose, initial = '', onSave }: MathStudio
 
   const activeItems: Array<Sym & { badge?: string }> = useMemo(() => {
     if (tab === 'templates') return MATH_TEMPLATES2
-    if (tab === 'snippets') return MATH_SNIPPETS.map((s) => ({ tex: s.tex, tip: `${s.field} · ${s.label}` }))
+    if (tab === 'snippets') {
+      const list = fieldFilter === '전체' ? FORMULA_LIBRARY : FORMULA_LIBRARY.filter((f) => f.field === fieldFilter)
+      return list.map((f) => ({ tex: f.tex, tip: `${f.field} · ${f.label}`, badge: '공식' }))
+    }
+    if (tab === 'constants') return PHYSICAL_CONSTANTS.map((c) => ({ tex: c.value, tip: c.label, badge: '상수' }))
     return MATH_SYMBOL_GROUPS.find((g) => g.key === tab)?.items ?? []
-  }, [tab])
+  }, [tab, fieldFilter])
 
   const shownItems = searchResults ?? activeItems
 
@@ -173,17 +250,38 @@ export function MathStudio({ editor, onClose, initial = '', onSave }: MathStudio
           <div className="jan-ms-preview" aria-live="polite" dangerouslySetInnerHTML={{ __html: previewHtml }} />
 
           {/* LaTeX 입력 */}
-          <textarea
-            ref={taRef}
-            className="jan-ms-input"
-            value={latex}
-            onChange={(e) => setLatex(e.target.value)}
-            onKeyDown={onTaKeyDown}
-            placeholder="LaTeX 입력 — 예: \frac{a}{b},  \ce{H2O},  Tab 키로 □ 칸 이동"
-            rows={3}
-            spellCheck={false}
-            aria-label="LaTeX 수식 입력"
-          />
+          <div className="jan-ms-input-wrap">
+            <textarea
+              ref={taRef}
+              className="jan-ms-input"
+              value={latex}
+              onChange={(e) => { setLatex(e.target.value); updateAutocomplete(e.target.value, e.target.selectionStart ?? e.target.value.length) }}
+              onKeyDown={onTaKeyDown}
+              onBlur={() => window.setTimeout(() => setAc(null), 150)}
+              placeholder={'LaTeX 입력 — \\ 를 치면 자동완성, Tab 으로 □ 칸 이동, 예: \\frac \\ce{H2O}'}
+              rows={3}
+              spellCheck={false}
+              aria-label="LaTeX 수식 입력"
+            />
+            {ac && (
+              <div className="jan-ms-ac" role="listbox" aria-label="LaTeX 자동완성">
+                {ac.items.map((it, i) => (
+                  <button
+                    key={it.tex}
+                    type="button"
+                    role="option"
+                    aria-selected={i === ac.sel}
+                    className={i === ac.sel ? 'is-sel' : ''}
+                    onMouseDown={(e) => { e.preventDefault(); acceptAutocomplete(it) }}
+                  >
+                    <code>{it.tex.length > 28 ? it.tex.slice(0, 28) + '…' : it.tex}</code>
+                    <span dangerouslySetInnerHTML={{ __html: renderKatex(it.tex, false) }} />
+                    <small>{it.tip}</small>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
           {/* 검색 + 탭 */}
           <div className="jan-ms-toolrow">
@@ -201,7 +299,15 @@ export function MathStudio({ editor, onClose, initial = '', onSave }: MathStudio
               {MATH_SYMBOL_GROUPS.map((g) => (
                 <button key={g.key} role="tab" aria-selected={tab === g.key} className={tab === g.key ? 'is-active' : ''} onClick={() => setTab(g.key)}>{g.label}</button>
               ))}
-              <button role="tab" aria-selected={tab === 'snippets'} className={tab === 'snippets' ? 'is-active' : ''} onClick={() => setTab('snippets')}>공식</button>
+              <button role="tab" aria-selected={tab === 'snippets'} className={tab === 'snippets' ? 'is-active' : ''} onClick={() => setTab('snippets')}>공식 {FORMULA_LIBRARY.length}</button>
+              <button role="tab" aria-selected={tab === 'constants'} className={tab === 'constants' ? 'is-active' : ''} onClick={() => setTab('constants')}>상수</button>
+            </div>
+          )}
+          {!searchResults && tab === 'snippets' && (
+            <div className="jan-ms-fields" role="group" aria-label="분야 필터">
+              {['전체', ...FORMULA_FIELDS].map((f) => (
+                <button key={f} type="button" className={fieldFilter === f ? 'is-active' : ''} onClick={() => setFieldFilter(f)}>{f}</button>
+              ))}
             </div>
           )}
 
@@ -215,8 +321,8 @@ export function MathStudio({ editor, onClose, initial = '', onSave }: MathStudio
                 title={`${s.tip}${s.badge ? ` (${s.badge})` : ''} — ${s.tex}`}
                 onClick={() => pick(s)}
               >
-                <span dangerouslySetInnerHTML={{ __html: renderKatex(s.tex.length > 60 ? s.tex.slice(0, 60) : s.tex, false) }} />
-                {(tab === 'snippets' || s.badge === '공식') && <small>{s.tip}</small>}
+                <span className="jan-ms-sym-render" dangerouslySetInnerHTML={{ __html: renderKatex(s.tex, false) }} />
+                {(tab === 'snippets' || tab === 'constants' || s.badge === '공식' || s.badge === '상수') && <small>{s.tip}</small>}
               </button>
             ))}
             {shownItems.length === 0 && <div className="jan-ms-empty">검색 결과 없음</div>}
