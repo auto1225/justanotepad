@@ -371,16 +371,16 @@ export function Toolbar(p: ToolbarProps) {
   const openPageSettings = () => p.onPageSettings()
 
   /* === 책갈피 / 텍스트 상자 / 구분선 스타일 === */
-  const insertBookmark = () => {
-    const id = window.prompt('책갈피 ID (앵커):', 'bm-' + Date.now()); if (!id) return
+  const insertBookmark = async () => {
+    const id = await askText('책갈피 ID (앵커):', 'bm-' + Date.now()); if (!id) return
     // 스키마에 커스텀 앵커 노드가 없어 원시 HTML 은 텍스트로 노출된다 — 눈에 보이는 라벨로 삽입
     const safe = id.replace(/[<>&"]/g, '')
     insertHTML(`<span data-bookmark="${safe}" style="background:rgba(217,119,87,0.15);border-radius:3px;padding:0 4px;font-size:0.85em;">[${safe}]</span>&nbsp;`)
     flash(`책갈피 "${safe}" 를 삽입했습니다`)
   }
   const insertTextBox = () => insertHTML('<div data-callout data-kind="info"><p>여기에 텍스트를 입력하세요.</p></div>')
-  const insertHrStyle = () => {
-    const s = window.prompt('구분선 스타일 (1=실선, 2=점선, 3=이중선, 4=별표):', '1')
+  const insertHrStyle = async () => {
+    const s = await askText('구분선 스타일 — 1: 실선 · 2: 점선 · 3: 이중선 · 4: 별표', '1')
     const styles: Record<string, string> = {
       '1': '<hr data-variant="solid" />',
       '2': '<hr data-variant="dashed" />',
@@ -388,6 +388,24 @@ export function Toolbar(p: ToolbarProps) {
       '4': '<p style="text-align:center">＊ ＊ ＊</p>',
     }
     if (s && styles[s]) insertHTML(styles[s])
+  }
+
+  /* === CSV/TSV → 표 변환 (스프레드시트 붙여넣기) === */
+  const insertTableFromCsv = async () => {
+    const raw = await askText('표로 만들 데이터 붙여넣기 (엑셀/시트에서 복사한 그대로 — 탭·쉼표 자동 감지)', '', { multiline: true, placeholder: '이름,나이,직업\n김철수,29,개발자\n이영희,34,디자이너' })
+    if (!raw || !raw.trim()) return
+    const lines = raw.replace(/\r/g, '').split('\n').filter((l) => l.trim() !== '')
+    if (lines.length === 0) return
+    // 구분자 자동 감지: 탭 우선, 다음 쉼표, 다음 세미콜론
+    const delim = lines[0].includes('\t') ? '\t' : lines[0].includes(',') ? ',' : lines[0].includes(';') ? ';' : null
+    const esc = (v: string) => v.trim().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    const rows = lines.map((l) => (delim ? l.split(delim) : [l]).map(esc))
+    const cols = Math.max(...rows.map((r) => r.length))
+    const norm = rows.map((r) => [...r, ...Array(Math.max(0, cols - r.length)).fill('')])
+    const head = '<tr>' + norm[0].map((c) => `<th>${c}</th>`).join('') + '</tr>'
+    const body = norm.slice(1).map((r) => '<tr>' + r.map((c) => `<td>${c}</td>`).join('') + '</tr>').join('')
+    insertHTML(`<table>${head}${body}</table>`)
+    flash(`표 변환 완료 — ${norm.length}행 × ${cols}열 (첫 행은 머리글)`)
   }
 
   /* === 특수 문자 === */
@@ -760,6 +778,7 @@ export function Toolbar(p: ToolbarProps) {
     {
       label: '삽입', items: [
         { label: '표 (3×3)', icon: 'table', onClick: () => run(insertTable) },
+        { label: '표로 붙여넣기 (CSV·엑셀 데이터)', icon: 'table', onClick: () => run(() => { void insertTableFromCsv() }) },
         { label: '이미지 URL', icon: 'image', onClick: () => run(insertImageURL) },
         { label: '이미지 업로드', icon: 'image', onClick: () => run(uploadImage) },
         { label: '링크', hint: 'Ctrl+K', icon: 'link', onClick: () => run(toggleLink) },
@@ -779,7 +798,7 @@ export function Toolbar(p: ToolbarProps) {
         { label: '텍스트 상자', icon: 'box', onClick: () => run(insertTextBox) },
         { label: '구분선 스타일', icon: 'minus', onClick: () => run(insertHrStyle) },
         { divider: '특수 노드', label: '' },
-        { label: '수식 (LaTeX)', icon: 'hash', onClick: () => run(async () => { const t = await askText('LaTeX 수식:', '', { placeholder: 'E = mc^2' }); if (t) (editor.chain() as any).focus().setMath(t).run() }) },
+        { label: '수식 — 수식 스튜디오 (전 분야)', icon: 'hash', onClick: () => run(() => setMathStudio({ initial: '' })) },
         { label: '다이어그램 (Mermaid)', icon: 'hash', onClick: () => run(async () => { const c = await askText('Mermaid 다이어그램:', 'graph TD\n  A-->B', { multiline: true }); if (c) (editor.chain() as any).focus().setMermaid(c).run() }) },
         { label: '콜아웃 (정보)', icon: 'info', onClick: () => run(() => (editor.chain() as any).focus().setCallout('info').run()) },
         { label: '콜아웃 (경고)', icon: 'bell', onClick: () => run(() => (editor.chain() as any).focus().setCallout('warn').run()) },
