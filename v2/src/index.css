@@ -5282,3 +5282,47 @@ html, body, #root {
   color: #C62828;
 }
 .jan-theme-dark .jan-paper-doi-row input { background: #2e2e2e; border-color: #4a4a4a; color: #e0e0e0; }
+
+/* ── 논문 확장: 검사 리포트·수식 템플릿·인용 도구 ── */
+.jan-lint-modal { max-width: 560px; }
+.jan-lint-body { padding: 14px 18px; display: flex; flex-direction: column; gap: 6px; max-height: 60vh; overflow-y: auto; }
+.jan-lint-item { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 1.5; }
+.jan-lint-badge { flex-shrink: 0; min-width: 34px; text-align: center; font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 4px; }
+.jan-lint-item.is-ok .jan-lint-badge { background: rgba(76,175,80,0.15); color: #2E7D32; }
+.jan-lint-item.is-warn .jan-lint-badge { background: rgba(251,140,0,0.15); color: #E65100; }
+.jan-lint-item.is-error .jan-lint-badge { background: rgba(198,40,40,0.15); color: #C62828; }
+.jan-lint-summary { margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(0,0,0,0.08); font-size: 12px; opacity: 0.75; }
+
+.jan-math-tpl-modal { max-width: 640px; }
+.jan-math-tpl-grid { padding: 14px 18px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.jan-math-tpl { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 10px 12px; border: 1px solid var(--paper-edge, #ddd); border-radius: 8px; background: var(--paper, #fff); cursor: pointer; text-align: left; }
+.jan-math-tpl:hover { border-color: var(--accent, #D97757); background: rgba(217,119,87,0.06); }
+.jan-math-tpl-name { font-size: 13px; font-weight: 600; }
+.jan-math-tpl code { font-size: 11px; opacity: 0.65; font-family: Consolas, monospace; }
+
+.jan-paper-search-results { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+.jan-paper-search-results button { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px 10px; border: 1px solid var(--paper-edge, #ddd); border-radius: 6px; background: var(--paper, #fff); cursor: pointer; text-align: left; font-size: 12.5px; }
+.jan-paper-search-results button:hover { border-color: var(--accent, #D97757); }
+.jan-paper-search-results button span { font-size: 11.5px; opacity: 0.65; }
+
+.jan-paper-tools-row { display: flex; align-items: center; gap: 6px; margin: 8px 0; font-size: 12px; }
+.jan-paper-tools-row button { padding: 4px 10px; border: 1px solid var(--paper-edge, #ddd); border-radius: 5px; background: var(--paper, #fff); cursor: pointer; font-size: 12px; }
+.jan-paper-tools-row button:hover:not(:disabled) { border-color: var(--accent, #D97757); }
+.jan-paper-tools-row button:disabled { opacity: 0.45; cursor: default; }
+.jan-paper-tools-row .flex-spacer { flex: 1; }
+
+.jan-paper-bib-import { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.jan-paper-bib-import textarea { width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--paper-edge, #ddd); border-radius: 6px; font-family: Consolas, monospace; font-size: 12px; resize: vertical; }
+.jan-paper-bib-import > button { align-self: flex-end; padding: 6px 14px; border: 1px solid var(--accent, #D97757); background: var(--accent, #D97757); color: #fff; border-radius: 6px; cursor: pointer; font-size: 12.5px; }
+.jan-paper-bib-import > button:disabled { opacity: 0.5; }
+
+.jan-paper-edit-row { display: flex; gap: 8px; }
+.jan-paper-cancel { padding: 8px 14px; border: 1px solid var(--paper-edge, #ccc); background: var(--paper, #fff); border-radius: 6px; cursor: pointer; }
+.jan-paper-item.is-editing { outline: 2px solid var(--accent, #D97757); outline-offset: 1px; border-radius: 6px; }
+
+.jan-theme-dark .jan-math-tpl,
+.jan-theme-dark .jan-paper-search-results button,
+.jan-theme-dark .jan-paper-tools-row button,
+.jan-theme-dark .jan-paper-cancel,
+.jan-theme-dark .jan-paper-bib-import textarea { background: #2e2e2e; border-color: #4a4a4a; color: #e0e0e0; }
+.jan-theme-dark .jan-lint-summary { border-color: rgba(255,255,255,0.12); }

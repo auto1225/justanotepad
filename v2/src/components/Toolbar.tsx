@@ -22,6 +22,8 @@ import { flash } from '../lib/flash'
 import { askText } from '../lib/promptModal'
 import { applyPaperFormat, PAPER_FORMATS } from '../lib/paperFormats'
 import { insertNumberedEquation, insertFigureCaption, insertTableCaption, insertCrossRef, paperTargetCount, renumberWithFeedback } from '../lib/paperRefs'
+import { pickMathTemplate, lintPaper, showLintReport, insertCreditBlock, insertCoiBlock, insertDataAvailabilityBlock, insertListOfFigures, insertListOfTables, insertAcronymList } from '../lib/paperTools'
+import { downloadLatex } from '../lib/latexExport'
 
 interface ToolbarProps {
   editor: Editor | null
@@ -319,6 +321,18 @@ export function Toolbar(p: ToolbarProps) {
   const renumberAll = () => {
     renumberFootnotes()
     renumberWithFeedback(editor)
+  }
+  const eqFromTemplate = async () => {
+    const tpl = await pickMathTemplate()
+    if (!tpl) return
+    const latex = await askText('번호 수식 (LaTeX):', tpl, { placeholder: 'E = mc^2' })
+    if (latex) insertNumberedEquation(editor, latex)
+  }
+  const runPaperLint = () => showLintReport(lintPaper(editor))
+  const exportLatex = () => {
+    const memoTitle = useMemosStore.getState().current()?.title || 'paper'
+    downloadLatex(editor.getHTML(), memoTitle)
+    flash('LaTeX(.tex) 내보내기 — Overleaf 에서 바로 열 수 있습니다')
   }
   const setRunningHeader = () => {
     const header = window.prompt('머리글:', ui.runningHeader)
@@ -645,6 +659,7 @@ export function Toolbar(p: ToolbarProps) {
         })),
         { divider: '수식 · 그림 · 표', label: '' },
         { label: '번호 수식 삽입 (n)', icon: 'hash', onClick: () => run(() => { void eqNumbered() }) },
+        { label: '수식 템플릿 (분수·적분·행렬·화학식...)', icon: 'hash', onClick: () => run(() => { void eqFromTemplate() }) },
         { label: '그림 캡션 (Fig. n)', icon: 'image', onClick: () => run(() => { void figCaption() }) },
         { label: '표 캡션 (Table n)', icon: 'table', onClick: () => run(() => { void tabCaption() }) },
         { label: '수식 참조 삽입', icon: 'link', onClick: () => run(() => { void crossRef('eq') }) },
@@ -657,6 +672,12 @@ export function Toolbar(p: ToolbarProps) {
         { label: '목차 삽입 (제목 기반)', icon: 'list-numbered', onClick: () => run(insertToc) },
         { label: '문서 개요 패널', icon: 'list-bullet', onClick: () => run(p.onToggleOutline) },
         { label: 'Acknowledgments (감사의 말)', icon: 'heart', onClick: () => run(insertAcknowledgments) },
+        { label: 'CRediT 저자 기여도', icon: 'user', onClick: () => run(() => insertCreditBlock(editor)) },
+        { label: '이해상충 선언 (COI)', icon: 'shield', onClick: () => run(() => insertCoiBlock(editor)) },
+        { label: 'Data Availability', icon: 'download', onClick: () => run(() => insertDataAvailabilityBlock(editor)) },
+        { label: '그림 목록 (List of Figures)', icon: 'image', onClick: () => run(() => insertListOfFigures(editor)) },
+        { label: '표 목록 (List of Tables)', icon: 'table', onClick: () => run(() => insertListOfTables(editor)) },
+        { label: '약어 목록 자동 추출', icon: 'hash', onClick: () => run(() => insertAcronymList(editor)) },
         { divider: '레이아웃', label: '' },
         { label: `다단 레이아웃: ${pageColumnLabel}`, icon: 'columns', onClick: () => run(cyclePageColumns) },
         { label: '페이지 구분 삽입', hint: 'Ctrl+Enter', icon: 'page-break', onClick: () => run(insertPageBreak) },
@@ -667,6 +688,8 @@ export function Toolbar(p: ToolbarProps) {
         { label: '참고문헌 항목 추가', icon: 'file-text', onClick: () => run(insertReference) },
         { label: '번호 재정렬 (각주·수식·그림·표·참조)', icon: 'hash', onClick: () => run(renumberAll) },
         { divider: '논문 도구', label: '' },
+        { label: '논문 검사 (제출 전 자동 점검)', icon: 'shield', onClick: () => run(runPaperLint) },
+        { label: 'LaTeX(.tex) 내보내기 — Overleaf 용', icon: 'download', onClick: () => run(exportLatex) },
         { label: '템플릿 (학술 논문)', icon: 'file-text', onClick: () => run(p.onTemplates) },
         { label: '내 도구 / 역할 팩', icon: 'briefcase', onClick: () => run(p.onRoles) },
       ],

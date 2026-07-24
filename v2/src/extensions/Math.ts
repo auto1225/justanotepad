@@ -6,6 +6,8 @@
 import { Node, mergeAttributes } from '@tiptap/core'
 import katex from 'katex'
 import 'katex/dist/katex.min.css'
+// 화학식 지원 (\ce{H2O}) — KaTeX mhchem 확장
+import 'katex/contrib/mhchem'
 
 export interface MathOptions {
   HTMLAttributes: Record<string, any>
@@ -70,11 +72,15 @@ export const MathInline = Node.create<MathOptions>({
         dom.textContent = node.attrs.latex
       }
       dom.addEventListener('dblclick', () => {
-        const next = window.prompt('LaTeX 편집:', node.attrs.latex)
-        if (next == null) return
-        const pos = typeof getPos === 'function' ? getPos() : null
-        if (pos == null) return
-        editor.chain().focus().setNodeSelection(pos).updateAttributes('mathInline', { latex: next }).run()
+        // 앱 스타일 입력 모달 (window.prompt 대체)
+        import('../lib/promptModal').then(({ askText }) => {
+          askText('LaTeX 편집:', node.attrs.latex, { placeholder: 'E = mc^2' }).then((next) => {
+            if (next == null) return
+            const pos = typeof getPos === 'function' ? getPos() : null
+            if (pos == null) return
+            editor.chain().focus().setNodeSelection(pos).updateAttributes('mathInline', { latex: next }).run()
+          })
+        })
       })
       return { dom }
     }
