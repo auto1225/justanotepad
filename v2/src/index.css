@@ -5420,3 +5420,13 @@ html, body, #root {
 .jan-theme-dark .jan-ms-fields button { background: #2c2c2c; border-color: #4a4a4a; }
 .jan-theme-dark .jan-ms-fields button.is-active { background: var(--accent, #D97757); }
 .jan-ms-sym-render { max-width: 340px; overflow-x: hidden; display: inline-block; }
+
+/* 수식 스튜디오 — 손글씨 패드 */
+.jan-ms-pad { padding: 0 16px 8px; display: flex; flex-direction: column; gap: 8px; }
+.jan-ms-pad-head { display: flex; align-items: baseline; gap: 10px; font-size: 13px; }
+.jan-ms-pad-head span { font-size: 11.5px; opacity: 0.6; }
+.jan-ms-pad-canvas {
+  width: 100%; height: 220px; border: 1.5px dashed var(--accent, #D97757);
+  border-radius: 10px; background: #fff; cursor: crosshair; display: block;
+}
+.jan-ms-pad-foot { display: flex; gap: 8px; }

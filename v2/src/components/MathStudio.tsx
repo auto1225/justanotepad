@@ -4,7 +4,19 @@ import katex from 'katex'
 import { MATH_SYMBOL_GROUPS, MATH_TEMPLATES2, type Sym } from '../lib/mathSymbols'
 import { FORMULA_LIBRARY, FORMULA_FIELDS, PHYSICAL_CONSTANTS } from '../lib/formulaLibrary'
 import { insertNumberedEquation } from '../lib/paperRefs'
+import { runAiVision, aiConfigured } from '../lib/aiApi'
 import { flash } from '../lib/flash'
+
+const VISION_PROMPT = '이 이미지에 있는 수식을 KaTeX 호환 LaTeX 로 변환해줘. 설명 없이 LaTeX 코드만 출력해. 수식이 여러 개면 \\\\ 로 구분해. 화학식이면 mhchem \\ce{...} 문법을 사용해.'
+
+/** AI 응답에서 LaTeX 만 추출 (코드펜스·$ 구분자 제거) */
+function extractLatex(raw: string): string {
+  let s = raw.trim()
+  const fence = s.match(/```(?:latex|tex|math)?\s*([\s\S]*?)```/)
+  if (fence) s = fence[1].trim()
+  s = s.replace(/^\$\$?|\$\$?$/g, '').trim()
+  return s
+}
 
 /** 자동완성 후보 — 팔레트 전 항목에서 \명령 만 추출 + 자주 쓰는 명령 보강 */
 const AUTOCOMPLETE_COMMANDS: Sym[] = (() => {
@@ -91,7 +103,82 @@ export function MathStudio({ editor, onClose, initial = '', onSave }: MathStudio
   const [recent, setRecent] = useState<Sym[]>(() => loadRecent())
   const [fieldFilter, setFieldFilter] = useState<string>('전체')
   const [ac, setAc] = useState<{ items: Sym[]; sel: number; word: string } | null>(null)
+  const [aiBusy, setAiBusy] = useState(false)
+  const [padOpen, setPadOpen] = useState(false)
   const taRef = useRef<HTMLTextAreaElement>(null)
+  const padRef = useRef<HTMLCanvasElement>(null)
+  const padDrawing = useRef(false)
+
+  /** 이미지 dataUrl → AI 비전 → LaTeX 를 입력창에 */
+  async function recognizeDataUrl(dataUrl: string) {
+    if (!aiConfigured()) { flash('설정에서 AI API 키를 먼저 등록하세요 (BYOK)'); return }
+    setAiBusy(true)
+    try {
+      const r = await runAiVision(VISION_PROMPT, dataUrl)
+      const tex = extractLatex(r.text || '')
+      if (!tex) { flash('수식을 인식하지 못했습니다'); return }
+      setLatex((prev) => (prev.trim() ? prev + '\n' + tex : tex))
+      flash('AI 인식 완료 — 미리보기를 확인하세요')
+    } catch (e) {
+      flash('인식 실패: ' + (e instanceof Error ? e.message : '오류'))
+    } finally {
+      setAiBusy(false)
+    }
+  }
+
+  function recognizeFromFile() {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'image/*'
+    input.style.cssText = 'position:fixed;left:-9999px'
+    input.onchange = () => {
+      const f = input.files?.[0]
+      input.remove()
+      if (!f) return
+      const reader = new FileReader()
+      reader.onload = () => { void recognizeDataUrl(String(reader.result)) }
+      reader.readAsDataURL(f)
+    }
+    document.body.appendChild(input)
+    input.click()
+  }
+
+  /* 손글씨 패드 */
+  function padPos(e: React.PointerEvent<HTMLCanvasElement>) {
+    const c = padRef.current!
+    const r = c.getBoundingClientRect()
+    return { x: (e.clientX - r.left) * (c.width / r.width), y: (e.clientY - r.top) * (c.height / r.height) }
+  }
+  function padDown(e: React.PointerEvent<HTMLCanvasElement>) {
+    const ctx = padRef.current?.getContext('2d')
+    if (!ctx) return
+    padDrawing.current = true
+    const p = padPos(e)
+    ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.strokeStyle = '#111'
+    ctx.beginPath(); ctx.moveTo(p.x, p.y)
+    try { padRef.current?.setPointerCapture(e.pointerId) } catch { /* 무시 */ }
+  }
+  function padMove(e: React.PointerEvent<HTMLCanvasElement>) {
+    if (!padDrawing.current) return
+    const ctx = padRef.current?.getContext('2d')
+    if (!ctx) return
+    const p = padPos(e)
+    ctx.lineTo(p.x, p.y); ctx.stroke()
+  }
+  function padUp() { padDrawing.current = false }
+  function padClear() {
+    const c = padRef.current
+    const ctx = c?.getContext('2d')
+    if (!c || !ctx) return
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height)
+  }
+  function padRecognize() {
+    const c = padRef.current
+    if (!c) return
+    setPadOpen(false)
+    void recognizeDataUrl(c.toDataURL('image/png'))
+  }
+  useEffect(() => { if (padOpen) padClear() }, [padOpen])
 
   /** 자동완성 — 커서 앞의 \명령 조각을 찾아 후보 제시 */
   function updateAutocomplete(value: string, caret: number) {
@@ -341,8 +428,39 @@ export function MathStudio({ editor, onClose, initial = '', onSave }: MathStudio
           )}
         </div>
 
+        {padOpen && (
+          <div className="jan-ms-pad">
+            <div className="jan-ms-pad-head">
+              <strong>손글씨로 수식 쓰기</strong>
+              <span>마우스/펜으로 크게 또박또박 — AI 가 LaTeX 로 변환합니다</span>
+            </div>
+            <canvas
+              ref={padRef}
+              width={760}
+              height={220}
+              className="jan-ms-pad-canvas"
+              onPointerDown={padDown}
+              onPointerMove={padMove}
+              onPointerUp={padUp}
+              onPointerLeave={padUp}
+              style={{ touchAction: 'none' }}
+              aria-label="손글씨 수식 입력 캔버스"
+            />
+            <div className="jan-ms-pad-foot">
+              <button type="button" className="jan-ms-btn" onClick={padClear}>지우기</button>
+              <span className="flex-spacer" />
+              <button type="button" className="jan-ms-btn" onClick={() => setPadOpen(false)}>취소</button>
+              <button type="button" className="jan-ms-btn jan-ms-btn-primary" onClick={padRecognize} disabled={aiBusy}>AI 인식</button>
+            </div>
+          </div>
+        )}
+
         <div className="jan-ms-foot">
-          <span className="jan-ms-note">Tab: 다음 □ 칸 · Esc: 닫기 · 텍스트 선택 후 기호 클릭 = 감싸기</span>
+          <button type="button" className="jan-ms-btn" onClick={recognizeFromFile} disabled={aiBusy} title="수식 이미지(캡처·사진)를 LaTeX 로 변환 — AI 키 필요">
+            {aiBusy ? '인식 중...' : '이미지 인식 (AI)'}
+          </button>
+          <button type="button" className="jan-ms-btn" onClick={() => setPadOpen((v) => !v)} disabled={aiBusy} title="손으로 쓴 수식을 LaTeX 로 변환 — AI 키 필요">손글씨 (AI)</button>
+          <span className="jan-ms-note">Tab: 다음 □ 칸 · Esc: 닫기 · 선택 후 기호 클릭 = 감싸기</span>
           <span className="flex-spacer" />
           {onSave ? (
             <button type="button" className="jan-ms-btn jan-ms-btn-primary" onClick={doInsertInline} disabled={!latex.trim()}>저장</button>
