@@ -19,6 +19,7 @@ import { saveDataUrlAsBlobRef } from '../lib/blobRefs'
 import { fitPageZoom, setPageZoom } from '../lib/pageZoom'
 import { PAGE_BREAK_HTML } from '../lib/pageBreak'
 import { flash } from '../lib/flash'
+import { askText } from '../lib/promptModal'
 
 interface ToolbarProps {
   editor: Editor | null
@@ -55,6 +56,7 @@ interface ToolbarProps {
   onSearch: () => void
   onNewMemo: () => void
   onSave: () => void
+  onSaveAs: () => void
   onOpen: () => void
   onPageSettings: () => void
   onLectureNotes: () => void
@@ -107,6 +109,10 @@ interface MenuPosition { left: number; top: number; width: number }
  * editor.commands 직접 호출 / Web API (SpeechRecognition, getDisplayMedia, MediaRecorder)
  * / 본문 HTML 블록 삽입 / 모달 호출 등으로 모두 작동.
  */
+function escHtml(v: string): string {
+  return v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
 export function Toolbar(p: ToolbarProps) {
   const editor = p.editor
   const [openMenu, setOpenMenu] = useState<string | null>(null)
@@ -177,7 +183,7 @@ export function Toolbar(p: ToolbarProps) {
     try { localStorage.setItem('jan-show-pilcrow', document.body.classList.contains('jan-show-pilcrow') ? '1' : '0') } catch {}
   }
   const insertTable = () => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
-  const insertImageURL = () => { const url = window.prompt('이미지 URL:'); if (url) editor.chain().focus().setImage({ src: url }).run() }
+  const insertImageURL = async () => { const url = await askText('이미지 URL:', '', { placeholder: 'https://...' }); if (url) editor.chain().focus().setImage({ src: url }).run() }
   const uploadImage = () => {
     const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*'
     inp.onchange = () => {
@@ -220,8 +226,8 @@ export function Toolbar(p: ToolbarProps) {
     const s = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
     editor.chain().focus().insertContent(s).run()
   }
-  const insertYouTube = () => {
-    const url = window.prompt('YouTube URL:'); if (!url) return
+  const insertYouTube = async () => {
+    const url = await askText('YouTube URL:', '', { placeholder: 'https://youtube.com/watch?v=...' }); if (!url) return
     const m = url.match(/(?:v=|youtu\.be\/)([\w-]{11})/)
     if (!m) { alert('유효한 YouTube URL 이 아님'); return }
     // 스키마에 div/iframe 이 없어 통삽입은 조용히 사라진다 — Embed 노드를 사용
@@ -256,13 +262,13 @@ export function Toolbar(p: ToolbarProps) {
     const end = editor.state.doc.content.size
     editor.chain().insertContentAt(end, `<p><sup class="paper-fn-ref">[${n}]</sup> 각주 내용 — 클릭해서 편집</p>`).run()
   }
-  const insertCitation = () => {
-    const cite = window.prompt('인용 (예: Smith, 2024):', 'Author, 2024')
-    if (cite) insertHTML(`<sup class="paper-cite">(${cite})</sup>`)
+  const insertCitation = async () => {
+    const cite = await askText('인용 (예: Smith, 2024):', 'Author, 2024')
+    if (cite) insertHTML(`<sup class="paper-cite">(${escHtml(cite)})</sup>`)
   }
-  const insertReference = () => {
-    const ref = window.prompt('참고문헌 항목:', 'Author, A. (2024). Title. Journal, 1(1), 1-10.')
-    if (ref) insertHTML(`<div class="paper-ref" style="text-indent:-1.5em;padding-left:1.5em;font-size:0.9em;margin:0.3em 0;">${ref}</div>`)
+  const insertReference = async () => {
+    const ref = await askText('참고문헌 항목:', 'Author, A. (2024). Title. Journal, 1(1), 1-10.', { multiline: true })
+    if (ref) insertHTML(`<div class="paper-ref" style="text-indent:-1.5em;padding-left:1.5em;font-size:0.9em;margin:0.3em 0;">${escHtml(ref)}</div>`)
   }
   const renumberFootnotes = () => {
     const { state } = editor
@@ -677,11 +683,11 @@ export function Toolbar(p: ToolbarProps) {
         { label: '텍스트 상자', icon: 'box', onClick: () => run(insertTextBox) },
         { label: '구분선 스타일', icon: 'minus', onClick: () => run(insertHrStyle) },
         { divider: '특수 노드', label: '' },
-        { label: '수식 (LaTeX)', icon: 'hash', onClick: () => run(() => { const t = window.prompt('LaTeX:'); if (t) (editor.chain() as any).focus().setMath(t).run() }) },
-        { label: '다이어그램 (Mermaid)', icon: 'hash', onClick: () => run(() => { const c = window.prompt('Mermaid:', 'graph TD\n  A-->B'); if (c) (editor.chain() as any).focus().setMermaid(c).run() }) },
+        { label: '수식 (LaTeX)', icon: 'hash', onClick: () => run(async () => { const t = await askText('LaTeX 수식:', '', { placeholder: 'E = mc^2' }); if (t) (editor.chain() as any).focus().setMath(t).run() }) },
+        { label: '다이어그램 (Mermaid)', icon: 'hash', onClick: () => run(async () => { const c = await askText('Mermaid 다이어그램:', 'graph TD\n  A-->B', { multiline: true }); if (c) (editor.chain() as any).focus().setMermaid(c).run() }) },
         { label: '콜아웃 (정보)', icon: 'info', onClick: () => run(() => (editor.chain() as any).focus().setCallout('info').run()) },
         { label: '콜아웃 (경고)', icon: 'bell', onClick: () => run(() => (editor.chain() as any).focus().setCallout('warn').run()) },
-        { label: '임베드 URL', icon: 'globe', onClick: () => run(() => { const u = window.prompt('URL:'); if (u) (editor.chain() as any).focus().setEmbed(u).run() }) },
+        { label: '임베드 URL', icon: 'globe', onClick: () => run(async () => { const u = await askText('임베드 URL (YouTube/Vimeo 등):'); if (u) (editor.chain() as any).focus().setEmbed(u).run() }) },
         { divider: '빠른 입력', label: '' },
         { label: '날짜/시간', icon: 'clock', onClick: () => run(insertDateTime) },
         { label: '특수 문자', icon: 'sparkle', onClick: () => run(insertSymbol) },
@@ -798,7 +804,7 @@ export function Toolbar(p: ToolbarProps) {
         { label: '새 메모', hint: 'Ctrl+N', icon: 'plus', onClick: () => run(p.onNewMemo) },
         { label: '열기...', hint: 'Ctrl+O', icon: 'open', onClick: () => run(p.onOpen) },
         { label: '저장', hint: 'Ctrl+S', icon: 'save', onClick: () => run(p.onSave) },
-        { label: '다른 이름으로 저장', icon: 'save', onClick: () => run(p.onSave) },
+        { label: '다른 이름으로 저장...', icon: 'save', onClick: () => run(p.onSaveAs) },
         { divider: '내보내기', label: '' },
         { label: '인쇄', hint: 'Ctrl+P', icon: 'print', onClick: () => run(() => window.print()) },
         { label: 'PDF 내보내기', icon: 'file-text', onClick: () => run(exportPdf) },

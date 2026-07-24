@@ -198,7 +198,7 @@ export function RolesPanel({ editor, onClose, initialTool = null }: RolesPanelPr
                 <RoleToolPanel toolId={toolId} createMemo={createMemo} setStatus={setStatus} />
               </section>
             ) : view === 'roles' ? (
-              <RoleSelection selectedRoleIds={selectedRoleIds} toggleRole={toggleRole} setView={setView} generateTemplateMemos={generateTemplateMemos} />
+              <RoleSelection selectedRoleIds={selectedRoleIds} toggleRole={toggleRole} setView={setView} generateTemplateMemos={generateTemplateMemos} onSkip={onClose} />
             ) : view === 'templates' ? (
               <TemplateLibrary roles={templateRoles} insertTemplate={insertTemplate} generateTemplateMemos={generateTemplateMemos} />
             ) : (
@@ -217,11 +217,13 @@ function RoleSelection({
   toggleRole,
   setView,
   generateTemplateMemos,
+  onSkip,
 }: {
   selectedRoleIds: string[]
   toggleRole: (id: string) => void
   setView: (view: 'dashboard' | 'roles' | 'templates') => void
   generateTemplateMemos: () => void
+  onSkip: () => void
 }) {
   return (
     <section>
@@ -252,7 +254,7 @@ function RoleSelection({
         })}
       </div>
       <div className="jan-rolepack-actions">
-        <button onClick={() => setView('dashboard')}>일단 그냥 메모장으로</button>
+        <button onClick={onSkip}>일단 그냥 메모장으로</button>
         <button onClick={() => setView('dashboard')} className="primary">적용</button>
         <button onClick={generateTemplateMemos} disabled={selectedRoleIds.length === 0}>선택 역할 템플릿 메모 생성</button>
       </div>

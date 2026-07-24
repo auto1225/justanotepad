@@ -83,6 +83,7 @@ import type { MeetingKind } from '../lib/meetingNotes'
 import { externalizeLargeDataUrlsInHtml, resolveBlobRefsInElement } from '../lib/blobRefs'
 import { pushActiveSnapshot } from '../lib/activeSync'
 import { downloadAttachment } from '../lib/attachments'
+import { flash } from '../lib/flash'
 
 const AiHelper = lazy(() => import('./AiHelper').then((m) => ({ default: m.AiHelper })))
 const SettingsModal = lazy(() => import('./SettingsModal').then((m) => ({ default: m.SettingsModal })))
@@ -617,21 +618,22 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
     return () => window.clearTimeout(timer)
   }, [])
 
-  async function handleSave() {
+  async function handleSave(saveAs = false) {
     if (!editor) return
     flushPendingEditorContent()
     const html = editor.getHTML()
-    // 핸들이 다른 메모의 파일이면 재사용하지 않고 새로 저장 위치를 묻는다
-    const ownHandle = fileHandleMemoId && fileHandleMemoId !== currentId ? null : fileHandle
+    // saveAs: 항상 새 위치를 묻는다. 아니면 이 메모의 핸들이 있을 때만 재사용
+    const ownHandle = saveAs || (fileHandleMemoId && fileHandleMemoId !== currentId) ? null : fileHandle
     const result = await saveToFile({ title, content: html, handle: ownHandle })
     if (result.ok) {
       setSavedAt(Date.now())
       if (result.handle) setFileHandle(result.handle, currentId)
       if (currentId) pushActiveSnapshot(currentId).catch(() => {})
       trackEvent('save_file')
+      flash(result.handle ? '파일로 저장했습니다' : '파일을 다운로드했습니다')
       if (memo) dispatchWebhook({ type: 'memo-saved', memoId: memo.id, title: memo.title, charCount: editor.state.doc.textContent.length }).catch(() => {})
     } else if (result.error !== '취소됨') {
-      alert('저장 실패: ' + result.error)
+      flash('저장 실패: ' + result.error)
     }
   }
 
@@ -691,7 +693,8 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       <Toolbar
         editor={editor}
         onNewMemo={handleNewMemo}
-        onSave={handleSave}
+        onSave={() => handleSave(false)}
+        onSaveAs={() => handleSave(true)}
         onOpen={handleOpen}
         onPrintPreview={() => setShowPrint(true)}
         onAi={() => setShowAi(true)}

@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react'
+import { askText } from '../lib/promptModal'
 import type { Editor } from '@tiptap/react'
 import type { Mark as PMMark } from '@tiptap/pm/model'
 import { useMemosStore } from '../store/memosStore'
@@ -226,7 +227,7 @@ export function CommandPalette(p: CommandPaletteProps) {
     const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `JustANotepad-${Date.now()}.json`
     document.body.appendChild(a); a.click(); document.body.removeChild(a); setTimeout(() => URL.revokeObjectURL(url), 800)
   }
-  const webSearch = () => { const q = window.prompt('웹 검색어:'); if (q) window.open('https://www.google.com/search?q=' + encodeURIComponent(q), '_blank') }
+  const webSearch = async () => { const q = await askText('웹 검색어:'); if (q) window.open('https://www.google.com/search?q=' + encodeURIComponent(q), '_blank') }
   const insertYouTube = () => {
     const u = window.prompt('YouTube URL:'); if (!u) return
     const m = u.match(/(?:v=|youtu\.be\/)([\w-]{11})/); if (!m) { alert('유효 URL 아님'); return }
@@ -326,7 +327,7 @@ export function CommandPalette(p: CommandPaletteProps) {
       { id:'code', cat:'리스트', icon:'code', label:'코드 블록', desc:'고정폭 코드 블록.', run: () => ed.chain().focus().toggleCodeBlock().run() },
       /* 삽입 */
       { id:'table', cat:'삽입', icon:'table', label:'표 삽입 (3×3)', desc:'3행×3열 표.', run: () => ed.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
-      { id:'image', cat:'삽입', icon:'image', label:'이미지 (URL)', desc:'URL 로 이미지 삽입.', run: () => { const u = window.prompt('이미지 URL:'); if (u) ed.chain().focus().setImage({ src: u }).run() } },
+      { id:'image', cat:'삽입', icon:'image', label:'이미지 (URL)', desc:'URL 로 이미지 삽입.', run: async () => { const u = await askText('이미지 URL:', '', { placeholder: 'https://...' }); if (u) ed.chain().focus().setImage({ src: u }).run() } },
       { id:'image-up', cat:'삽입', icon:'image', label:'이미지 업로드', desc:'로컬 파일 업로드.', run: () => { const i = document.createElement('input'); i.type='file'; i.accept='image/*'; i.onchange=()=>{const f=i.files?.[0]; if(!f)return; const r=new FileReader(); r.onload=()=>ed.chain().focus().setImage({src:String(r.result)}).run(); r.readAsDataURL(f)}; i.click() } },
       { id:'link', cat:'삽입', icon:'link', label:'링크', desc:'하이퍼링크.', hint:'Ctrl+K', run: () => { const u = window.prompt('링크 URL:'); if (u) ed.chain().focus().setLink({ href: u }).run() } },
       { id:'hr', cat:'삽입', icon:'minus', label:'구분선', desc:'가로 구분선 (HR).', run: () => ed.chain().focus().setHorizontalRule().run() },
@@ -336,9 +337,9 @@ export function CommandPalette(p: CommandPaletteProps) {
       { id:'callout-info', cat:'삽입', icon:'info', label:'콜아웃: 정보', desc:'파란 정보 알림 상자.', run: () => (ed.chain() as any).focus().setCallout('info').run() },
       { id:'callout-warn', cat:'삽입', icon:'bell', label:'콜아웃: 경고', desc:'주황 경고 상자.', run: () => (ed.chain() as any).focus().setCallout('warn').run() },
       { id:'callout-tip', cat:'삽입', icon:'sparkle', label:'콜아웃: 팁', desc:'초록 팁 상자.', run: () => (ed.chain() as any).focus().setCallout('tip').run() },
-      { id:'math', cat:'삽입', icon:'hash', label:'수식 (LaTeX)', desc:'KaTeX 수식 블록.', run: () => { const t = window.prompt('LaTeX:'); if (t) (ed.chain() as any).focus().setMath(t).run() } },
-      { id:'mermaid', cat:'삽입', icon:'hash', label:'다이어그램 (Mermaid)', desc:'Mermaid 다이어그램.', run: () => { const c = window.prompt('Mermaid:', 'graph TD\n  A-->B'); if (c) (ed.chain() as any).focus().setMermaid(c).run() } },
-      { id:'embed', cat:'삽입', icon:'globe', label:'임베드 (URL)', desc:'YouTube/Vimeo 등 임베드.', run: () => { const u = window.prompt('URL:'); if (u) (ed.chain() as any).focus().setEmbed(u).run() } },
+      { id:'math', cat:'삽입', icon:'hash', label:'수식 (LaTeX)', desc:'KaTeX 수식 블록.', run: async () => { const t = await askText('LaTeX 수식:', '', { placeholder: 'E = mc^2' }); if (t) (ed.chain() as any).focus().setMath(t).run() } },
+      { id:'mermaid', cat:'삽입', icon:'hash', label:'다이어그램 (Mermaid)', desc:'Mermaid 다이어그램.', run: async () => { const c = await askText('Mermaid 다이어그램:', 'graph TD\n  A-->B', { multiline: true }); if (c) (ed.chain() as any).focus().setMermaid(c).run() } },
+      { id:'embed', cat:'삽입', icon:'globe', label:'임베드 (URL)', desc:'YouTube/Vimeo 등 임베드.', run: async () => { const u = await askText('임베드 URL:'); if (u) (ed.chain() as any).focus().setEmbed(u).run() } },
       { id:'youtube', cat:'삽입', icon:'globe', label:'YouTube 영상', desc:'iframe 임베드.', run: insertYouTube },
       { id:'symbol', cat:'삽입', icon:'sparkle', label:'특수 문자', desc:'— … · ★ → 등.', run: insertSymbol },
       { id:'bookmark', cat:'삽입', icon:'pin', label:'책갈피', desc:'앵커 ID 책갈피.', run: insertBookmark },

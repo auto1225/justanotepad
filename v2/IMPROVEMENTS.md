@@ -89,9 +89,10 @@
 
 ## 6. 남은 항목 (다음 세션 후보)
 
-### 조사 필요 (우선)
-- **데이터 손실 의심 1건** (QA 재현조건 불명): 새 메모 생성 직후 타이핑한 문장이 사라지고 직전 명령 템플릿만 남은 케이스. 저장 경로(메모별 save-seq·pending flush)는 이전 세션이 집중 보강한 로드베어링 코드라 재현 없이 추정 패치하지 않고 **조사 항목으로 유지**. `Editor.tsx`의 `scheduleEditorContentCommit`↔`flushPendingEditorContent`↔`setContent(memo.content)` 순서를 재현 스크립트로 검증할 것.
-- **tiptap-pagination-plus `calculatePageCount` 에러**: Ctrl+1~9 메모 전환 시 반복 (언마운트 후 플러그인 실행). 기능 영향은 없으나 콘솔 오염.
+### 조사 완료 / 남은 것
+- **데이터 손실 의심 1건 — 재현 시도 결과 재현 안 됨 (조사 완료, 코드 변경 없음)**: 새 메모 생성 직후 타이핑 유실 시나리오를 5회 + 디바운스 경합(350ms 안에 전환) 4회, 총 9회 재현 시도했으나 **오염·유실 0건**. `scheduleEditorContentCommit`이 스케줄 시점의 `activeMemoIdRef`(메모 id)를 캡처하고 `flushPendingEditorContent`가 그 캡처된 id로 커밋하므로, 전환 후 늦게 flush돼도 올바른 메모에 저장됨(메모별 save-seq 카운터). QA가 본 1회성 증상은 그 수정 이전 상태이거나 HMR 리로드 중 편집기 재생성 타이밍으로 추정. **현재 코드에서는 안전한 것으로 확정.**
+- **tiptap-pagination-plus `calculatePageCount` 에러**: Ctrl+1~9 메모 전환 시 반복 (언마운트 후 라이브러리가 비동기 페이지 계산). 기능 영향 없고 콘솔만 오염 — 라이브러리 레벨 이슈라 편집기 생명주기 회귀 위험 감안해 미수정 유지.
+- **설정성 prompt 잔존** (자간·장평·단락간격·러닝헤더·포모도로 시간): 숫자 검증이 이미 있어 우선순위 낮음. 고마찰 8개(이미지URL·수식·Mermaid·임베드·YouTube·인용·참고문헌·웹검색)는 이번 세션에 앱 스타일 입력 모달(`lib/promptModal.tsx`)로 교체 완료.
 
 ### 미수정 결함 (QA 발견)
 - **파일 열기 / 다른 이름으로 저장 침묵 실패**: File System Access API 예외를 삼킴 — try/catch + `input[type=file]` 폴백 + 실패 토스트 필요

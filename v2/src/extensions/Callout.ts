@@ -3,6 +3,7 @@
  * 슬래시 명령 또는 commands.setCallout('info') 로 삽입.
  */
 import { Node, mergeAttributes, wrappingInputRule } from '@tiptap/core'
+import { TextSelection } from '@tiptap/pm/state'
 
 export type CalloutKind = 'info' | 'warn' | 'tip' | 'error'
 
@@ -67,8 +68,28 @@ export const Callout = Node.create({
     return {
       setCallout:
         (kind) =>
-        ({ commands }) =>
-          commands.wrapIn(this.name, { kind }),
+        ({ chain }) =>
+          // wrapIn 만 하면 커서가 콜아웃 안에 남아 다음 입력이 계속 중첩된다 —
+          // 콜아웃 뒤에 빈 문단을 만들고 거기로 커서를 옮긴다
+          chain()
+            .wrapIn(this.name, { kind })
+            .command(({ tr, state, dispatch }) => {
+              const { $from } = state.selection
+              // 콜아웃 노드의 문서 내 끝 위치 뒤에 문단 삽입
+              for (let d = $from.depth; d > 0; d--) {
+                if ($from.node(d).type.name === this.name) {
+                  const after = $from.after(d)
+                  if (dispatch) {
+                    const para = state.schema.nodes.paragraph.create()
+                    tr.insert(after, para)
+                    tr.setSelection(TextSelection.near(tr.doc.resolve(after + 1)))
+                  }
+                  return true
+                }
+              }
+              return true
+            })
+            .run(),
       toggleCallout:
         (kind) =>
         ({ commands }) =>
