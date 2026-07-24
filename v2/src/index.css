@@ -5207,3 +5207,78 @@ html, body, #root {
   border-color: #4a4a4a;
   color: #e0e0e0;
 }
+
+/* =========================================================
+ * 논문 모드 — 수식 번호·캡션·상호참조·DOI (글로벌 표준)
+ * ========================================================= */
+/* 번호 수식 문단: 수식 중앙, 번호 오른쪽 (저널 표준 조판) */
+.ProseMirror p[data-paper-block="eq"] {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0.7em 0;
+}
+.ProseMirror p[data-paper-block="eq"] > .jan-math-inline {
+  flex: 1;
+  text-align: center;
+}
+.ProseMirror p[data-paper-block="eq"] .jan-paper-tag-eqnum {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* 그림/표 캡션: 가운데, 본문보다 작게 */
+.ProseMirror p[data-paper-block="figcap"],
+.ProseMirror p[data-paper-block="tabcap"] {
+  text-align: center;
+  font-size: 0.9em;
+  color: var(--ink-soft, #555);
+  margin: 0.35em 0 1em;
+}
+.ProseMirror .jan-paper-tag-figlabel,
+.ProseMirror .jan-paper-tag-tablabel {
+  font-weight: 700;
+}
+
+/* 상호참조: 옅은 강조 + 클릭 유도 */
+.ProseMirror .jan-paper-tag-ref {
+  color: var(--accent, #D97757);
+  border-bottom: 1px dotted color-mix(in srgb, var(--accent, #D97757) 55%, transparent);
+  cursor: default;
+  white-space: nowrap;
+}
+.ProseMirror .jan-paper-tag {
+  font-variant-numeric: tabular-nums;
+}
+
+/* DOI 자동 입력 행 */
+.jan-paper-doi-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.jan-paper-doi-row input {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid var(--paper-edge, #ddd);
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+}
+.jan-paper-doi-row button {
+  padding: 8px 14px;
+  border: 1px solid var(--accent, #D97757);
+  background: var(--accent, #D97757);
+  color: #fff;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.jan-paper-doi-row button:disabled { opacity: 0.5; cursor: default; }
+.jan-paper-doi-error {
+  margin: -2px 0 8px;
+  font-size: 12px;
+  color: #C62828;
+}
+.jan-theme-dark .jan-paper-doi-row input { background: #2e2e2e; border-color: #4a4a4a; color: #e0e0e0; }

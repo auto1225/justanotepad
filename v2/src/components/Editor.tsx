@@ -77,6 +77,7 @@ import { Color } from '@tiptap/extension-color'
 import { LinkCard } from '../extensions/LinkCard'
 import { AudioNode, VideoNode } from '../extensions/Media'
 import { PageBreak } from '../extensions/PageBreak'
+import { PaperTag, PaperBlockAttrs } from '../extensions/PaperTag'
 import { NormalHorizontalRule } from '../extensions/HorizontalRule'
 import Highlight from '@tiptap/extension-highlight'
 import { Lightbox } from './Lightbox'
@@ -376,6 +377,8 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       TextShadow,
       TaskList,
       TaskItem.configure({ nested: true }),
+      PaperTag,
+      PaperBlockAttrs,
     ]
     // 페이지 분할(PaginationPlus)은 float 기반이라 CSS 다단(column)과 공존 불가
     // — 다단(2/3단)·초안 보기에서는 연속 시트로 표시하고, 1단 인쇄 보기에서만 켠다.

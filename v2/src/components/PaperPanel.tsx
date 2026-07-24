@@ -34,6 +34,46 @@ export function PaperPanel({ editor, onClose }: PaperPanelProps) {
   const setStyle = (st: CitationStyle) => useSettingsStore.getState().setKey('citationStyle', st)
   const [cites, setCites] = useState<Citation[]>(() => loadCitations())
   const [draft, setDraft] = useState<Citation>({ ...EMPTY })
+  const [doiInput, setDoiInput] = useState('')
+  const [doiBusy, setDoiBusy] = useState(false)
+  const [doiError, setDoiError] = useState('')
+
+  /** DOI → CrossRef 메타데이터로 인용 자동 완성 (Overleaf/Zotero 급) */
+  async function fetchDoi() {
+    const raw = doiInput.trim()
+    if (!raw) return
+    // https://doi.org/10.xxxx/... 또는 doi:10.xxxx 형태 모두 허용
+    const doi = raw.replace(/^https?:\/\/(dx\.)?doi\.org\//i, '').replace(/^doi:\s*/i, '')
+    if (!/^10\.\S+\/\S+/.test(doi)) { setDoiError('DOI 형식이 아닙니다 (예: 10.1038/nature14539)'); return }
+    setDoiBusy(true); setDoiError('')
+    try {
+      const res = await fetch(`https://api.crossref.org/works/${encodeURIComponent(doi)}`, { headers: { Accept: 'application/json' } })
+      if (!res.ok) throw new Error(`CrossRef ${res.status}`)
+      const j = await res.json()
+      const m = j.message
+      const authors: string[] = (m.author || []).map((a: { given?: string; family?: string; name?: string }) =>
+        a.name || [a.given, a.family].filter(Boolean).join(' ')).filter(Boolean)
+      setDraft({
+        id: '',
+        authors: authors.length ? authors : [''],
+        title: (m.title && m.title[0]) || '',
+        year: String(m.issued?.['date-parts']?.[0]?.[0] || m.created?.['date-parts']?.[0]?.[0] || ''),
+        venue: (m['container-title'] && m['container-title'][0]) || m.publisher || '',
+        volume: m.volume || '',
+        issue: m.issue || '',
+        pages: m.page || '',
+        publisher: m.publisher || '',
+        doi: m.DOI || doi,
+        url: '',
+        type: m.type === 'proceedings-article' ? 'conference' : m.type === 'book' ? 'book' : 'article',
+      })
+      setDoiInput('')
+    } catch (e) {
+      setDoiError(`가져오기 실패 — DOI를 확인하세요 (${e instanceof Error ? e.message : '네트워크 오류'})`)
+    } finally {
+      setDoiBusy(false)
+    }
+  }
 
   // 변경 시마다 localStorage 동기화
   useEffect(() => {
@@ -92,6 +132,20 @@ export function PaperPanel({ editor, onClose }: PaperPanelProps) {
               </button>
             ))}
           </div>
+
+          <div className="jan-paper-doi-row">
+            <input
+              placeholder="DOI 로 자동 입력 — 예: 10.1038/nature14539 (붙여넣기 후 가져오기)"
+              value={doiInput}
+              onChange={(e) => { setDoiInput(e.target.value); setDoiError('') }}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void fetchDoi() } }}
+              aria-label="DOI 입력"
+            />
+            <button type="button" onClick={() => void fetchDoi()} disabled={doiBusy || !doiInput.trim()}>
+              {doiBusy ? '가져오는 중...' : 'DOI 가져오기'}
+            </button>
+          </div>
+          {doiError && <div className="jan-paper-doi-error" role="alert">{doiError}</div>}
 
           <div className="jan-paper-form">
             <input

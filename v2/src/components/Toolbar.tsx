@@ -20,6 +20,8 @@ import { fitPageZoom, setPageZoom } from '../lib/pageZoom'
 import { PAGE_BREAK_HTML } from '../lib/pageBreak'
 import { flash } from '../lib/flash'
 import { askText } from '../lib/promptModal'
+import { applyPaperFormat, PAPER_FORMATS } from '../lib/paperFormats'
+import { insertNumberedEquation, insertFigureCaption, insertTableCaption, insertCrossRef, paperTargetCount, renumberWithFeedback } from '../lib/paperRefs'
 
 interface ToolbarProps {
   editor: Editor | null
@@ -288,6 +290,35 @@ export function Toolbar(p: ToolbarProps) {
   const cyclePageColumns = () => {
     const current = ui.pageColumnCount || 1
     ui.setPageColumnCount(current === 1 ? 2 : current === 2 ? 3 : 1)
+  }
+
+  /* === 논문 — 표준 양식·수식 번호·캡션·상호참조 === */
+  const applyFormat = (key: string) => {
+    applyPaperFormat(editor, key, true)
+  }
+  const eqNumbered = async () => {
+    const latex = await askText('번호 수식 (LaTeX):', '', { placeholder: 'E = mc^2' })
+    if (latex) { insertNumberedEquation(editor, latex); flash('번호 수식 삽입 — 참조는 "수식 참조"로') }
+  }
+  const figCaption = async () => {
+    const text = await askText('그림 캡션 설명:', '', { placeholder: '시스템 구성도' })
+    if (text) insertFigureCaption(editor, text)
+  }
+  const tabCaption = async () => {
+    const text = await askText('표 캡션 설명:', '', { placeholder: '실험 결과 비교' })
+    if (text) insertTableCaption(editor, text)
+  }
+  const crossRef = async (refType: 'eq' | 'fig' | 'tab') => {
+    const label = refType === 'eq' ? '수식' : refType === 'fig' ? '그림' : '표'
+    const total = paperTargetCount(editor, refType)
+    if (total === 0) { flash(`참조할 ${label}이 없습니다 — 먼저 번호 ${label}을 삽입하세요`); return }
+    const v = await askText(`${label} 참조 번호 (1~${total}):`, String(total))
+    if (!v) return
+    insertCrossRef(editor, refType, Math.round(Number(v)) || total)
+  }
+  const renumberAll = () => {
+    renumberFootnotes()
+    renumberWithFeedback(editor)
   }
   const setRunningHeader = () => {
     const header = window.prompt('머리글:', ui.runningHeader)
@@ -604,8 +635,21 @@ export function Toolbar(p: ToolbarProps) {
     /* 1. 논문 */
     {
       label: '논문', items: [
-        { label: '논문 인용 관리 패널', icon: 'file-text', onClick: () => run(p.onPaper) },
+        { label: '논문 인용 관리 패널 (DOI 자동)', icon: 'file-text', onClick: () => run(p.onPaper) },
         { label: '변환 되돌리기', hint: 'Ctrl+Z', icon: 'undo', onClick: () => run(() => editor.chain().focus().undo().run()) },
+        { divider: '표준 양식 (글로벌)', label: '' },
+        ...PAPER_FORMATS.map((f) => ({
+          label: f.label,
+          icon: 'file-text' as const,
+          onClick: () => run(() => applyFormat(f.key)),
+        })),
+        { divider: '수식 · 그림 · 표', label: '' },
+        { label: '번호 수식 삽입 (n)', icon: 'hash', onClick: () => run(() => { void eqNumbered() }) },
+        { label: '그림 캡션 (Fig. n)', icon: 'image', onClick: () => run(() => { void figCaption() }) },
+        { label: '표 캡션 (Table n)', icon: 'table', onClick: () => run(() => { void tabCaption() }) },
+        { label: '수식 참조 삽입', icon: 'link', onClick: () => run(() => { void crossRef('eq') }) },
+        { label: '그림 참조 삽입', icon: 'link', onClick: () => run(() => { void crossRef('fig') }) },
+        { label: '표 참조 삽입', icon: 'link', onClick: () => run(() => { void crossRef('tab') }) },
         { divider: '논문 구성 요소', label: '' },
         { label: '저자 · 소속 · 교신 블록', icon: 'user', onClick: () => run(insertAuthorBlock) },
         { label: 'Abstract 박스', icon: 'file-text', onClick: () => run(insertAbstract) },
@@ -621,7 +665,7 @@ export function Toolbar(p: ToolbarProps) {
         { label: '각주 삽입', icon: 'sup', onClick: () => run(insertFootnote) },
         { label: '인용 삽입', icon: 'quote', onClick: () => run(insertCitation) },
         { label: '참고문헌 항목 추가', icon: 'file-text', onClick: () => run(insertReference) },
-        { label: '번호 재정렬', icon: 'hash', onClick: () => run(renumberFootnotes) },
+        { label: '번호 재정렬 (각주·수식·그림·표·참조)', icon: 'hash', onClick: () => run(renumberAll) },
         { divider: '논문 도구', label: '' },
         { label: '템플릿 (학술 논문)', icon: 'file-text', onClick: () => run(p.onTemplates) },
         { label: '내 도구 / 역할 팩', icon: 'briefcase', onClick: () => run(p.onRoles) },
