@@ -246,9 +246,15 @@ export function MathStudio({ editor, onClose, initial = '', onSave }: MathStudio
   function acceptAutocomplete(item: Sym) {
     const ta = taRef.current
     if (!ta || !ac) return
-    const caret = ta.selectionStart ?? 0
-    const before = latex.slice(0, caret - ac.word.length)
-    const after = latex.slice(caret)
+    // 한글 IME 조합 중 클릭하면 caret 이 어긋날 수 있으므로,
+    // 현재 값에서 검색어(word)의 실제 위치를 직접 찾아 치환한다
+    const value = ta.value
+    const caretRaw = ta.selectionStart ?? value.length
+    let start = value.lastIndexOf(ac.word, Math.max(0, caretRaw))
+    if (start < 0) start = value.lastIndexOf(ac.word)
+    if (start < 0) { setAc(null); return }
+    const before = value.slice(0, start)
+    const after = value.slice(start + ac.word.length)
     const next = before + item.tex + after
     setLatex(next)
     setAc(null)
@@ -262,6 +268,8 @@ export function MathStudio({ editor, onClose, initial = '', onSave }: MathStudio
 
   const acOpenRef = useRef(false)
   acOpenRef.current = !!ac
+  // 드롭다운 클릭이 진행 중이면 textarea blur 로 목록을 닫지 않는다
+  const acClickingRef = useRef(false)
 
   useEffect(() => {
     taRef.current?.focus()
@@ -388,14 +396,20 @@ export function MathStudio({ editor, onClose, initial = '', onSave }: MathStudio
               value={latex}
               onChange={(e) => { setLatex(e.target.value); updateAutocomplete(e.target.value, e.target.selectionStart ?? e.target.value.length) }}
               onKeyDown={onTaKeyDown}
-              onBlur={() => window.setTimeout(() => setAc(null), 150)}
+              onBlur={() => window.setTimeout(() => { if (!acClickingRef.current) setAc(null) }, 200)}
               placeholder={'LaTeX 입력 — \\ 를 치면 자동완성, Tab 으로 □ 칸 이동, 예: \\frac \\ce{H2O}'}
               rows={3}
               spellCheck={false}
               aria-label="LaTeX 수식 입력"
             />
             {ac && (
-              <div className="jan-ms-ac" role="listbox" aria-label="LaTeX 자동완성">
+              <div
+                className="jan-ms-ac"
+                role="listbox"
+                aria-label="LaTeX 자동완성"
+                onPointerDown={() => { acClickingRef.current = true }}
+                onPointerUp={() => { window.setTimeout(() => { acClickingRef.current = false }, 300) }}
+              >
                 {ac.items.map((it, i) => (
                   <button
                     key={it.tex}
@@ -403,7 +417,9 @@ export function MathStudio({ editor, onClose, initial = '', onSave }: MathStudio
                     role="option"
                     aria-selected={i === ac.sel}
                     className={i === ac.sel ? 'is-sel' : ''}
-                    onMouseDown={(e) => { e.preventDefault(); acceptAutocomplete(it) }}
+                    /* click 을 쓰면 textarea 가 먼저 blur 되며 한글 IME 조합이
+                       자연스럽게 확정된 뒤 치환된다 (조합 중 클릭 지원) */
+                    onClick={() => acceptAutocomplete(it)}
                   >
                     <code>{it.tex.length > 28 ? it.tex.slice(0, 28) + '…' : it.tex}</code>
                     <span dangerouslySetInnerHTML={{ __html: renderKatex(it.tex, false) }} />
