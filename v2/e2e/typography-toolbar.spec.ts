@@ -144,4 +144,45 @@ test.describe('글자 모양 도구 상자', () => {
     const stack = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--jan-editor-font'))
     expect(stack.toLowerCase()).toContain('georgia')
   })
+
+  test('값을 지정하지 않았을 때도 지금 적용된 기본값이 보인다', async ({ page }) => {
+    await page.goto('./')
+    await page.locator('.ProseMirror').first().waitFor({ state: 'visible', timeout: 15000 })
+
+    const shown = await page.evaluate(() => {
+      const val = (label: string) => (document.querySelector(`input[aria-label="${label}"]`) as HTMLInputElement)?.value
+      const inherited = (label: string) => !!document.querySelector(`input[aria-label="${label}"]`)?.closest('.jan-spin')?.classList.contains('is-inherited')
+      return {
+        size: val('글자 크기'), sizeDim: inherited('글자 크기'),
+        line: val('줄 간격'),
+        spacing: val('자간'), scale: val('장평'),
+      }
+    })
+    // 빈칸이 아니라 문서 기본값이 보이고, 직접 정한 값과 구별되게 흐리다
+    expect(Number(shown.size)).toBeGreaterThan(0)
+    expect(shown.sizeDim).toBe(true)
+    expect(Number(shown.line)).toBeGreaterThan(0)
+    expect(shown.spacing).toBe('0')
+    expect(shown.scale).toBe('100')
+  })
+
+  test('자주 쓰는 값 목록은 입력칸을 가리지 않고 아래에 열린다', async ({ page }) => {
+    await page.goto('./')
+    await page.locator('.ProseMirror').first().waitFor({ state: 'visible', timeout: 15000 })
+
+    await page.locator('button[aria-label="글자 크기 자주 쓰는 값"]').click()
+    const pop = page.locator('.jan-spin-pop')
+    await expect(pop).toBeVisible()
+
+    const geom = await page.evaluate(() => {
+      const box = document.querySelector('.jan-spin')!.getBoundingClientRect()
+      const pop = document.querySelector('.jan-spin-pop')!.getBoundingClientRect()
+      return { boxBottom: box.bottom, popTop: pop.top }
+    })
+    expect(geom.popTop).toBeGreaterThanOrEqual(geom.boxBottom - 1)
+
+    await pop.locator('.jan-spin-pop-item', { hasText: '18' }).first().click()
+    await page.waitForTimeout(300)
+    expect(await page.locator('input[aria-label="글자 크기"]').inputValue()).toBe('18')
+  })
 })

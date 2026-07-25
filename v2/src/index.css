@@ -1680,22 +1680,58 @@ body { background: #FFE8E8; }
 .jan-fontcombo-foot button:disabled { opacity: 0.55; cursor: default; }
 .jan-fontcombo-note { padding: 6px 10px; font-size: 11px; color: #666; background: rgba(217,119,87,0.08); }
 
-.jan-spin { display: inline-flex; align-items: stretch; height: 24px; border: 1px solid rgba(0,0,0,0.14); border-radius: 4px; background: #fff; overflow: hidden; }
-.jan-spin:focus-within { border-color: #D97757; box-shadow: 0 0 0 2px rgba(217,119,87,0.18); }
-.jan-spin-input { border: 0; outline: none; padding: 0 2px 0 6px; font-size: 12px; line-height: 22px; text-align: right; background: none; color: inherit; font-family: inherit; }
-.jan-spin-input::-webkit-outer-spin-button, .jan-spin-input::-webkit-inner-spin-button { appearance: none; margin: 0; }
-.jan-spin-unit { display: flex; align-items: center; padding: 0 4px 0 1px; font-size: 10px; color: #999; }
-.jan-spin-btns { display: flex; flex-direction: column; width: 15px; flex: none; border-left: 1px solid rgba(0,0,0,0.09); }
-.jan-spin-btns button {
-  display: flex; align-items: center; justify-content: center;
-  flex: 1; padding: 0; border: 0; background: rgba(0,0,0,0.035);
-  color: #555; cursor: pointer; min-height: 0;
+.jan-spin {
+  position: relative;
+  display: inline-flex; align-items: stretch; height: 24px;
+  border: 1px solid rgba(0,0,0,0.16); border-radius: 4px; background: #fff;
 }
-.jan-spin-btns button:first-child { border-bottom: 1px solid rgba(0,0,0,0.09); }
-.jan-spin-btns button:hover { background: rgba(217,119,87,0.2); color: #b8552f; }
-.jan-spin-btns button:active { background: rgba(217,119,87,0.34); }
+.jan-spin:focus-within { border-color: #D97757; box-shadow: 0 0 0 2px rgba(217,119,87,0.16); }
+.jan-spin-input {
+  border: 0; outline: none; padding: 0 3px 0 7px; font-size: 12px; line-height: 22px;
+  text-align: right; background: none; color: inherit; font-family: inherit;
+  border-radius: 4px 0 0 4px;
+}
+/* 브라우저가 넣는 자동완성 화살표는 입력 글자 위를 덮는다 — 쓰지 않는다 */
+.jan-spin-input::-webkit-calendar-picker-indicator { display: none !important; }
+.jan-spin-input::-webkit-outer-spin-button, .jan-spin-input::-webkit-inner-spin-button { appearance: none; margin: 0; }
+/* 문서 기본값을 따르는 중 — 값은 보이되 "직접 정한 값"과 구별되게 흐리다 */
+.jan-spin.is-inherited .jan-spin-input { color: #9a9a9a; }
+.jan-spin-unit { display: flex; align-items: center; padding: 0 4px 0 0; font-size: 10px; color: #9a9a9a; }
 
-.jan-field { display: inline-flex; align-items: center; gap: 4px; }
+/* 툴바의 일반 단추 규칙(28px 정사각)이 여기까지 오면 칸을 밀어낸다 — 클래스 두 개로 눌러 준다 */
+.jan-spin .jan-spin-list,
+.jan-spin .jan-spin-btns button {
+  display: flex; align-items: center; justify-content: center;
+  min-width: 0; height: auto; padding: 0; margin: 0; border: 0; border-radius: 0;
+  background: rgba(0,0,0,0.035); color: #666; cursor: pointer;
+}
+.jan-spin .jan-spin-list { width: 16px; flex: none; border-left: 1px solid rgba(0,0,0,0.1); }
+.jan-spin .jan-spin-btns { display: flex; flex-direction: column; width: 15px; flex: none; border-left: 1px solid rgba(0,0,0,0.1); border-radius: 0 3px 3px 0; overflow: hidden; }
+.jan-spin .jan-spin-btns button { flex: 1 1 50%; min-height: 0; }
+.jan-spin .jan-spin-btns button:first-child { border-bottom: 1px solid rgba(0,0,0,0.1); }
+.jan-spin .jan-spin-list:hover,
+.jan-spin .jan-spin-btns button:hover { background: rgba(217,119,87,0.2); color: #b8552f; }
+.jan-spin .jan-spin-btns button:active, .jan-spin .jan-spin-list:active { background: rgba(217,119,87,0.34); }
+.jan-spin .jan-spin-pop-item { min-width: 0; height: auto; }
+
+/* 자주 쓰는 값 목록 — 입력칸 아래에 따로 띄운다 (입력 글자를 가리지 않는다) */
+.jan-spin-pop {
+  position: absolute; top: calc(100% + 3px); right: 0; z-index: 620;
+  min-width: 76px; max-height: 260px; overflow-y: auto;
+  background: #fff; border: 1px solid rgba(0,0,0,0.16); border-radius: 6px;
+  box-shadow: 0 8px 22px rgba(0,0,0,0.16); padding: 3px;
+}
+.jan-spin-pop-item {
+  display: flex; align-items: center; justify-content: flex-end; gap: 3px; width: 100%;
+  padding: 4px 8px; border: 0; border-radius: 4px; background: none;
+  font-size: 12px; color: inherit; cursor: pointer; font-variant-numeric: tabular-nums;
+}
+.jan-spin-pop-item:hover { background: rgba(217,119,87,0.14); }
+.jan-spin-pop-item.is-active { background: rgba(217,119,87,0.22); font-weight: 600; }
+.jan-spin-pop-unit { font-size: 10px; color: #999; }
+.jan-spin-pop-reset { justify-content: center; margin-top: 2px; border-top: 1px solid rgba(0,0,0,0.08); border-radius: 0; color: #777; font-size: 11px; }
+
+.jan-field { display: inline-flex; align-items: center; gap: 4px; margin-left: 2px; }
 .jan-field-label { font-size: 11px; color: #666; white-space: nowrap; }
 .jan-fontstep { display: inline-flex; align-items: baseline; gap: 1px; font-size: 13px; padding: 2px 5px; }
 .jan-fontstep span { font-size: 7px; }
@@ -1704,7 +1740,9 @@ body { background: #FFE8E8; }
 .jan-theme-dark .jan-fontcombo-pop,
 .jan-theme-dark .jan-spin { background: #2a2a2a; border-color: rgba(255,255,255,0.16); color: #eee; }
 .jan-theme-dark .jan-fontcombo-search { background: #2a2a2a; color: #eee; }
-.jan-theme-dark .jan-spin-btns button { background: rgba(255,255,255,0.06); color: #ccc; }
+.jan-theme-dark .jan-spin-btns button,
+.jan-theme-dark .jan-spin-list { background: rgba(255,255,255,0.06); color: #ccc; }
+.jan-theme-dark .jan-spin-pop { background: #2a2a2a; border-color: rgba(255,255,255,0.18); }
 .jan-theme-dark .jan-fontcombo-sec { background: rgba(255,255,255,0.05); }
 .jan-theme-dark .jan-fontcombo-foot button { background: #2a2a2a; color: #eee; }
 

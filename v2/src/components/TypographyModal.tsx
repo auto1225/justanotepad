@@ -74,7 +74,7 @@ export function TypographyModal({ onClose }: TypographyModalProps) {
               <NumberSpin
                 value={t.fontSize}
                 onChange={(v) => t.setFontSize(v ?? 14)}
-                min={4} max={200} step={1} unit="px" width={46}
+                min={4} max={200} step={1} unit="px" width={44}
                 title="문서 기본 글자 크기 — 직접 입력하거나 ▲▼ 로 조절"
                 ariaLabel="기본 글자 크기"
                 allowEmpty={false}
@@ -87,7 +87,7 @@ export function TypographyModal({ onClose }: TypographyModalProps) {
               <NumberSpin
                 value={t.lineHeight}
                 onChange={(v) => t.setLineHeight(v ?? 1.7)}
-                min={0.5} max={5} step={0.05} decimals={2} width={46}
+                min={0.5} max={5} step={0.05} decimals={2} width={40}
                 title="문서 기본 줄 간격 (배수)"
                 ariaLabel="기본 줄 간격"
                 allowEmpty={false}
@@ -100,7 +100,7 @@ export function TypographyModal({ onClose }: TypographyModalProps) {
               <NumberSpin
                 value={t.paragraphSpacing}
                 onChange={(v) => t.setParagraphSpacing(v ?? 8)}
-                min={0} max={200} step={1} unit="px" width={46}
+                min={0} max={200} step={1} unit="px" width={44}
                 title="문단과 문단 사이 간격"
                 ariaLabel="단락 간격"
                 allowEmpty={false}

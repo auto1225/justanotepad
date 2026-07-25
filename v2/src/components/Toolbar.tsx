@@ -223,7 +223,11 @@ export function Toolbar(p: ToolbarProps) {
     run(chain).run()
   }
 
-  /* ── 글자 모양 도구 상자가 읽는 현재 값 (한글·워드처럼 pt 로 보여 준다) ── */
+  /* ── 글자 모양 도구 상자가 읽는 현재 값 (한글·워드처럼 pt 로 보여 준다) ──
+     따로 지정하지 않은 항목은 문서 기본값을 흐리게 보여 준다 (빈칸이면 지금 값을 알 수 없다) */
+  const typo = useTypographyStore.getState()
+  const docSizePt = Math.round(typo.fontSize * 0.75 * 10) / 10
+  const docLineHeight = typo.lineHeight
   const fontSizePt = (() => {
     const raw = charState.fontSize
     if (!raw) return null
@@ -1177,7 +1181,7 @@ export function Toolbar(p: ToolbarProps) {
       <NumberSpin
         value={fontSizePt}
         onChange={(v, o) => applyToSelection((c) => (v == null ? c.unsetFontSize() : c.setFontSize(`${v}pt`)), o?.keepFocus)}
-        min={4} max={300} step={1} unit="pt" width={44} fallback={11}
+        min={4} max={300} step={1} unit="pt" width={40} inherited={docSizePt}
         title="글자 크기 (직접 입력, ↑↓·휠·단추로 증감. Shift 를 누르면 10씩)"
         ariaLabel="글자 크기"
         presets={[8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 28, 36, 48, 72]}
@@ -1191,7 +1195,7 @@ export function Toolbar(p: ToolbarProps) {
         <NumberSpin
           value={lineHeightValue}
           onChange={(v, o) => applyToSelection((c) => c.setParagraphLineHeight(v == null ? null : String(v)), o?.keepFocus)}
-          min={0.5} max={5} step={0.05} decimals={2} width={44} fallback={1.7}
+          min={0.5} max={5} step={0.05} decimals={2} width={38} inherited={docLineHeight}
           title="줄 간격 (배수) — 직접 입력하거나 ↑↓·휠·단추로 0.05 씩"
           ariaLabel="줄 간격"
           presets={[1, 1.15, 1.3, 1.5, 1.6, 1.7, 2, 2.5, 3]}
@@ -1202,7 +1206,7 @@ export function Toolbar(p: ToolbarProps) {
         <NumberSpin
           value={letterSpacingPct}
           onChange={(v, o) => applyToSelection((c) => c.setLetterSpacingPct(v), o?.keepFocus)}
-          min={-50} max={100} step={1} unit="%" width={42} fallback={0}
+          min={-50} max={100} step={1} unit="%" width={34} inherited={0}
           title="자간 (%) — 음수면 좁아진다"
           ariaLabel="자간"
           presets={[-10, -5, -3, 0, 3, 5, 10, 20]}
@@ -1213,7 +1217,7 @@ export function Toolbar(p: ToolbarProps) {
         <NumberSpin
           value={charScalePct}
           onChange={(v, o) => applyToSelection((c) => c.setCharScalePct(v), o?.keepFocus)}
-          min={10} max={250} step={1} unit="%" width={42} fallback={100}
+          min={10} max={250} step={1} unit="%" width={34} inherited={100}
           title="장평 (%) — 100 보다 작으면 홀쭉, 크면 넓적"
           ariaLabel="장평"
           presets={[70, 80, 90, 100, 110, 120, 150]}
