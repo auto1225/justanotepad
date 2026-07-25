@@ -46,7 +46,16 @@ export function TableMenu({ editor }: TableMenuProps) {
   return (
     <div
       className="jan-table-menu"
-      style={{ position: 'fixed', left: pos.x, top: pos.y, zIndex: 500 }}
+      ref={(el) => {
+        /* 넓은 표에서는 말풍선 오른쪽 끝이 화면 밖으로 나가 마지막 버튼을 누를 수 없다 —
+           그릴 때마다 화면 안으로 끌어당긴다. */
+        if (!el) return
+        const w = el.offsetWidth
+        const max = Math.max(8, window.innerWidth - w - 8)
+        const left = Math.min(Math.max(8, pos.x), max)
+        el.style.left = `${Math.round(left)}px`
+      }}
+      style={{ position: 'fixed', left: pos.x, top: pos.y, zIndex: 500, maxWidth: 'calc(100vw - 16px)', flexWrap: 'wrap' }}
       onMouseDown={(e) => e.preventDefault()}
     >
       <button onClick={() => editor.chain().focus().addRowBefore().run()} title="위 행 추가">↑+</button>

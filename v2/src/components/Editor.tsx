@@ -368,7 +368,9 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       TableRow,
       JanTableHeader,
       JanTableCell,
-      Image,
+      /* base64 이미지를 파싱에서 받아들인다 — 기본값(allowBase64:false)이면 저장본을 다시 열 때
+         data: 그림이 통째로 사라진다. 큰 그림만 blob 참조로 빠지고 작은 그림은 data: 로 남기 때문. */
+      Image.configure({ allowBase64: true }),
       MathInline,
       Mermaid,
       MentionExt,

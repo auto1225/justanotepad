@@ -3896,6 +3896,70 @@ html, body, #root {
   background-position: 0 0, 0 8px !important;
 }
 
+/* 목록 — 편집기 본문의 글머리 기호·번호가 보이게 (앱 전역 reset 이 마커를 지운다) */
+.jan-editor-pages .ProseMirror ul,
+.jan-editor-pages .ProseMirror ol {
+  padding-left: 24px;
+  margin: 6px 0;
+}
+.jan-editor-pages .ProseMirror ul { list-style: disc outside; }
+.jan-editor-pages .ProseMirror ul ul { list-style: circle outside; }
+.jan-editor-pages .ProseMirror ol { list-style: decimal outside; }
+.jan-editor-pages .ProseMirror li > p { margin: 0; }
+.jan-editor-pages .ProseMirror ul[data-type="taskList"] { list-style: none; padding-left: 8px; }
+
+/* ============================================================
+   표 — 워드·한글식 격자. TipTap 은 표 모양을 스스로 그리지 않아
+   테두리가 없으면 글자만 늘어선 것처럼 보인다.
+   ============================================================ */
+.jan-editor-pages .ProseMirror table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+  margin: 10px 0;
+  overflow: hidden;
+}
+.jan-editor-pages .ProseMirror th,
+.jan-editor-pages .ProseMirror td {
+  border: 1px solid var(--jan-table-line, #9aa1ab);
+  padding: 5px 8px;
+  vertical-align: top;
+  position: relative;
+  box-sizing: border-box;
+  min-width: 2em;
+}
+.jan-editor-pages .ProseMirror th {
+  background: var(--jan-table-head, #f0f2f5);
+  font-weight: 600;
+  text-align: center;
+}
+.jan-editor-pages .ProseMirror th > p,
+.jan-editor-pages .ProseMirror td > p { margin: 0; }
+/* 선택한 셀 */
+.jan-editor-pages .ProseMirror .selectedCell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--accent, #D97757) 16%, transparent);
+  pointer-events: none;
+}
+/* 열 너비 조절 손잡이 */
+.jan-editor-pages .ProseMirror .column-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: -2px;
+  width: 4px;
+  background: var(--accent, #D97757);
+  pointer-events: none;
+}
+.jan-editor-pages .ProseMirror.resize-cursor { cursor: col-resize; }
+.jan-editor-pages .tableWrapper { overflow-x: auto; }
+.jan-theme-dark .jan-editor-pages .ProseMirror {
+  --jan-table-line: #5f656d;
+  --jan-table-head: #33373d;
+}
+
 .jan-editor-pages .ProseMirror blockquote,
 .jan-editor-pages .ProseMirror pre,
 .jan-editor-pages .ProseMirror table,
