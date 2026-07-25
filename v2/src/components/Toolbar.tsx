@@ -8,6 +8,8 @@ import { ColorPicker } from './ColorPicker'
 import { TTSButton } from './TTSButton'
 import { VoiceButton } from './VoiceButton'
 import { Ribbon } from './Ribbon'
+import { aggregateColumn } from '../lib/tableUtils'
+import { sortTableByCurrentColumn } from '../lib/tableSort'
 import { Icon } from './Icons'
 import type { IconName } from './Icons'
 import { useTypographyStore } from '../store/typographyStore'
@@ -111,7 +113,7 @@ const SYMBOL_GROUPS: Array<{ label: string; chars: string[] }> = [
 ]
 
 interface MenuItem { label: string; short?: string; hint?: string; icon?: IconName; divider?: string; onClick?: () => void }
-interface MenuGroup { label: string; items: MenuItem[] }
+interface MenuGroup { label: string; items: MenuItem[]; context?: boolean }
 
 /**
  * Phase 24 — v1 8개 카테고리 메뉴 모든 기능 실제 구현 (stub 제거).
@@ -133,6 +135,35 @@ export function Toolbar(p: ToolbarProps) {
   })
   useEffect(() => { try { localStorage.setItem('jan-v2-ribbon-tab', ribbonTab) } catch { /* 저장 실패는 무시 */ } }, [ribbonTab])
   useEffect(() => { try { localStorage.setItem('jan-v2-ribbon-collapsed', ribbonCollapsed ? '1' : '0') } catch { /* 무시 */ } }, [ribbonCollapsed])
+  /* 커서가 표·그림 안에 있는지 — TipTap v3 는 트랜잭션마다 부모를 다시 그리지 않으므로
+     직접 구독한다. (툴바의 굵게·정렬 같은 상태 표시도 이 구독으로 함께 최신이 된다) */
+  const [contextTab, setContextTab] = useState<'표' | '그림' | null>(null)
+  useEffect(() => {
+    if (!editor) return
+    const read = () => setContextTab(editor.isActive('table') ? '표' : editor.isActive('image') ? '그림' : null)
+    read()
+    editor.on('selectionUpdate', read)
+    editor.on('transaction', read)
+    return () => {
+      editor.off('selectionUpdate', read)
+      editor.off('transaction', read)
+    }
+  }, [editor])
+
+  /* 표·그림을 고르면 그 개체 탭으로 자동 전환하고, 선택이 풀리면 쓰던 탭으로 돌아온다 */
+  const beforeContextTab = useRef<string | null>(null)
+  useEffect(() => {
+    if (contextTab) {
+      setRibbonTab((prev) => {
+        if (prev !== contextTab && prev !== '표' && prev !== '그림') beforeContextTab.current = prev
+        return contextTab
+      })
+    } else if (beforeContextTab.current) {
+      const back = beforeContextTab.current
+      beforeContextTab.current = null
+      setRibbonTab(back)
+    }
+  }, [contextTab])
   const containerRef = useRef<HTMLDivElement>(null)
   useTypographyStore() // 문서 기본 타이포 변경 시 리렌더 (셀렉트 기본값 반영)
   const [showLinkPop, setShowLinkPop] = useState(false)
@@ -968,16 +999,91 @@ export function Toolbar(p: ToolbarProps) {
     { divider: '명령 찾기', label: '' },
     { label: '명령 팔레트', short: '명령', hint: 'Ctrl+Shift+P', icon: 'cmd', onClick: () => run(cmdPalette) },
   ]
+  /* AI 는 우리 강점이라 별도 탭으로 올린다 — 도구·미디어에 섞여 있던 것을 옮긴다 */
+  const AI_KEYS = ['AI ', 'OCR', '번역', '문서 건강 점수', '워드 클라우드', '마인드맵']
+  const isAi = (it: MenuItem) => !it.divider && AI_KEYS.some((k) => it.label.startsWith(k))
+  const notAi = (items: MenuItem[]) => items.filter((it) => it.divider || !isAi(it))
+  const aiFrom = (items: MenuItem[]) => items.filter(isAi)
+  const aiTools = aiFrom(pick('도구'))
+  const aiItems: MenuItem[] = [
+    { divider: '쓰기 도우미', label: '' },
+    ...aiTools.filter((it) => it.label.startsWith('AI ')),
+    ...aiTools.filter((it) => it.label.startsWith('번역')),
+    { divider: '이미지 · 인식', label: '' },
+    ...aiFrom(pick('미디어')),
+    ...aiTools.filter((it) => it.label.startsWith('OCR')),
+    { divider: '문서 분석', label: '' },
+    ...aiTools.filter((it) => !it.label.startsWith('AI ') && !it.label.startsWith('OCR') && !it.label.startsWith('번역')),
+  ]
+
+  /* 표·그림을 고르면 나타나는 개체 탭 (한글의 맥락 탭) */
+  const inTable = contextTab === '표'
+  const onImage = contextTab === '그림'
+  const setImgWidth = (w: string) => editor.chain().focus().updateAttributes('image', { width: w }).run()
+  const setImgAlign = (side: 'left' | 'center' | 'right') => {
+    const pos = editor.state.selection.from
+    editor.chain().focus().setTextSelection(pos).setTextAlign(side).setNodeSelection(pos).run()
+  }
+  const tableItems: MenuItem[] = [
+    { divider: '행', label: '' },
+    { label: '위에 행 추가', short: '위 행', icon: 'plus', onClick: () => run(() => editor.chain().focus().addRowBefore().run()) },
+    { label: '아래에 행 추가', short: '아래 행', icon: 'plus', onClick: () => run(() => editor.chain().focus().addRowAfter().run()) },
+    { label: '현재 행 삭제', short: '행 삭제', icon: 'minus', onClick: () => run(() => editor.chain().focus().deleteRow().run()) },
+    { divider: '열', label: '' },
+    { label: '왼쪽에 열 추가', short: '왼쪽 열', icon: 'plus', onClick: () => run(() => editor.chain().focus().addColumnBefore().run()) },
+    { label: '오른쪽에 열 추가', short: '오른쪽 열', icon: 'plus', onClick: () => run(() => editor.chain().focus().addColumnAfter().run()) },
+    { label: '현재 열 삭제', short: '열 삭제', icon: 'minus', onClick: () => run(() => editor.chain().focus().deleteColumn().run()) },
+    { divider: '셀', label: '' },
+    { label: '제목 행 토글', short: '제목 행', icon: 'table', onClick: () => run(() => editor.chain().focus().toggleHeaderRow().run()) },
+    { label: '셀 합치기 / 나누기', short: '셀 합치기', icon: 'columns', onClick: () => run(() => editor.chain().focus().mergeOrSplit().run()) },
+    { label: '셀 배경색 지우기', short: '배경 지움', icon: 'fill', onClick: () => run(() => editor.chain().focus().setCellAttribute('backgroundColor', null).run()) },
+    { divider: '계산 · 정렬', label: '' },
+    { label: '현재 열 합계', short: '합계', icon: 'hash', onClick: () => run(() => aggregateColumn(editor, 'sum')) },
+    { label: '현재 열 평균', short: '평균', icon: 'hash', onClick: () => run(() => aggregateColumn(editor, 'avg')) },
+    { label: '현재 열 개수', short: '개수', icon: 'hash', onClick: () => run(() => aggregateColumn(editor, 'count')) },
+    { label: '현재 열 오름차순 정렬', short: '오름차순', icon: 'chevron-up', onClick: () => run(() => sortTableByCurrentColumn(editor, 'asc')) },
+    { label: '현재 열 내림차순 정렬', short: '내림차순', icon: 'chevron-down', onClick: () => run(() => sortTableByCurrentColumn(editor, 'desc')) },
+    { divider: '표', label: '' },
+    { label: '표 삭제', short: '표 삭제', icon: 'trash', onClick: () => run(() => { if (confirm('표 전체를 삭제할까요?')) editor.chain().focus().deleteTable().run() }) },
+  ]
+  const imageItems: MenuItem[] = [
+    { divider: '크기', label: '' },
+    { label: '작게 (200px)', short: '작게', icon: 'image', onClick: () => run(() => setImgWidth('200px')) },
+    { label: '중간 (400px)', short: '중간', icon: 'image', onClick: () => run(() => setImgWidth('400px')) },
+    { label: '크게 (600px)', short: '크게', icon: 'image', onClick: () => run(() => setImgWidth('600px')) },
+    { label: '본문 너비에 맞춤', short: '전체 너비', icon: 'maximize', onClick: () => run(() => setImgWidth('100%')) },
+    { divider: '배치', label: '' },
+    { label: '왼쪽 배치', short: '왼쪽', icon: 'align-left', onClick: () => run(() => setImgAlign('left')) },
+    { label: '가운데 배치', short: '가운데', icon: 'align-center', onClick: () => run(() => setImgAlign('center')) },
+    { label: '오른쪽 배치', short: '오른쪽', icon: 'align-right', onClick: () => run(() => setImgAlign('right')) },
+    { divider: '편집', label: '' },
+    { label: '그림판에서 주석 편집', short: '주석 편집', icon: 'paint', onClick: () => run(p.onPaint) },
+    { label: '그림 삭제', short: '삭제', icon: 'trash', onClick: () => run(() => editor.chain().focus().deleteSelection().run()) },
+  ]
+
   const groups: MenuGroup[] = [
     { label: '파일', items: pick('파일') },
     { label: '편집', items: editItems },
     { label: '보기', items: pick('보기') },
-    { label: '입력', items: [...pick('삽입'), { divider: '미디어', label: '' }, ...pick('미디어')] },
+    { label: '입력', items: [...pick('삽입'), { divider: '미디어', label: '' }, ...notAi(pick('미디어'))] },
     { label: '서식', items: pick('서식') },
     { label: '쪽', items: pick('페이지') },
-    { label: '도구', items: pick('도구') },
+    { label: 'AI', items: aiItems },
+    { label: '도구', items: notAi(pick('도구')) },
     { label: '논문', items: pick('논문') },
+    ...(inTable ? [{ label: '표', items: tableItems, context: true }] : []),
+    ...(onImage ? [{ label: '그림', items: imageItems, context: true }] : []),
   ]
+
+  /* 묶음 오른쪽 아래 화살표 → 그 묶음의 전체 설정 창 (한글·워드의 대화상자 연결) */
+  const ribbonLaunchers: Record<string, { label: string; onClick: () => void }> = {
+    '페이지 동작': { label: '쪽 설정 창 열기', onClick: () => p.onPageSettings() },
+    '미리보기 / 인쇄': { label: '인쇄 미리보기 열기', onClick: () => p.onPrintPreview() },
+    '한국어 타이포': { label: '문서 스타일 창 열기', onClick: () => p.onTypo() },
+    '제목': { label: '문서 스타일 창 열기', onClick: () => p.onTypo() },
+    '서식 복사 · 내 스타일': { label: '내 스타일 관리 열기', onClick: () => p.onSnippets() },
+    '쓰기 도우미': { label: 'AI 도우미 열기', onClick: () => p.onAi() },
+  }
 
   return (
     <div className="jan-toolbar-stack">
@@ -987,6 +1093,7 @@ export function Toolbar(p: ToolbarProps) {
       onTabChange={setRibbonTab}
       collapsed={ribbonCollapsed}
       onToggleCollapsed={() => setRibbonCollapsed((v) => !v)}
+      launchers={ribbonLaunchers}
     />
     <div className="jan-toolbar-row" ref={containerRef}>
       <select

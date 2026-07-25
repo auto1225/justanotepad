@@ -270,7 +270,7 @@ test.describe('v2 smoke', () => {
     await expect(pages).toHaveAttribute('data-page-columns', '2')
 
     await page.getByRole('tab', { name: '쪽', exact: true }).click()
-    await page.locator('.jan-ribbon-body').getByRole('button', { name: /인쇄 미리보기/ }).click()
+    await page.locator('.jan-ribbon-body .jan-ribbon-btn').getByText('미리보기', { exact: true }).first().click()
     await expect(page.locator('.jan-print-title')).toContainText('B4 가로')
     await expect(page.locator('.jan-print-title')).toContainText('2단')
     const printSrcdoc = await page.locator('.jan-print-iframe').evaluate((iframe) => (iframe as HTMLIFrameElement).srcdoc)
@@ -585,7 +585,7 @@ test.describe('v2 smoke', () => {
     }
 
     for (let i = 0; i < 4; i += 1) await page.keyboard.press('Shift+Tab')
-    await page.getByTitle('현재 열 오름차순').click()
+    await page.locator('.jan-table-menu').getByTitle('현재 열 오름차순').click()
     const rows = page.locator('.ProseMirror table tr')
     await expect(rows.nth(0)).toContainText('Name')
     await expect(rows.nth(1)).toContainText('Alpha')
@@ -615,11 +615,11 @@ test.describe('v2 smoke', () => {
       if (i < values.length - 1) await page.keyboard.press('Tab')
     }
 
-    await page.getByTitle('아래 행 추가').click()
+    await page.locator('.jan-table-menu').getByTitle('아래 행 추가').click()
     await expect(cells).toHaveCount(12)
     await page.keyboard.press('Tab')
     await page.keyboard.press('Tab')
-    await page.getByTitle('현재 열 합계').click()
+    await page.locator('.jan-table-menu').getByTitle('현재 열 합계').click()
     await expect(cells.nth(10)).toContainText('합계: 12')
   })
 
@@ -629,7 +629,7 @@ test.describe('v2 smoke', () => {
     await page.locator('.ProseMirror').first().waitFor({ state: 'visible', timeout: 15000 })
 
     await page.getByRole('tab', { name: '서식', exact: true }).click()
-    await page.locator('.jan-ribbon-body').getByRole('button', { name: /문서 스타일/ }).click()
+    await page.locator('.jan-ribbon-body .jan-ribbon-btn[aria-label="문서 스타일"]').click()
     const modal = page.locator('.jan-typography-modal')
     await expect(modal).toBeVisible()
 

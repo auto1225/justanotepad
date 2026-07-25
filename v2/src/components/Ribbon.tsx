@@ -26,6 +26,14 @@ export interface RibbonItem {
 export interface RibbonTab {
   label: string
   items: RibbonItem[]
+  /** 표·그림처럼 대상을 골랐을 때만 나타나는 맥락 탭 (한글의 개체 탭) */
+  context?: boolean
+}
+
+/** 묶음 오른쪽 아래 화살표 — 그 묶음의 전체 설정 창을 연다 (한글·워드의 대화상자 연결) */
+export interface RibbonLauncher {
+  label: string
+  onClick: () => void
 }
 
 interface Section {
@@ -127,12 +135,15 @@ export function Ribbon({
   onTabChange,
   collapsed,
   onToggleCollapsed,
+  launchers = {},
 }: {
   tabs: RibbonTab[]
   activeTab: string
   onTabChange: (label: string) => void
   collapsed: boolean
   onToggleCollapsed: () => void
+  /** 묶음 이름 → 그 묶음의 전체 설정 창 */
+  launchers?: Record<string, RibbonLauncher>
 }) {
   const active = tabs.find((t) => t.label === activeTab) || tabs[0]
   const sections = splitSections(active?.items || [])
@@ -146,7 +157,11 @@ export function Ribbon({
             type="button"
             role="tab"
             aria-selected={t.label === active?.label}
-            className={'jan-ribbon-tab' + (t.label === active?.label ? ' is-active' : '')}
+            className={
+              'jan-ribbon-tab' +
+              (t.label === active?.label ? ' is-active' : '') +
+              (t.context ? ' is-context' : '')
+            }
             onClick={() => {
               onTabChange(t.label)
               if (collapsed) onToggleCollapsed() // 접혀 있으면 펴면서 그 탭을 보여준다
@@ -190,7 +205,20 @@ export function Ribbon({
                   ))}
                   {rest.length > 0 && <OverflowMenu items={rest} caption={sec.caption} />}
                 </div>
-                {sec.caption && <div className="jan-ribbon-caption">{sec.caption}</div>}
+                <div className="jan-ribbon-foot">
+                  {sec.caption && <span className="jan-ribbon-caption">{sec.caption}</span>}
+                  {launchers[sec.caption] && (
+                    <button
+                      type="button"
+                      className="jan-ribbon-launcher"
+                      onClick={launchers[sec.caption].onClick}
+                      title={launchers[sec.caption].label}
+                      aria-label={launchers[sec.caption].label}
+                    >
+                      <Icon name="chevron-down" size={11} />
+                    </button>
+                  )}
+                </div>
               </div>
             )
           })}

@@ -1554,10 +1554,25 @@ body { background: #FFE8E8; }
 }
 .jan-ribbon-group:last-child { border-right: 0; }
 .jan-ribbon-items { display: flex; align-items: flex-start; gap: 2px; }
+.jan-ribbon-foot { display: flex; align-items: center; gap: 3px; margin-top: 1px; max-width: 100%; }
 .jan-ribbon-caption {
-  margin-top: 1px; font-size: 10px; color: #9a908a; white-space: nowrap;
-  max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+  font-size: 10px; color: #9a908a; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
 }
+/* 묶음 대화상자 연결 — 그 묶음의 전체 설정 창을 여는 작은 화살표 */
+.jan-ribbon-launcher {
+  appearance: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 14px; height: 14px; padding: 0; border: 1px solid transparent; border-radius: 3px;
+  background: transparent; color: #9a908a; cursor: pointer; flex-shrink: 0;
+}
+.jan-ribbon-launcher:hover { background: #fff; border-color: rgba(0,0,0,0.14); color: var(--accent, #D97757); }
+/* 개체 탭 (표·그림) — 대상을 골랐을 때만 나타난다 */
+.jan-ribbon-tab.is-context { color: #1f6f5c; }
+.jan-ribbon-tab.is-context::before {
+  content: ''; display: inline-block; width: 6px; height: 6px; margin-right: 5px;
+  border-radius: 50%; background: #1f9c7d; vertical-align: middle;
+}
+.jan-ribbon-tab.is-context.is-active { color: #12735e; border-bottom-color: #1f9c7d; }
 .jan-ribbon-btn {
   appearance: none; border: 1px solid transparent; background: transparent; cursor: pointer;
   display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 3px;
@@ -1583,6 +1598,9 @@ body { background: #FFE8E8; }
 .jan-theme-dark .jan-ribbon-btn:hover { background: #333; border-color: rgba(255,255,255,0.16); }
 .jan-theme-dark .jan-ribbon-group { border-right-color: rgba(255,255,255,0.1); }
 .jan-theme-dark .jan-ribbon-caption { color: #8c837c; }
+.jan-theme-dark .jan-ribbon-launcher { color: #8c837c; }
+.jan-theme-dark .jan-ribbon-launcher:hover { background: #333; border-color: rgba(255,255,255,0.18); }
+.jan-theme-dark .jan-ribbon-tab.is-context { color: #6fd6b8; }
 /* 좁은 화면 — 글자를 줄이고 가로로 스크롤 */
 @media (max-width: 900px) {
   .jan-ribbon-btn { width: 50px; min-height: 46px; font-size: 10px; }
