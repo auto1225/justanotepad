@@ -1075,6 +1075,21 @@ mark{padding:1px 2px;border-radius:2px;}
 .ProseMirror{font-family:var(--jan-editor-font);line-height:var(--jan-editor-line);font-size:var(--jan-editor-size);}
 .ProseMirror p{margin-bottom:var(--jan-editor-para);}
 
+/* 문서 본문의 제목·인용·코드 —
+   Tailwind preflight 이 h1~h6 의 크기·굵기를 본문과 같게 되돌려 놓기 때문에(base 레이어),
+   문서 편집기에서는 제목이 본문과 구별되지 않는다. 여기서 다시 세운다.
+   크기는 em 이라 문서 스타일(--jan-editor-size)을 바꾸면 함께 따라간다. */
+.ProseMirror h1{font-size:1.9em;font-weight:700;line-height:1.32;margin:0.75em 0 0.35em;}
+.ProseMirror h2{font-size:1.5em;font-weight:700;line-height:1.35;margin:0.7em 0 0.3em;}
+.ProseMirror h3{font-size:1.25em;font-weight:700;line-height:1.4;margin:0.65em 0 0.25em;}
+.ProseMirror h4{font-size:1.1em;font-weight:700;margin:0.6em 0 0.2em;}
+.ProseMirror h5,.ProseMirror h6{font-size:1em;font-weight:700;margin:0.55em 0 0.2em;}
+.ProseMirror h1:first-child,.ProseMirror h2:first-child,.ProseMirror h3:first-child{margin-top:0;}
+.ProseMirror blockquote{margin:0.7em 0;padding:2px 0 2px 14px;border-left:3px solid color-mix(in srgb,var(--accent,#D97757) 55%,transparent);color:#555;}
+.ProseMirror pre{margin:0.7em 0;padding:10px 12px;background:rgba(0,0,0,0.045);border:1px solid rgba(0,0,0,0.08);border-radius:6px;font-family:Consolas,"D2Coding","Courier New",monospace;font-size:0.92em;line-height:1.55;overflow-x:auto;white-space:pre;}
+.ProseMirror pre code{background:none;padding:0;font-family:inherit;font-size:inherit;}
+.ProseMirror :not(pre) > code{padding:1px 4px;background:rgba(0,0,0,0.06);border-radius:3px;font-family:Consolas,"D2Coding","Courier New",monospace;font-size:0.92em;}
+
 /* ==================== Phase 15 — Find & Replace ==================== */
 .jan-findbar{position:fixed;top:60px;right:16px;z-index:1000;display:flex;gap:4px;align-items:center;flex-wrap:wrap;max-width:min(760px,calc(100vw - 32px));padding:6px 8px;background:#fff;border:1px solid #ccc;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.15);font-size:12px;}
 .jan-findbar input[type="text"]{padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:12px;width:140px;min-width:110px;}

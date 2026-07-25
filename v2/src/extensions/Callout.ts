@@ -46,7 +46,12 @@ export const Callout = Node.create({
   },
 
   parseHTML() {
-    return [{ tag: 'div[data-callout]' }]
+    return [
+      { tag: 'div[data-callout]' },
+      // 종류 딱지(ℹ INFO)는 그려 넣은 장식이다. 저장본을 다시 읽을 때 이것을 본문으로 들이면
+      // 저장할 때마다 딱지가 문단으로 한 줄씩 쌓인다 — 파싱 단계에서 버린다.
+      { tag: 'div[data-callout-label]', ignore: true },
+    ]
   },
 
   renderHTML({ node, HTMLAttributes }) {
@@ -59,7 +64,7 @@ export const Callout = Node.create({
         class: 'jan-callout jan-callout-' + kind,
         style: `border-left:4px solid ${color}; background:color-mix(in srgb, ${color} 8%, transparent); padding:10px 14px; margin:8px 0; border-radius:6px;`,
       }),
-      ['div', { class: 'jan-callout-icon', style: `color:${color}; font-weight:700; margin-bottom:4px; font-size:13px;` }, ICONS[kind] + '  ' + kind.toUpperCase()],
+      ['div', { 'data-callout-label': '1', contenteditable: 'false', class: 'jan-callout-icon', style: `color:${color}; font-weight:700; margin-bottom:4px; font-size:13px;` }, ICONS[kind] + '  ' + kind.toUpperCase()],
       ['div', { class: 'jan-callout-body' }, 0],
     ]
   },
