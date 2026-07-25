@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Icon } from './Icons'
 import type { IconName } from './Icons'
+import { shortLabel } from '../lib/ribbonLabel'
 
 /**
  * 리본 메뉴 — 한글·워드 방식.
@@ -43,30 +44,6 @@ interface Section {
 
 /** 묶음 안에서 큰 버튼으로 내보낼 최대 개수 — 나머지는 더보기로 */
 const MAX_PRIMARY = 6
-
-/** 리본 버튼에 쓸 짧은 이름 — 괄호·부연 설명을 걷어내고 앞부분만 남긴다 */
-export function shortLabel(item: RibbonItem): string {
-  if (item.short) return item.short
-  const MAX = 8
-  let s = item.label
-    .replace(/\([^)]*\)/g, ' ') // 괄호 설명
-    .replace(/\s*[—·:]\s*.*$/, '') // 부연 설명
-    .replace(/\s*\/\s*.*$/, '') // "잠금 / 비밀번호" → "잠금"
-    .replace(/\.{2,}\s*$/, '') // 말줄임표
-    .replace(/\s+/g, ' ')
-    .trim()
-  if (s.length > MAX) {
-    const cut = s.slice(0, MAX)
-    const sp = cut.lastIndexOf(' ')
-    if (sp >= 3) s = cut.slice(0, sp)
-    else {
-      // 라틴 단어는 중간에서 자르면 못 알아본다 (Markdow…) — 단어 단위로 남긴다
-      const word = s.match(/^[A-Za-z0-9.+-]+/)
-      s = word && word[0].length <= 12 ? word[0] : cut
-    }
-  }
-  return s || item.label
-}
 
 function splitSections(items: RibbonItem[]): Section[] {
   const out: Section[] = []

@@ -247,7 +247,7 @@ function findSplitPos(view: EditorView, childPos: number, child: PMNode, room: n
   if (avail <= 0) return -1
   const hit = findLineCut(dom, avail)
   if (!hit) return -1
-  let at = -1
+  let at: number
   try { at = view.posAtDOM(hit.node, hit.offset) } catch { return -1 }
   // 문단 맨 앞·맨 뒤에서 자르면 빈 조각이 생긴다
   if (at <= childPos + 1 || at >= childPos + child.nodeSize - 1) return -1

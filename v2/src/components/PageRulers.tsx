@@ -10,10 +10,7 @@ import type { Editor } from '@tiptap/react'
  * - 가로 자에는 첫 줄·왼쪽·오른쪽 들여쓰기 손잡이가 있고 끌어서 바꾼다.
  */
 
-const MM_PER_IN = 25.4
-const PX_PER_IN = 96
-export const mmToPx = (mm: number) => (mm * PX_PER_IN) / MM_PER_IN
-export const pxToMm = (px: number) => (px * MM_PER_IN) / PX_PER_IN
+import { mmToPx, pxToMm } from '../lib/units'
 
 /** 1cm 간격 숫자 (눈금 자체는 CSS 그라데이션으로 1mm 마다 그린다) */
 function numbersOf(lengthMm: number) {
