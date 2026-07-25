@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { EditorContent, useEditor } from '@tiptap/react'
 import type { Editor as TiptapEditor, AnyExtension } from '@tiptap/core'
 import { Extension } from '@tiptap/core'
@@ -41,6 +41,10 @@ const RELAY_META = 'jan-split-relay'
 export function SplitEditorPane(props: SplitEditorPaneProps) {
   const { mainEditor, extensions, hasYdoc, paginationEnabled, pagePx, pageMarginPx } = props
   const toggleSplitView = useUIStore((s) => s.toggleSplitView)
+  const splitDir = useUIStore((s) => s.splitDir)
+  const setSplitDir = useUIStore((s) => s.setSplitDir)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const [pageInfo, setPageInfo] = useState({ current: 1, total: 1 })
 
   // 실행취소·다시실행을 메인 에디터로 위임 (보조에는 히스토리가 없다)
   const undoRelay = useMemo(
@@ -154,6 +158,41 @@ export function SplitEditorPane(props: SplitEditorPaneProps) {
     }
   }, [secondary, paginationEnabled, pagePx.pageWidth, pagePx.pageHeight, pageMarginPx])
 
+  // 이 창이 지금 몇 쪽을 보고 있는지 — 스크롤 위치로 계산해 바에 표시
+  useEffect(() => {
+    const scroller = scrollRef.current
+    if (!secondary || !scroller) return
+    let raf = 0
+    const update = () => {
+      window.cancelAnimationFrame(raf)
+      raf = window.requestAnimationFrame(() => {
+        const root = secondary.view.dom
+        const rootRect = root.getBoundingClientRect()
+        const scale = root.offsetWidth > 0 ? rootRect.width / root.offsetWidth : 1
+        // 전체 쪽수는 메인 창 기준으로 통일한다 — 두 창은 머리말·꼬리말 측정 타이밍 차이로
+        // 문서 높이가 미세하게 달라(수십 px) 각자 세면 4쪽/5쪽처럼 어긋나 보인다.
+        const total = Math.max(1, mainEditor.view.dom.querySelectorAll('.rm-page-break .breaker').length || 1)
+        const docH = Math.max(1, rootRect.height / (scale || 1))
+        const scRect = scroller.getBoundingClientRect()
+        const probe = (scRect.top + scRect.height * 0.35 - rootRect.top) / (scale || 1)
+        const current = Math.max(1, Math.min(total, Math.floor((probe / docH) * total) + 1))
+        setPageInfo((prev) => (prev.current === current && prev.total === total ? prev : { current, total }))
+      })
+    }
+    update()
+    // 마운트 직후에는 페이지네이션이 아직 재계산 중이라 쪽수가 실제보다 적게 잡힌다
+    // (예: 5쪽 문서가 4쪽으로) → 안정화될 때까지 몇 번 더 재측정
+    const settles = [300, 900, 1800].map((ms) => window.setTimeout(update, ms))
+    scroller.addEventListener('scroll', update, { passive: true })
+    secondary.on('update', update)
+    return () => {
+      scroller.removeEventListener('scroll', update)
+      secondary.off('update', update)
+      settles.forEach((t) => window.clearTimeout(t))
+      window.cancelAnimationFrame(raf)
+    }
+  }, [secondary, mainEditor])
+
   // 편집 줌 동기화 — useWheelZoom 은 "줌 변경 시점"에만 인라인 zoom 을 먹이므로
   // 나중에 마운트되는 분할 창은 현재 줌을 따로 받아야 한다
   const zoom = useUIStore((s) => s.zoom)
@@ -163,13 +202,28 @@ export function SplitEditorPane(props: SplitEditorPaneProps) {
   return (
     <div className="jan-split-secondary" role="region" aria-label="분할 편집 창">
       <div className="jan-split-bar">
-        <strong>분할 편집</strong>
-        <span>같은 문서 — 양쪽 어디서나 편집됩니다</span>
+        <strong>둘째 창</strong>
+        <span className="jan-split-page">{pageInfo.current} / {pageInfo.total}쪽</span>
+        <span className="jan-split-hint">같은 문서입니다 — 여기서 고치면 {splitDir === 'h' ? '위' : '왼쪽'} 창에도 바로 반영됩니다</span>
+        <div className="jan-split-dirseg" role="group" aria-label="분할 방향">
+          <button
+            type="button"
+            className={splitDir === 'h' ? 'is-on' : ''}
+            onClick={() => setSplitDir('h')}
+            title="위·아래로 나누기 (용지 폭이 온전히 보입니다)"
+          >위·아래</button>
+          <button
+            type="button"
+            className={splitDir === 'v' ? 'is-on' : ''}
+            onClick={() => setSplitDir('v')}
+            title="좌우로 나누기 (넓은 화면 권장 — 좁으면 용지가 잘립니다)"
+          >좌우</button>
+        </div>
         <button type="button" onClick={toggleSplitView} title="분할 닫기" aria-label="분할 닫기">
           <Icon name="close" size={13} />
         </button>
       </div>
-      <div className="jan-split-scroll">
+      <div className="jan-split-scroll" ref={scrollRef}>
         <div
           className="jan-editor-pages"
           data-paper={props.paperStyle}

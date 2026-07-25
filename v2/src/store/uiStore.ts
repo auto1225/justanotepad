@@ -312,8 +312,12 @@ interface UIState {
   paragraphFocus: boolean
   /** 쪽모음 패널 — 페이지 축소판을 편집기 옆에 나열 (HWP 쪽모음, 편집과 공존) */
   pageThumbs: boolean
-  /** 분할 편집 — 같은 문서를 좌우 두 창에서 동시 편집 (Word 창 분할) */
+  /** 분할 편집 — 같은 문서를 두 창에서 동시 편집 (Word 창 분할) */
   splitView: boolean
+  /** 분할 방향 — 'h': 위·아래(기본, 용지 폭 온전히 유지) · 'v': 좌우 */
+  splitDir: 'h' | 'v'
+  /** 첫 창이 차지하는 비율 (0.2~0.8) — 분할선 드래그로 조절 */
+  splitRatio: number
   spellCheck: boolean
   sidebarCollapsed: boolean
   headingNumbers: boolean
@@ -344,6 +348,8 @@ interface UIState {
   togglePageThumbs: () => void
   setPageThumbs: (v: boolean) => void
   toggleSplitView: () => void
+  setSplitDir: (dir: 'h' | 'v') => void
+  setSplitRatio: (ratio: number) => void
   toggleSpellCheck: () => void
   toggleSidebar: () => void
   toggleHeadingNumbers: () => void
@@ -374,6 +380,8 @@ export const useUIStore = create<UIState>()(
       paragraphFocus: false,
       pageThumbs: false,
       splitView: false,
+      splitDir: 'h',
+      splitRatio: 0.5,
       spellCheck: false,
       sidebarCollapsed: false,
       headingNumbers: false,
@@ -403,6 +411,8 @@ export const useUIStore = create<UIState>()(
       togglePageThumbs: () => set({ pageThumbs: !get().pageThumbs }),
       setPageThumbs: (v) => set({ pageThumbs: v }),
       toggleSplitView: () => set({ splitView: !get().splitView }),
+      setSplitDir: (dir) => set({ splitDir: dir === 'v' ? 'v' : 'h' }),
+      setSplitRatio: (ratio) => set({ splitRatio: Math.max(0.2, Math.min(0.8, ratio)) }),
       toggleSpellCheck: () => set({ spellCheck: !get().spellCheck }),
       setFocus: (v) => set({ focusMode: v }),
       toggleSidebar: () => set({ sidebarCollapsed: !get().sidebarCollapsed }),

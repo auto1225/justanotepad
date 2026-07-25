@@ -292,6 +292,8 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   const pageThumbs = useUIStore((s) => s.pageThumbs)
   const showPageThumbs = paginationEnabled && pageThumbs
   const splitView = useUIStore((s) => s.splitView)
+  const splitDir = useUIStore((s) => s.splitDir)
+  const splitRatio = useUIStore((s) => s.splitRatio)
   // 줌을 50% 이하로 "내리는 순간" 자동으로 쪽모음을 연다 (수동으로 닫으면 존중)
   const prevZoomRef = useRef(editorZoom)
   useEffect(() => {
@@ -847,6 +849,10 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
         {sidebar}
         {/* 쪽모음은 시각적으로 왼쪽(order:-1)이지만 DOM 은 편집기 뒤에 둔다 —
             스냅샷 내부의 .ProseMirror 복제본이 querySelector 첫 매치를 가로채지 않도록 */}
+        <div
+          className={'jan-editor-stack' + (splitView ? ` is-split is-split-${splitDir}` : '')}
+          style={splitView ? ({ ['--jan-split-ratio' as string]: `${Math.round(splitRatio * 100)}%` } as CSSProperties) : undefined}
+        >
         <div className={'jan-editor-main' + (showOutline ? ' has-outline' : '')}>
         {showOutline && <OutlinePanel editor={editor} />}
         <div
@@ -945,22 +951,53 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
         </div>
       </div>
       {splitView && editor && splitExtensions && (
-        <SplitEditorPane
-          mainEditor={editor}
-          extensions={splitExtensions}
-          hasYdoc={!!collab.ydoc}
-          paginationEnabled={paginationEnabled}
-          pagePx={pagePx}
-          pageMarginPx={pageMarginPx}
-          pageStyle={pageStyle}
-          paperStyle={paperStyle}
-          pageSize={pageSize}
-          pageOrientation={pageOrientation}
-          pageColumnCount={pageColumnCount}
-          viewLayout={viewLayout}
-          spellCheck={spellCheck}
-        />
+        <>
+          <div
+            className="jan-split-divider"
+            role="separator"
+            aria-orientation={splitDir === 'h' ? 'horizontal' : 'vertical'}
+            aria-label="분할선 — 끌어서 창 크기 조절"
+            title="끌어서 창 크기 조절 (더블클릭: 반반)"
+            onDoubleClick={() => useUIStore.getState().setSplitRatio(0.5)}
+            onPointerDown={(e) => {
+              e.preventDefault()
+              const stack = (e.currentTarget as HTMLElement).parentElement
+              if (!stack) return
+              const rect = stack.getBoundingClientRect()
+              const move = (ev: PointerEvent) => {
+                const ratio = splitDir === 'h'
+                  ? (ev.clientY - rect.top) / Math.max(1, rect.height)
+                  : (ev.clientX - rect.left) / Math.max(1, rect.width)
+                useUIStore.getState().setSplitRatio(ratio)
+              }
+              const up = () => {
+                window.removeEventListener('pointermove', move)
+                window.removeEventListener('pointerup', up)
+                document.body.classList.remove('jan-split-dragging')
+              }
+              document.body.classList.add('jan-split-dragging')
+              window.addEventListener('pointermove', move)
+              window.addEventListener('pointerup', up)
+            }}
+          />
+          <SplitEditorPane
+            mainEditor={editor}
+            extensions={splitExtensions}
+            hasYdoc={!!collab.ydoc}
+            paginationEnabled={paginationEnabled}
+            pagePx={pagePx}
+            pageMarginPx={pageMarginPx}
+            pageStyle={pageStyle}
+            paperStyle={paperStyle}
+            pageSize={pageSize}
+            pageOrientation={pageOrientation}
+            pageColumnCount={pageColumnCount}
+            viewLayout={viewLayout}
+            spellCheck={spellCheck}
+          />
+        </>
       )}
+      </div>
       {showPageThumbs && editor && (
         <PageThumbnailPanel
           editor={editor}

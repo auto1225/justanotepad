@@ -22,7 +22,7 @@ interface PageThumbnailPanelProps {
 }
 
 const MAX_PAGES = 60
-const THUMB_W = 128
+const THUMB_W = 156
 
 interface Snap {
   html: string

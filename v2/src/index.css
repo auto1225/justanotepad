@@ -5477,7 +5477,7 @@ html, body, #root {
 /* 쪽모음 패널 — 페이지 축소판을 편집기 옆에 고정 배치 (여러쪽보기 재설계: 편집과 공존) */
 .jan-pagethumbs {
   order: -1; /* DOM 은 편집기 뒤(querySelector 가로채기 방지), 시각적으로는 왼쪽 */
-  width: 168px; flex-shrink: 0;
+  width: 196px; flex-shrink: 0;
   display: flex; flex-direction: column;
   background: var(--jan-bg-alt, #ececec);
   border-right: 1px solid var(--jan-border, rgba(0, 0, 0, 0.12));
@@ -5506,7 +5506,7 @@ html, body, #root {
   cursor: pointer; flex-shrink: 0;
 }
 .jan-pagethumb:hover { outline: 2px solid var(--accent, #D97757); outline-offset: 1px; }
-.jan-pagethumb.is-current { outline: 2px solid var(--accent, #D97757); outline-offset: 1px; }
+.jan-pagethumb.is-current { outline: 3px solid var(--accent, #D97757); outline-offset: 1px; }
 .jan-pagethumb.is-current .jan-pagethumb-num { background: var(--accent, #D97757); }
 .jan-pagethumb-inner {
   position: absolute; left: 0; top: 0; display: block;
@@ -5516,8 +5516,9 @@ html, body, #root {
 .jan-pagethumb-inner .ProseMirror { box-shadow: none !important; border: 0 !important; border-radius: 0 !important; }
 .jan-pagethumb-num {
   position: absolute; right: 5px; bottom: 4px; z-index: 2;
-  background: rgba(0, 0, 0, 0.55); color: #fff;
-  font-size: 10px; padding: 0 6px; border-radius: 8px;
+  background: rgba(0, 0, 0, 0.62); color: #fff;
+  font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums;
+  padding: 0 7px; border-radius: 8px;
 }
 .jan-theme-dark .jan-pagethumbs { background: #1e1e1e; border-color: rgba(255, 255, 255, 0.1); }
 .jan-theme-dark .jan-pagethumbs-head { border-color: rgba(255, 255, 255, 0.1); }
@@ -5579,30 +5580,112 @@ body.jan-typewriter .jan-editor-main { scroll-behavior: auto; }
 body.jan-para-focus .ProseMirror > *:not(.jan-current-para) { opacity: 0.35; transition: opacity 0.25s ease; }
 body.jan-para-focus .ProseMirror > .jan-current-para { opacity: 1; transition: opacity 0.15s ease; }
 
-/* 분할 편집 — 같은 문서를 좌우 두 창에서 동시 편집 (Word 창 분할) */
-.jan-split-secondary {
-  flex: 1; min-width: 0;
+/* ============================================================
+   분할 편집 — 같은 문서를 두 창에서 동시 편집 (Word 창 나누기)
+   기본은 위·아래 분할: 용지 폭이 온전히 유지돼 페이지가 잘리지 않는다.
+   ============================================================ */
+.jan-editor-stack {
+  flex: 1; min-width: 0; min-height: 0;
   display: flex; flex-direction: column;
-  border-left: 2px solid var(--accent, #D97757);
+}
+.jan-editor-stack > .jan-editor-main { flex: 1; min-width: 0; min-height: 0; }
+
+.jan-editor-stack.is-split-h { flex-direction: column; }
+.jan-editor-stack.is-split-v { flex-direction: row; }
+/* 첫 창은 비율 고정, 둘째 창이 남는 공간을 차지 */
+.jan-editor-stack.is-split-h > .jan-editor-main { flex: 0 0 var(--jan-split-ratio, 50%); }
+.jan-editor-stack.is-split-v > .jan-editor-main { flex: 0 0 var(--jan-split-ratio, 50%); }
+/* 분할 중에는 용지 아래 여백을 줄여 짧아진 창을 알차게 쓴다 */
+.jan-editor-stack.is-split .jan-editor-main .jan-editor-pages { padding-bottom: 16px !important; }
+
+/* 분할선 — 끌어서 비율 조절 (워드 나누기 막대) */
+.jan-split-divider {
+  position: relative; flex: 0 0 14px;
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.05) 0%,
+    var(--jan-bg-alt, #ececec) 40%,
+    var(--jan-bg-alt, #ececec) 60%,
+    rgba(0, 0, 0, 0.05) 100%
+  );
+  border-top: 1px solid var(--jan-border, rgba(0, 0, 0, 0.2));
+  border-bottom: 1px solid var(--jan-border, rgba(0, 0, 0, 0.2));
+  cursor: row-resize; touch-action: none;
+}
+.jan-editor-stack.is-split-v > .jan-split-divider {
+  flex: 0 0 14px;
+  background: linear-gradient(
+    to right,
+    rgba(0, 0, 0, 0.05) 0%,
+    var(--jan-bg-alt, #ececec) 40%,
+    var(--jan-bg-alt, #ececec) 60%,
+    rgba(0, 0, 0, 0.05) 100%
+  );
+  border: 0;
+  border-left: 1px solid var(--jan-border, rgba(0, 0, 0, 0.2));
+  border-right: 1px solid var(--jan-border, rgba(0, 0, 0, 0.2));
+  cursor: col-resize;
+}
+/* 중앙 그립 — 끌 수 있다는 신호 (워드 나누기 막대) */
+.jan-split-divider::after {
+  content: ''; position: absolute; left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  width: 56px; height: 6px; border-radius: 3px;
+  background: color-mix(in srgb, var(--jan-fg, #333) 32%, transparent);
+  box-shadow: 0 0 0 2px var(--jan-bg-alt, #ececec);
+}
+.jan-editor-stack.is-split-v > .jan-split-divider::after { width: 6px; height: 56px; }
+.jan-split-divider:hover { background: color-mix(in srgb, var(--accent, #D97757) 14%, var(--jan-bg-alt, #ececec)); }
+.jan-split-divider:hover::after { background: var(--accent, #D97757); }
+.jan-split-divider:active::after { background: var(--accent, #D97757); }
+body.jan-split-dragging { user-select: none; }
+body.jan-split-dragging * { cursor: inherit !important; }
+
+/* 둘째 창 */
+.jan-split-secondary {
+  flex: 1 1 0; min-width: 0; min-height: 0;
+  display: flex; flex-direction: column;
   background: var(--jan-bg, #f7f7f7);
 }
 .jan-split-bar {
   display: flex; align-items: center; gap: 8px;
-  padding: 5px 10px; font-size: 12px;
+  padding: 4px 10px; font-size: 12px; flex-shrink: 0;
   background: var(--jan-bg-alt, #ececec);
   border-bottom: 1px solid var(--jan-border, rgba(0, 0, 0, 0.1));
 }
-.jan-split-bar span { opacity: 0.6; flex: 1; }
-.jan-split-bar button {
+.jan-split-page {
+  font-variant-numeric: tabular-nums; font-weight: 600;
+  padding: 1px 8px; border-radius: 9px;
+  background: color-mix(in srgb, var(--accent, #D97757) 16%, transparent);
+  color: color-mix(in srgb, var(--accent, #D97757) 82%, #000);
+}
+.jan-split-hint { opacity: 0.55; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 방향 전환 세그먼트 */
+.jan-split-dirseg { display: inline-flex; border: 1px solid var(--jan-border, rgba(0, 0, 0, 0.18)); border-radius: 6px; overflow: hidden; }
+.jan-split-dirseg button {
+  padding: 2px 9px; font-size: 11.5px; font-family: inherit;
+  background: transparent; border: 0; cursor: pointer; color: inherit;
+}
+.jan-split-dirseg button + button { border-left: 1px solid var(--jan-border, rgba(0, 0, 0, 0.18)); }
+.jan-split-dirseg button:hover { background: rgba(0, 0, 0, 0.06); }
+.jan-split-dirseg button.is-on { background: var(--accent, #D97757); color: #fff; }
+.jan-split-bar > button:last-child {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 22px; height: 22px; padding: 0;
+  width: 22px; height: 22px; padding: 0; flex-shrink: 0;
   background: transparent; border: 0; border-radius: 4px; cursor: pointer; color: inherit;
 }
-.jan-split-bar button:hover { background: rgba(0, 0, 0, 0.08); }
-.jan-split-scroll { flex: 1; overflow: auto; padding: 20px 0; }
-/* 분할이 열리면 메인 창도 절반 폭 */
-.jan-app-body:has(.jan-split-secondary) .jan-editor-main { flex: 1; min-width: 0; }
+.jan-split-bar > button:last-child:hover { background: rgba(0, 0, 0, 0.08); }
+.jan-split-scroll { flex: 1; min-height: 0; overflow: auto; padding: 14px 0 16px; }
+.jan-split-scroll > .jan-editor-pages { padding-bottom: 16px !important; }
+
 .jan-theme-dark .jan-split-secondary { background: #232323; }
-.jan-theme-dark .jan-split-bar { background: #1e1e1e; border-color: rgba(255, 255, 255, 0.1); }
-.jan-theme-dark .jan-split-bar button:hover { background: rgba(255, 255, 255, 0.12); }
-@media (max-width: 900px) { .jan-split-secondary { display: none; } }
+.jan-theme-dark .jan-split-bar,
+.jan-theme-dark .jan-split-divider { background: #1e1e1e; border-color: rgba(255, 255, 255, 0.12); }
+.jan-theme-dark .jan-split-dirseg button:hover,
+.jan-theme-dark .jan-split-bar > button:last-child:hover { background: rgba(255, 255, 255, 0.12); }
+/* 좁은 화면에서는 좌우 분할을 강제로 위·아래로 (용지 잘림 방지) */
+@media (max-width: 1100px) { .jan-editor-stack.is-split-v { flex-direction: column; } }
+@media (max-width: 700px) {
+  .jan-split-secondary, .jan-split-divider { display: none; }
+  .jan-editor-stack.is-split > .jan-editor-main { flex: 1; }
+}
