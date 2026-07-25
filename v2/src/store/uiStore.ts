@@ -321,10 +321,12 @@ interface UIState {
   /** 쪽 나란히 편집 — 한 번에 가로로 놓을 쪽 수 (0=꺼짐, 2~4) */
   spreadCols: 0 | 2 | 3 | 4
   /**
-   * 페이지 구현 방식 — 'legacy': 데코레이션 눈금(기존), 'nodes': 용지마다 실제
-   * 페이지 노드 + 자동 리플로우. 검증이 끝나면 nodes 를 기본으로 올린다.
+   * 페이지 구현 방식
+   * - 'legacy'  : 데코레이션 눈금 (구버전)
+   * - 'nodes'   : 용지마다 실제 페이지 노드 + 자동 리플로우 (문단 단위 분할)
+   * - 'columns' : CSS 다단으로 브라우저가 줄 단위 분할 (워드·한글과 같은 흐름)
    */
-  pageModel: 'legacy' | 'nodes'
+  pageModel: 'legacy' | 'nodes' | 'columns'
   spellCheck: boolean
   sidebarCollapsed: boolean
   headingNumbers: boolean
@@ -358,7 +360,7 @@ interface UIState {
   setSplitDir: (dir: 'h' | 'v') => void
   setSplitRatio: (ratio: number) => void
   setSpreadCols: (cols: 0 | 2 | 3 | 4) => void
-  setPageModel: (model: 'legacy' | 'nodes') => void
+  setPageModel: (model: 'legacy' | 'nodes' | 'columns') => void
   toggleSpellCheck: () => void
   toggleSidebar: () => void
   toggleHeadingNumbers: () => void
@@ -426,7 +428,7 @@ export const useUIStore = create<UIState>()(
       setSplitRatio: (ratio) => set({ splitRatio: Math.max(0.2, Math.min(0.8, ratio)) }),
       // 쪽 나란히 편집을 켜면 창 나누기는 끈다 (둘은 화면을 다투는 배타 모드)
       setSpreadCols: (cols) => set(cols ? { spreadCols: cols, splitView: false } : { spreadCols: 0 }),
-      setPageModel: (model) => set({ pageModel: model === 'nodes' ? 'nodes' : 'legacy' }),
+      setPageModel: (model) => set({ pageModel: model === 'nodes' || model === 'columns' ? model : 'legacy' }),
       toggleSpellCheck: () => set({ spellCheck: !get().spellCheck }),
       setFocus: (v) => set({ focusMode: v }),
       toggleSidebar: () => set({ sidebarCollapsed: !get().sidebarCollapsed }),

@@ -5867,3 +5867,84 @@ body.jan-split-dragging * { cursor: inherit !important; }
 .jan-editor-pages[data-page-model="nodes"] .jan-page-running-footer { display: none !important; }
 /* 용지 사이를 또렷하게 */
 .jan-editor-pages[data-page-model="nodes"][data-spread="on"] .ProseMirror { gap: 24px; }
+
+/* ============================================================
+   CSS 다단 페이지 흐름 — 브라우저가 줄 단위로 페이지를 나눈다
+   (워드·한글과 같은 흐름. 문단 중간·표 행 단위 분할이 자동으로 된다)
+
+   기하 구조:
+     용지 폭   = --jan-page-w                    (예: A4 794px)
+     내용 폭   = 용지 폭 - 좌우 여백             (컬럼 폭)
+     내용 높이 = 용지 높이 - 상하 여백           (컬럼 높이)
+     컬럼 간격 = 오른쪽 여백 + 용지 사이 틈 + 왼쪽 여백
+     → 컬럼 주기(폭+간격) = 용지 폭 + 용지 사이 틈  ← 배경 반복 주기와 일치
+   ============================================================ */
+.jan-editor-pages[data-page-model="columns"] {
+  --jan-sheet-gap: 32px;
+  --jan-col-w: calc(var(--jan-page-w, 210mm) - var(--jan-page-margin-left, var(--jan-page-margin, 20mm)) - var(--jan-page-margin-right, var(--jan-page-margin, 20mm)));
+  --jan-col-h: calc(var(--jan-page-h, 297mm) - var(--jan-page-margin-top, var(--jan-page-margin, 20mm)) - var(--jan-page-margin-bottom, var(--jan-page-margin, 20mm)));
+  --jan-col-gap: calc(var(--jan-page-margin-right, var(--jan-page-margin, 20mm)) + var(--jan-sheet-gap) + var(--jan-page-margin-left, var(--jan-page-margin, 20mm)));
+  --jan-sheet-pitch: calc(var(--jan-page-w, 210mm) + var(--jan-sheet-gap));
+  width: 100% !important;
+  max-width: none !important;
+  padding: 20px 0 24px !important;
+}
+/* 껍데기는 폭 제약을 풀고, 용지 외형(흰 종이 + 테두리)을 배경 반복으로 그린다 */
+.jan-editor-pages[data-page-model="columns"] .jan-page-layout {
+  display: block !important;
+  width: auto !important;
+  grid-template-columns: none !important;
+}
+.jan-editor-pages[data-page-model="columns"] .jan-page-shell {
+  width: auto !important;
+  min-height: 0 !important;
+}
+.jan-editor-pages[data-page-model="columns"] .ProseMirror {
+  /* 브라우저가 넘치는 줄을 다음 컬럼(=다음 쪽)으로 흘려보낸다 */
+  column-width: var(--jan-col-w);
+  column-gap: var(--jan-col-gap);
+  column-fill: auto;
+  height: var(--jan-col-h) !important;
+  min-height: 0 !important;
+  width: auto !important;
+  max-width: none !important;
+  padding:
+    var(--jan-page-margin-top, var(--jan-page-margin, 20mm))
+    var(--jan-page-margin-right, var(--jan-page-margin, 20mm))
+    var(--jan-page-margin-bottom, var(--jan-page-margin, 20mm))
+    var(--jan-page-margin-left, var(--jan-page-margin, 20mm)) !important;
+  box-sizing: content-box !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  /* 용지 = 배경 타일. 컬럼 주기와 타일 주기가 같아 각 컬럼이 정확히 한 장에 담긴다 */
+  background-color: transparent !important;
+  background-image: linear-gradient(
+    to right,
+    var(--paper-edge, #e5e5e5) 0 1px,
+    var(--paper, #fff) 1px calc(var(--jan-page-w, 210mm) - 1px),
+    var(--paper-edge, #e5e5e5) calc(var(--jan-page-w, 210mm) - 1px) var(--jan-page-w, 210mm),
+    transparent var(--jan-page-w, 210mm)
+  ) !important;
+  background-size: var(--jan-sheet-pitch) 100% !important;
+  background-repeat: repeat-x !important;
+  background-origin: border-box !important;
+  background-clip: border-box !important;
+  background-attachment: local !important;
+}
+/* 컬럼 경계 처리 — 워드와 같은 규칙
+   표는 행 단위로 쪼개 여러 쪽에 걸치게 하고(통째로 유지하면 표가 컬럼보다 클 때
+   브라우저가 컬럼 높이를 늘려 용지 규격이 전부 깨진다), 행·이미지는 쪼개지 않는다 */
+.jan-editor-pages[data-page-model="columns"] .ProseMirror table { break-inside: auto; }
+.jan-editor-pages[data-page-model="columns"] .ProseMirror :where(tr, img, .jan-callout) {
+  break-inside: avoid;
+}
+/* 표 머리행은 각 쪽에서 반복 (워드 '머리글 행 반복') */
+.jan-editor-pages[data-page-model="columns"] .ProseMirror thead { display: table-header-group; }
+.jan-editor-pages[data-page-model="columns"] .ProseMirror :where(h1, h2, h3) {
+  break-after: avoid;
+}
+/* 컬럼 흐름과 충돌하는 껍데기 장식은 숨긴다 */
+.jan-editor-pages[data-page-model="columns"] .jan-page-margin-frame,
+.jan-editor-pages[data-page-model="columns"] .jan-page-running-header,
+.jan-editor-pages[data-page-model="columns"] .jan-page-running-footer { display: none !important; }

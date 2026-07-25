@@ -369,6 +369,8 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   // history:false 는 분할 편집 보조 창용 — 실행취소를 메인 히스토리로 일원화하기 위해
   // 보조에는 undoRedo 를 아예 빼고, CollaborationCursor(원격 커서 브로드캐스트)도 메인만 단다.
   const usePageNodes = pageModel === 'nodes' && paginationEnabled
+  // CSS 다단 모드 — 브라우저가 줄 단위로 페이지를 나누므로 확장이 전혀 필요 없다
+  const useColumnPages = pageModel === 'columns' && paginationEnabled
   const buildExtensions = useCallback((opts: { history: boolean }) => {
     const base: AnyExtension[] = [
       StarterKit.configure({
@@ -431,6 +433,8 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       )
       return base
     }
+    // CSS 다단 모드는 브라우저가 페이지 흐름을 담당한다 — 어떤 페이지 확장도 넣지 않는다
+    if (useColumnPages) return base
     // 페이지 분할(PaginationPlus)은 float 기반이라 CSS 다단(column)과 공존 불가
     // — 다단(2/3단)·초안 보기에서는 연속 시트로 표시하고, 1단 인쇄 보기에서만 켠다.
     if (paginationEnabled) {
@@ -462,7 +466,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       if (opts.history) base.push(CollaborationCursor.configure({ provider: collab.provider }))
     }
     return base
-  }, [collab.ydoc, collab.provider, pagePx, pageMarginPx, paginationHeader, paginationFooter, paginationEnabled, usePageNodes])
+  }, [collab.ydoc, collab.provider, pagePx, pageMarginPx, paginationHeader, paginationFooter, paginationEnabled, usePageNodes, useColumnPages])
 
   const editorExtensions = useMemo(() => buildExtensions({ history: true }), [buildExtensions])
   // 창 나누기·쪽 나란히 편집이 켜졌을 때만 보조용 확장을 생성 (히스토리 없음)
@@ -899,7 +903,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
           data-rulers={shouldShowRulers ? 'true' : 'false'}
           data-view-layout={viewLayout}
           data-page-num-format={pageNumberFormat}
-          data-page-model={usePageNodes ? 'nodes' : 'legacy'}
+          data-page-model={usePageNodes ? 'nodes' : useColumnPages ? 'columns' : 'legacy'}
           data-spread={usePageNodes && spreadCols > 0 ? 'on' : 'off'}
           data-first-running={firstPageRunningOff ? 'off' : 'on'}
           style={pageStyle}
