@@ -1643,6 +1643,76 @@ body { background: #FFE8E8; }
 .jan-toolbar-row .divider { width: 1px; background: rgba(0,0,0,0.1); margin: 2px 4px; height: 22px; flex-shrink: 0; }
 .jan-toolbar-select { padding: 4px 8px; border: 1px solid rgba(0,0,0,0.1); border-radius: 4px; background: #fff; font-size: 12px; min-width: 90px; cursor: pointer; }
 .jan-toolbar-select:hover { border-color: #D97757; }
+
+/* ============================================================
+   글자 모양 도구 상자 — 글꼴 고르기 + 숫자 입력(증감 단추)
+   한글·워드처럼 값을 직접 쳐 넣을 수 있고, ▲▼·휠·↑↓ 로도 조절한다.
+   ============================================================ */
+.jan-fontcombo { position: relative; display: inline-flex; }
+.jan-fontcombo-btn {
+  display: inline-flex; align-items: center; gap: 6px; height: 24px; box-sizing: border-box;
+  min-width: 130px; max-width: 180px; padding: 0 8px;
+  border: 1px solid rgba(0,0,0,0.12); border-radius: 4px; background: #fff;
+  font-size: 12px; cursor: pointer; color: inherit;
+}
+.jan-fontcombo-btn:hover { border-color: #D97757; }
+.jan-fontcombo-label { flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jan-fontcombo-pop {
+  position: absolute; top: calc(100% + 4px); left: 0; z-index: 600;
+  width: 288px; max-width: calc(100vw - 24px);
+  background: #fff; border: 1px solid rgba(0,0,0,0.16); border-radius: 8px;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.18); overflow: hidden;
+}
+.jan-fontcombo-search { width: 100%; box-sizing: border-box; padding: 8px 10px; border: 0; border-bottom: 1px solid rgba(0,0,0,0.1); font-size: 12px; outline: none; }
+.jan-fontcombo-list { max-height: 330px; overflow-y: auto; }
+.jan-fontcombo-sec { padding: 6px 10px 3px; font-size: 10px; color: #999; background: rgba(0,0,0,0.02); position: sticky; top: 0; }
+.jan-fontcombo-item {
+  display: flex; align-items: center; gap: 6px; width: 100%;
+  padding: 6px 10px; border: 0; background: none; text-align: left;
+  font-size: 14px; line-height: 1.35; cursor: pointer; color: inherit;
+}
+.jan-fontcombo-item:hover, .jan-fontcombo-item.is-cursor { background: rgba(217,119,87,0.12); }
+.jan-fontcombo-check { width: 12px; flex: none; color: #D97757; font-size: 11px; }
+.jan-fontcombo-empty { padding: 14px 10px; font-size: 12px; color: #999; text-align: center; }
+.jan-fontcombo-foot { display: flex; gap: 6px; padding: 8px; border-top: 1px solid rgba(0,0,0,0.1); }
+.jan-fontcombo-foot button { flex: 1; padding: 5px 8px; border: 1px solid rgba(0,0,0,0.12); border-radius: 5px; background: #fff; font-size: 11px; cursor: pointer; }
+.jan-fontcombo-foot button:hover:not(:disabled) { border-color: #D97757; background: rgba(217,119,87,0.08); }
+.jan-fontcombo-foot button:disabled { opacity: 0.55; cursor: default; }
+.jan-fontcombo-note { padding: 6px 10px; font-size: 11px; color: #666; background: rgba(217,119,87,0.08); }
+
+.jan-spin { display: inline-flex; align-items: stretch; height: 24px; border: 1px solid rgba(0,0,0,0.14); border-radius: 4px; background: #fff; overflow: hidden; }
+.jan-spin:focus-within { border-color: #D97757; box-shadow: 0 0 0 2px rgba(217,119,87,0.18); }
+.jan-spin-input { border: 0; outline: none; padding: 0 2px 0 6px; font-size: 12px; line-height: 22px; text-align: right; background: none; color: inherit; font-family: inherit; }
+.jan-spin-input::-webkit-outer-spin-button, .jan-spin-input::-webkit-inner-spin-button { appearance: none; margin: 0; }
+.jan-spin-unit { display: flex; align-items: center; padding: 0 4px 0 1px; font-size: 10px; color: #999; }
+.jan-spin-btns { display: flex; flex-direction: column; width: 15px; flex: none; border-left: 1px solid rgba(0,0,0,0.09); }
+.jan-spin-btns button {
+  display: flex; align-items: center; justify-content: center;
+  flex: 1; padding: 0; border: 0; background: rgba(0,0,0,0.035);
+  color: #555; cursor: pointer; min-height: 0;
+}
+.jan-spin-btns button:first-child { border-bottom: 1px solid rgba(0,0,0,0.09); }
+.jan-spin-btns button:hover { background: rgba(217,119,87,0.2); color: #b8552f; }
+.jan-spin-btns button:active { background: rgba(217,119,87,0.34); }
+
+.jan-field { display: inline-flex; align-items: center; gap: 4px; }
+.jan-field-label { font-size: 11px; color: #666; white-space: nowrap; }
+.jan-fontstep { display: inline-flex; align-items: baseline; gap: 1px; font-size: 13px; padding: 2px 5px; }
+.jan-fontstep span { font-size: 7px; }
+
+.jan-theme-dark .jan-fontcombo-btn,
+.jan-theme-dark .jan-fontcombo-pop,
+.jan-theme-dark .jan-spin { background: #2a2a2a; border-color: rgba(255,255,255,0.16); color: #eee; }
+.jan-theme-dark .jan-fontcombo-search { background: #2a2a2a; color: #eee; }
+.jan-theme-dark .jan-spin-btns button { background: rgba(255,255,255,0.06); color: #ccc; }
+.jan-theme-dark .jan-fontcombo-sec { background: rgba(255,255,255,0.05); }
+.jan-theme-dark .jan-fontcombo-foot button { background: #2a2a2a; color: #eee; }
+
+/* 좁은 화면에서는 자간·장평까지 넣으면 줄이 넘친다 — 라벨을 줄이고 폭을 좁힌다 */
+@media (max-width: 900px) {
+  .jan-field-label { display: none; }
+  .jan-fontcombo-btn { min-width: 96px; }
+}
 .jan-spacer { flex: 1; }
 
 /* 4-2) 카테고리 ▾ 메뉴 (우측) */

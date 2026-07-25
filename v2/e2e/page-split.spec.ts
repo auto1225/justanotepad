@@ -255,9 +255,13 @@ test.describe('줄 단위 문단 분할', () => {
     const before = await pageMetrics(page)
     expect(before.count).toBeGreaterThanOrEqual(3)
 
-    // 문단 전체의 줄 간격을 좁힌다 (툴바 · 현재 문단 기준)
+    // 문단 전체의 줄 간격을 좁힌다 (서식 도구 상자의 줄간격 입력칸)
     await page.keyboard.press('Control+a')
-    await page.locator('select[title="줄 간격 (현재 문단)"]').selectOption('1')
+    const lineHeight = page.locator('input[aria-label="줄 간격"]')
+    await lineHeight.click()
+    await page.keyboard.press('Control+a')
+    await page.keyboard.type('1')
+    await page.keyboard.press('Enter')
     await waitForReflow(page)
 
     const after = await pageMetrics(page)

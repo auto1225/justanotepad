@@ -42,6 +42,7 @@ import { Superscript } from '../extensions/Superscript'
 import { LockedContent } from '../extensions/LockedContent'
 import { Subscript } from '../extensions/Subscript'
 import { Indent } from '../extensions/Indent'
+import { CharFormat } from '../extensions/CharFormat'
 import { Embed } from '../extensions/Embed'
 import { useCollab } from '../hooks/useCollab'
 import { useImageDropPaste } from '../hooks/useImageDropPaste'
@@ -387,6 +388,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       FontFamily,
       FontSize,
       Indent,
+      CharFormat,
       Subscript,
       Color,
       SmartTypography,

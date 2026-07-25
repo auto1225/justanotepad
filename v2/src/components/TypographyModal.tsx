@@ -1,4 +1,6 @@
 import { Icon } from './Icons'
+import { FontCombo } from './FontCombo'
+import { NumberSpin } from './NumberSpin'
 import {
   FONT_FAMILIES,
   TYPOGRAPHY_PRESETS,
@@ -46,31 +48,64 @@ export function TypographyModal({ onClose }: TypographyModalProps) {
 
           <section className="jan-typography-section" aria-label="상세 조정">
             <div className="jan-typography-field">
-              <label htmlFor="jan-typo-font">글꼴</label>
+              <label htmlFor="jan-typo-font">글꼴 묶음</label>
               <select
                 id="jan-typo-font"
-                value={t.fontFamily}
+                value={FONT_FAMILIES.some((f) => f.value === t.fontFamily) ? t.fontFamily : ''}
                 onChange={(e) => t.setFontFamily(normalizeFontFamily(e.target.value))}
               >
                 {FONT_FAMILIES.map((family) => (
                   <option key={family.value} value={family.value}>{family.label}</option>
                 ))}
+                {!FONT_FAMILIES.some((f) => f.value === t.fontFamily) && <option value="">직접 고른 글꼴</option>}
               </select>
             </div>
             <div className="jan-typography-field">
+              <label>이 컴퓨터 글꼴</label>
+              {/* 묶음 대신 설치된 글꼴을 문서 기본값으로 쓸 수 있다 */}
+              <FontCombo
+                value={FONT_FAMILIES.some((f) => f.value === t.fontFamily) ? '' : String(t.fontFamily)}
+                onPick={(v) => t.setFontFamily(normalizeFontFamily(v || 'sans'))}
+              />
+            </div>
+            <div className="jan-typography-field">
               <label htmlFor="jan-typo-size">글자 크기</label>
-              <input id="jan-typo-size" type="range" min={10} max={22} step={1} value={t.fontSize} onChange={(e) => t.setFontSize(Number(e.target.value))} />
-              <output htmlFor="jan-typo-size">{t.fontSize}px</output>
+              <input id="jan-typo-size" type="range" min={8} max={40} step={1} value={t.fontSize} onChange={(e) => t.setFontSize(Number(e.target.value))} />
+              <NumberSpin
+                value={t.fontSize}
+                onChange={(v) => t.setFontSize(v ?? 14)}
+                min={4} max={200} step={1} unit="px" width={46}
+                title="문서 기본 글자 크기 — 직접 입력하거나 ▲▼ 로 조절"
+                ariaLabel="기본 글자 크기"
+                allowEmpty={false}
+                presets={[10, 11, 12, 13, 14, 16, 18, 20, 24]}
+              />
             </div>
             <div className="jan-typography-field">
               <label htmlFor="jan-typo-line">줄 간격</label>
-              <input id="jan-typo-line" type="range" min={1.2} max={2.4} step={0.05} value={t.lineHeight} onChange={(e) => t.setLineHeight(Number(e.target.value))} />
-              <output htmlFor="jan-typo-line">{t.lineHeight.toFixed(2)}</output>
+              <input id="jan-typo-line" type="range" min={0.8} max={3} step={0.05} value={t.lineHeight} onChange={(e) => t.setLineHeight(Number(e.target.value))} />
+              <NumberSpin
+                value={t.lineHeight}
+                onChange={(v) => t.setLineHeight(v ?? 1.7)}
+                min={0.5} max={5} step={0.05} decimals={2} width={46}
+                title="문서 기본 줄 간격 (배수)"
+                ariaLabel="기본 줄 간격"
+                allowEmpty={false}
+                presets={[1, 1.15, 1.5, 1.7, 2, 2.5]}
+              />
             </div>
             <div className="jan-typography-field">
               <label htmlFor="jan-typo-para">단락 간격</label>
-              <input id="jan-typo-para" type="range" min={0} max={24} step={1} value={t.paragraphSpacing} onChange={(e) => t.setParagraphSpacing(Number(e.target.value))} />
-              <output htmlFor="jan-typo-para">{t.paragraphSpacing}px</output>
+              <input id="jan-typo-para" type="range" min={0} max={48} step={1} value={t.paragraphSpacing} onChange={(e) => t.setParagraphSpacing(Number(e.target.value))} />
+              <NumberSpin
+                value={t.paragraphSpacing}
+                onChange={(v) => t.setParagraphSpacing(v ?? 8)}
+                min={0} max={200} step={1} unit="px" width={46}
+                title="문단과 문단 사이 간격"
+                ariaLabel="단락 간격"
+                allowEmpty={false}
+                presets={[0, 4, 8, 12, 16, 24]}
+              />
             </div>
           </section>
 

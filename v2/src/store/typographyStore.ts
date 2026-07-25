@@ -5,7 +5,8 @@ import { persist } from 'zustand/middleware'
  * Phase 15 — 타이포그래피 설정.
  * 글꼴 / 줄간격 / 단락 간격 — body class 또는 CSS variable 로 적용.
  */
-export type FontFamily = 'sans' | 'serif' | 'mono'
+/** 미리 준비한 글꼴 묶음 이름, 또는 이 컴퓨터에 깔린 글꼴의 CSS 값(예: '"맑은 고딕"') */
+export type FontFamily = 'sans' | 'serif' | 'mono' | (string & {})
 export type TypographyPresetId = 'default' | 'compact' | 'manuscript' | 'large' | 'code'
 export type TypographyActivePreset = TypographyPresetId | 'custom'
 
@@ -22,7 +23,7 @@ export interface TypographyPreset extends TypographySettings {
   description: string
 }
 
-export const FONT_FAMILIES: Array<{ value: FontFamily; label: string; description: string }> = [
+export const FONT_FAMILIES: Array<{ value: 'sans' | 'serif' | 'mono'; label: string; description: string }> = [
   { value: 'sans', label: '기본 고딕', description: '노트와 업무 문서에 어울리는 기본값' },
   { value: 'serif', label: '명조', description: '원고, 보고서, 논문 스타일' },
   { value: 'mono', label: '고정폭', description: '코드, 표, 기술 메모에 적합' },
@@ -91,20 +92,21 @@ interface TypographyState {
   reset: () => void
 }
 
-const FONT_STACK: Record<FontFamily, string> = {
+const FONT_STACK: Record<'sans' | 'serif' | 'mono', string> = {
   sans: '"Noto Sans KR","Malgun Gothic",-apple-system,BlinkMacSystemFont,sans-serif',
   serif: '"Noto Serif KR","Nanum Myeongjo",Georgia,serif',
   mono: '"D2Coding","Consolas","Courier New",monospace',
 }
 
 export function getTypographyFontStack(fontFamily: FontFamily): string {
-  return FONT_STACK[fontFamily] || FONT_STACK.sans
+  return FONT_STACK[fontFamily as 'sans' | 'serif' | 'mono'] || (fontFamily || FONT_STACK.sans)
 }
 
+/* 워드·한글처럼 값을 직접 입력할 수 있게 폭을 넓혔다 (미리 정한 눈금에 갇히지 않는다) */
 const LIMITS = {
-  fontSize: { min: 10, max: 22 },
-  lineHeight: { min: 1.2, max: 2.4 },
-  paragraphSpacing: { min: 0, max: 24 },
+  fontSize: { min: 4, max: 200 },
+  lineHeight: { min: 0.5, max: 5 },
+  paragraphSpacing: { min: 0, max: 200 },
 }
 
 const DEFAULT_PRESET = TYPOGRAPHY_PRESETS[0]
@@ -115,12 +117,16 @@ export const DEFAULT_TYPOGRAPHY: TypographySettings = {
   fontSize: DEFAULT_PRESET.fontSize,
 }
 
-export function isFontFamily(value: string): value is FontFamily {
+/** 미리 준비한 묶음('sans'·'serif'·'mono') 인가 */
+export function isFontFamily(value: string): boolean {
   return FONT_FAMILIES.some((family) => family.value === value)
 }
 
 export function normalizeFontFamily(value: string): FontFamily {
-  return isFontFamily(value) ? value : DEFAULT_TYPOGRAPHY.fontFamily
+  if (isFontFamily(value)) return value
+  // 사용자가 고른 시스템 글꼴은 CSS 값 그대로 쓴다
+  const trimmed = (value || '').trim()
+  return trimmed || DEFAULT_TYPOGRAPHY.fontFamily
 }
 
 export function getTypographyPreset(id: TypographyPresetId) {
@@ -156,7 +162,7 @@ function applyVars(s: TypographySettings) {
   if (typeof document === 'undefined') return
   const normalized = clampTypographySettings(s)
   const r = document.documentElement
-  r.style.setProperty('--jan-editor-font', FONT_STACK[normalized.fontFamily])
+  r.style.setProperty('--jan-editor-font', getTypographyFontStack(normalized.fontFamily))
   r.style.setProperty('--jan-editor-line', String(normalized.lineHeight))
   r.style.setProperty('--jan-editor-para', normalized.paragraphSpacing + 'px')
   r.style.setProperty('--jan-editor-size', normalized.fontSize + 'px')

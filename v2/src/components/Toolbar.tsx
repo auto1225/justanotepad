@@ -1,10 +1,13 @@
 ﻿import { useState, useRef, useEffect } from 'react'
 import type { Editor } from '@tiptap/react'
+import { useEditorState } from '@tiptap/react'
 import type { Mark as PMMark } from '@tiptap/pm/model'
 import { downloadHwpx } from '../lib/hwpxExport'
 import { downloadMd } from '../lib/markdownIO'
 import { exportToPdf } from '../lib/pdfExport'
 import { ColorPicker } from './ColorPicker'
+import { FontCombo } from './FontCombo'
+import { NumberSpin } from './NumberSpin'
 import { TTSButton } from './TTSButton'
 import { VoiceButton } from './VoiceButton'
 import { Ribbon } from './Ribbon'
@@ -94,21 +97,6 @@ function headingSlug(text: string): string {
   )
 }
 
-const FONT_FAMILY_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: '', label: '기본 글꼴' },
-  { value: '"Malgun Gothic", "맑은 고딕", sans-serif', label: '맑은 고딕' },
-  { value: '"Nanum Gothic", "나눔고딕", sans-serif', label: '나눔고딕' },
-  { value: '"Noto Sans KR", sans-serif', label: 'Noto Sans KR' },
-  { value: '"Batang", "바탕", serif', label: '바탕' },
-  { value: '"Gungsuh", "궁서", serif', label: '궁서' },
-  { value: 'Georgia, serif', label: 'Georgia' },
-  { value: '"Times New Roman", serif', label: 'Times New Roman' },
-  { value: 'Arial, sans-serif', label: 'Arial' },
-  { value: 'Verdana, sans-serif', label: 'Verdana' },
-  { value: '"Courier New", monospace', label: 'Courier New' },
-  { value: 'Consolas, "D2Coding", monospace', label: 'Consolas (코딩)' },
-]
-
 const SYMBOL_GROUPS: Array<{ label: string; chars: string[] }> = [
   { label: '문장 부호', chars: ['—', '–', '…', '·', '•', '◦', '¶', '§', '©', '®', '™', '「', '」', '『', '』', '《', '》'] },
   { label: '도형 · 화살표', chars: ['★', '☆', '◆', '◇', '■', '□', '▲', '▼', '→', '←', '↑', '↓', '⇒', '⇐', '↔', '✓', '✗'] },
@@ -170,7 +158,27 @@ export function Toolbar(p: ToolbarProps) {
     }
   }, [contextTab])
   const containerRef = useRef<HTMLDivElement>(null)
+  const savedSelRef = useRef<{ from: number; to: number } | null>(null)
+  /* 서식 도구 상자에 보이는 값 — 트랜잭션마다 다시 읽는다.
+     tiptap 3 의 useEditor 는 기본적으로 트랜잭션마다 다시 그리지 않아서,
+     구독하지 않으면 방금 적용한 값이 입력칸에 반영되지 않는다. */
+  const charState = useEditorState({
+    editor,
+    selector: ({ editor: e }) => {
+      if (!e) return { fontFamily: '', fontSize: '', letterSpacing: '', charScale: null as number | null, lineHeight: '' }
+      const ts = e.getAttributes('textStyle')
+      const block = e.isActive('heading') ? e.getAttributes('heading') : e.getAttributes('paragraph')
+      return {
+        fontFamily: (ts.fontFamily as string) || '',
+        fontSize: (ts.fontSize as string) || '',
+        letterSpacing: (ts.letterSpacing as string) || '',
+        charScale: (ts.charScale as number | undefined) ?? null,
+        lineHeight: block.lineHeight ? String(block.lineHeight) : '',
+      }
+    },
+  }) ?? { fontFamily: '', fontSize: '', letterSpacing: '', charScale: null as number | null, lineHeight: '' }
   useTypographyStore() // 문서 기본 타이포 변경 시 리렌더 (셀렉트 기본값 반영)
+
   const [showLinkPop, setShowLinkPop] = useState(false)
   const [linkDraft, setLinkDraft] = useState('')
   const [showSymbolPop, setShowSymbolPop] = useState(false)
@@ -201,6 +209,50 @@ export function Toolbar(p: ToolbarProps) {
   const ui = useUIStore()
 
   if (!editor) return null
+
+  /* 입력칸(글꼴 검색·숫자)에 포커스가 가면 문서의 선택 영역이 풀린다.
+     누르는 순간(mousedown 캡처)의 선택을 기억해 두었다가 명령을 걸 때 되돌린다 —
+     워드·한글에서 서식 도구 상자를 써도 선택이 유지되는 것과 같은 동작. */
+  const applyToSelection = (
+    run: (chain: ReturnType<Editor['chain']>) => ReturnType<Editor['chain']>,
+    keepFocus = false, // 입력칸에서 ↑↓ 로 조절 중이면 포커스를 편집기로 가져오지 않는다
+  ) => {
+    const chain = keepFocus ? editor.chain() : editor.chain().focus()
+    const s = savedSelRef.current
+    if (s && s.from !== s.to) chain.setTextSelection(s)
+    run(chain).run()
+  }
+
+  /* ── 글자 모양 도구 상자가 읽는 현재 값 (한글·워드처럼 pt 로 보여 준다) ── */
+  const fontSizePt = (() => {
+    const raw = charState.fontSize
+    if (!raw) return null
+    const n = parseFloat(raw)
+    if (Number.isNaN(n)) return null
+    return raw.endsWith('px') ? Math.round(n * 0.75 * 10) / 10 : Math.round(n * 10) / 10
+  })()
+  const lineHeightValue = (() => {
+    const n = charState.lineHeight ? parseFloat(charState.lineHeight) : NaN
+    return Number.isNaN(n) ? null : n
+  })()
+  const letterSpacingPct = (() => {
+    const raw = charState.letterSpacing
+    if (!raw) return null
+    const n = parseFloat(raw)
+    if (Number.isNaN(n)) return null
+    return raw.endsWith('em') ? Math.round(n * 100) : Math.round(n) // px 로 들어온 옛 문서도 받아 준다
+  })()
+  const charScalePct = charState.charScale
+
+  /** 워드의 글자 크게/작게 — 표준 크기 사다리를 한 칸씩 오르내린다 */
+  const FONT_STEPS = [8, 9, 10, 10.5, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 36, 48, 72]
+  const stepFontSize = (dir: 1 | -1) => {
+    const cur = fontSizePt ?? 11
+    const next = dir > 0
+      ? FONT_STEPS.find((n) => n > cur + 0.01) ?? Math.min(300, Math.round(cur * 1.15 * 10) / 10)
+      : [...FONT_STEPS].reverse().find((n) => n < cur - 0.01) ?? Math.max(4, Math.round(cur * 0.87 * 10) / 10)
+    applyToSelection((c) => c.setFontSize(`${next}pt`))
+  }
 
   /* ============================================================
    * 헬퍼 / 실제 기능 구현
@@ -1104,46 +1156,69 @@ export function Toolbar(p: ToolbarProps) {
       onToggleCollapsed={() => setRibbonCollapsed((v) => !v)}
       launchers={ribbonLaunchers}
     />
-    <div className="jan-toolbar-row" ref={containerRef}>
-      <select
-        className="jan-toolbar-select"
-        value={editor.getAttributes('textStyle').fontFamily || ''}
-        onChange={(e) => {
-          const v = e.target.value
-          if (v) editor.chain().focus().setFontFamily(v).run()
-          else editor.chain().focus().unsetFontFamily().run()
-        }}
-        title="글꼴 (선택 영역에 적용 — 문서 기본값은 문서 스타일에서)"
-      >
-        {FONT_FAMILY_OPTIONS.map((f) => <option key={f.label} value={f.value}>{f.label}</option>)}
-      </select>
-      <select
-        className="jan-toolbar-select"
-        value={editor.getAttributes('textStyle').fontSize || ''}
-        onChange={(e) => {
-          const v = e.target.value
-          if (v) editor.chain().focus().setFontSize(v).run()
-          else editor.chain().focus().unsetFontSize().run()
-        }}
-        title="글자 크기 (선택 영역에 적용)"
-        style={{ minWidth: 56 }}
-      >
-        <option value="">기본</option>
-        {[8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48].map((n) => <option key={n} value={`${n}px`}>{n}</option>)}
-      </select>
-      <select
-        className="jan-toolbar-select"
-        value={editor.getAttributes('paragraph').lineHeight || editor.getAttributes('heading').lineHeight || ''}
-        onChange={(e) => {
-          const v = e.target.value
-          editor.chain().focus().setParagraphLineHeight(v || null).run()
-        }}
-        title="줄 간격 (현재 문단)"
-        style={{ minWidth: 58 }}
-      >
-        <option value="">줄간격</option>
-        {['1', '1.15', '1.5', '1.7', '2', '2.5'].map((n) => <option key={n} value={n}>{n}</option>)}
-      </select>
+    <div
+      className="jan-toolbar-row"
+      ref={containerRef}
+      onMouseDownCapture={() => {
+        const sel = editor.state.selection
+        savedSelRef.current = { from: sel.from, to: sel.to }
+      }}
+      onFocusCapture={() => {
+        // 탭으로 들어온 경우 — 아직 문서 선택이 살아 있으면 기억해 둔다
+        const sel = editor.state.selection
+        if (sel.from !== sel.to) savedSelRef.current = { from: sel.from, to: sel.to }
+      }}
+    >
+      {/* 글자 모양 — 한글·워드의 서식 도구 상자: 값을 직접 입력하고 증감 단추로도 조절한다 */}
+      <FontCombo
+        value={charState.fontFamily}
+        onPick={(v) => applyToSelection((c) => (v ? c.setFontFamily(v) : c.unsetFontFamily()))}
+      />
+      <NumberSpin
+        value={fontSizePt}
+        onChange={(v, o) => applyToSelection((c) => (v == null ? c.unsetFontSize() : c.setFontSize(`${v}pt`)), o?.keepFocus)}
+        min={4} max={300} step={1} unit="pt" width={44} fallback={11}
+        title="글자 크기 (직접 입력, ↑↓·휠·단추로 증감. Shift 를 누르면 10씩)"
+        ariaLabel="글자 크기"
+        presets={[8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 28, 36, 48, 72]}
+      />
+      <button onClick={() => stepFontSize(1)} title="글자 크게 (Ctrl+])" aria-label="글자 크게" className="jan-fontstep">가<span>▲</span></button>
+      <button onClick={() => stepFontSize(-1)} title="글자 작게 (Ctrl+[)" aria-label="글자 작게" className="jan-fontstep">가<span>▼</span></button>
+      <span className="divider" />
+
+      <span className="jan-field" title="줄 간격 — 현재 문단 (배수)">
+        <span className="jan-field-label">줄간격</span>
+        <NumberSpin
+          value={lineHeightValue}
+          onChange={(v, o) => applyToSelection((c) => c.setParagraphLineHeight(v == null ? null : String(v)), o?.keepFocus)}
+          min={0.5} max={5} step={0.05} decimals={2} width={44} fallback={1.7}
+          title="줄 간격 (배수) — 직접 입력하거나 ↑↓·휠·단추로 0.05 씩"
+          ariaLabel="줄 간격"
+          presets={[1, 1.15, 1.3, 1.5, 1.6, 1.7, 2, 2.5, 3]}
+        />
+      </span>
+      <span className="jan-field" title="자간 — 선택한 글자 사이 간격(%)">
+        <span className="jan-field-label">자간</span>
+        <NumberSpin
+          value={letterSpacingPct}
+          onChange={(v, o) => applyToSelection((c) => c.setLetterSpacingPct(v), o?.keepFocus)}
+          min={-50} max={100} step={1} unit="%" width={42} fallback={0}
+          title="자간 (%) — 음수면 좁아진다"
+          ariaLabel="자간"
+          presets={[-10, -5, -3, 0, 3, 5, 10, 20]}
+        />
+      </span>
+      <span className="jan-field" title="장평 — 선택한 글자의 가로 비율(%)">
+        <span className="jan-field-label">장평</span>
+        <NumberSpin
+          value={charScalePct}
+          onChange={(v, o) => applyToSelection((c) => c.setCharScalePct(v), o?.keepFocus)}
+          min={10} max={250} step={1} unit="%" width={42} fallback={100}
+          title="장평 (%) — 100 보다 작으면 홀쭉, 크면 넓적"
+          ariaLabel="장평"
+          presets={[70, 80, 90, 100, 110, 120, 150]}
+        />
+      </span>
       <span className="divider" />
 
       <button onClick={() => editor.chain().focus().toggleBold().run()} className={editor.isActive('bold') ? 'is-active' : ''} title="굵게 (Ctrl+B)"><Icon name="bold" /></button>
