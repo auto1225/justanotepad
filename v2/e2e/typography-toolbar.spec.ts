@@ -214,4 +214,54 @@ test.describe('글자 모양 도구 상자', () => {
     const after = await page.evaluate(() => Math.round(document.querySelector('.jan-editor-pages')!.getBoundingClientRect().top))
     expect(after).toBeLessThanOrEqual(m.top - 38)
   })
+
+  test('아이콘에 마우스를 올리면 그림이 있는 설명 카드가 뜬다', async ({ page }) => {
+    await page.goto('./')
+    await page.locator('.ProseMirror').first().waitFor({ state: 'visible', timeout: 15000 })
+
+    await page.locator('[data-help="cmd-palette"]').first().hover()
+    const card = page.locator('.jan-help-tip')
+    await expect(card).toBeVisible({ timeout: 3000 })
+    await expect(card.locator('.jan-help-title')).toHaveText('명령 팔레트')
+    await expect(card.locator('.jan-help-key')).toHaveText('Ctrl+Shift+P')
+    expect(await card.locator('svg').count()).toBeGreaterThan(0)          // 인포그래픽
+    expect((await card.locator('.jan-help-summary').innerText()).length).toBeGreaterThan(20)
+    await expect(card.locator('.jan-help-when-tag')).toHaveText('이럴 때')
+
+    // 리본 단추에도 붙는다 (안내를 적어 둔 것은 자세히, 나머지는 이름·단축키로)
+    await page.mouse.move(600, 500)
+    await page.getByRole('tab', { name: '입력', exact: true }).click()
+    await page.locator('.jan-ribbon-btn').first().hover()
+    await expect(card).toBeVisible({ timeout: 3000 })
+    await expect(card.locator('.jan-help-title')).toHaveText('표 넣기')
+
+    // Esc 로 닫힌다
+    await page.keyboard.press('Escape')
+    await expect(card).toHaveCount(0)
+  })
+
+  test('상단 바는 흰 글자가 또렷하게 보이는 어두운 보라다', async ({ page }) => {
+    await page.goto('./')
+    await page.locator('.ProseMirror').first().waitFor({ state: 'visible', timeout: 15000 })
+
+    const bar = await page.evaluate(() => {
+      const h = document.querySelector('.jan-app-header')!
+      const cs = getComputedStyle(h)
+      const lum = (rgb: string) => {
+        const [r, g, b] = (rgb.match(/\d+/g) || ['0', '0', '0']).map(Number).map((v) => {
+          const c = v / 255
+          return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)
+        })
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b
+      }
+      // 배경은 그라데이션이라 중간색(#50419E 근처)을 기준으로 잡는다
+      const bg = cs.backgroundImage.match(/rgb\([^)]+\)/g) || [cs.backgroundColor]
+      const bgLum = bg.map(lum).reduce((a, b2) => a + b2, 0) / bg.length
+      const fgLum = lum(cs.color)
+      const contrast = (Math.max(bgLum, fgLum) + 0.05) / (Math.min(bgLum, fgLum) + 0.05)
+      return { contrast, buttons: h.querySelectorAll('.jan-header-btn').length }
+    })
+    expect(bar.contrast).toBeGreaterThan(4.5)   // 본문 기준 WCAG AA
+    expect(bar.buttons).toBeLessThanOrEqual(12) // 아이콘 과밀 방지 (예전 23개)
+  })
 })

@@ -2369,7 +2369,9 @@ svg.ico, .jan-icon {
   min-height: 0 !important;
   padding: 0 !important;
   margin: 0 !important;
-  overflow: hidden !important;
+  /* hidden 은 포커스가 밖으로 나가면 브라우저가 몰래 스크롤한다 —
+     그러면 머리부 전체가 왼쪽으로 밀린 채 돌아오지 않는다. clip 은 아예 스크롤되지 않는다. */
+  overflow: clip !important;
   background: var(--jan-bg) !important;
 }
 
@@ -2439,7 +2441,11 @@ body, html, .ProseMirror, .jan-app * {
   --ink-soft:     #333333;
   --accent:       #FAE100;
   --accent-2:     #FFF2A0;
-  --bar-grad:     #FAE100;
+  /* 상단 바 — 노랑 위 흰 글자는 대비가 1.1:1 밖에 안 나와 아이콘이 묻힌다.
+     보라(#4B3E9E 계열)로 바꾸면 흰 글자 대비가 9:1 이상이 된다. */
+  --bar-grad:     linear-gradient(180deg, #5B4BC4, #45379E);
+  --bar-edge:     #372C82;
+  --bar-ink:      #F4F1FF;
   --tab-inactive: #F7F7F7;
   --tab-hover:    #FFFBE5;
 
@@ -2465,8 +2471,8 @@ html, body, #root {
 /* --- 1) AppHeader = v1 의 .topbar (노랑 바, 흰 텍스트) --- */
 .jan-app-header {
   background: var(--bar-grad) !important;
-  border-bottom: 1px solid #d4be00 !important;
-  color: #ffffff !important;
+  border-bottom: 1px solid var(--bar-edge, #372C82) !important;
+  color: var(--bar-ink, #F4F1FF) !important;
   height: 44px !important;
   padding: 0 10px !important;
   z-index: 30 !important;
@@ -3098,7 +3104,8 @@ html, body, #root {
 
 .jan-header-more-wrap {
   position: relative;
-  display: none;
+  /* 헤더에는 자주 쓰는 것만 두고 나머지는 여기에 모았으므로 넓은 화면에서도 보여야 한다 */
+  display: inline-flex;
   flex-shrink: 0;
 }
 
@@ -5178,7 +5185,8 @@ html, body, #root {
   .jan-editor-wrap {
     width: 100% !important;
     max-width: 100% !important;
-    overflow-x: hidden !important;
+    /* clip 이어야 포커스 때문에 몰래 가로로 밀리는 일이 없다 (hidden 은 스크롤이 가능하다) */
+    overflow-x: clip !important;
   }
 
   .jan-app-header {
@@ -6341,3 +6349,102 @@ body.jan-split-dragging * { cursor: inherit !important; }
 @media (max-width: 1000px) {
   .jan-field-label { display: none; }   /* 남은 줄간격도 칸만 남긴다 (도움말은 툴팁으로) */
 }
+
+/* ============================================================
+   상단 바(보라) 위의 글자·단추·탭 — 대비를 확실히 잡는다
+   ============================================================ */
+.jan-app-header .jan-header-btn,
+.jan-app-header .jan-hdr-btn { color: var(--bar-ink, #F4F1FF); }
+.jan-app-header .jan-header-btn:hover,
+.jan-app-header .jan-hdr-btn:hover { background: rgba(255,255,255,0.18); color: #fff; }
+.jan-app-header .jan-header-btn.is-active { background: rgba(255,255,255,0.26); color: #fff; }
+.jan-app-header .jan-header-logo,
+.jan-app-header .jan-hdr-logo { color: var(--bar-ink, #F4F1FF) !important; }
+.jan-app-header .jan-header-title-input {
+  background: rgba(255,255,255,0.14); color: #fff; border: 1px solid rgba(255,255,255,0.22);
+  border-radius: 5px; height: 22px; font-size: 12px; padding: 0 8px;
+}
+.jan-app-header .jan-header-title-input::placeholder { color: rgba(255,255,255,0.6); }
+.jan-app-header .jan-header-title-input:focus { background: #fff; color: #241d55; outline: none; border-color: #fff; }
+.jan-header-sep { width: 1px; height: 18px; margin: 0 4px; background: rgba(255,255,255,0.28); flex: none; }
+
+/* 문서 탭 — 활성 탭만 밝게 (브라우저 탭과 같은 읽기 방식) */
+.jan-memo-tabs.is-inline .jan-memo-tab {
+  background: rgba(255,255,255,0.14) !important; color: rgba(255,255,255,0.86) !important;
+  border: 1px solid transparent !important;
+}
+.jan-memo-tabs.is-inline .jan-memo-tab:hover { background: rgba(255,255,255,0.24) !important; }
+.jan-memo-tabs.is-inline .jan-memo-tab.is-active {
+  background: #fff !important; color: #2f2660 !important; font-weight: 600;
+}
+.jan-memo-tabs.is-inline .jan-memo-tab-new { color: var(--bar-ink, #F4F1FF); }
+.jan-memo-tabs.is-inline .jan-memo-tab-new:hover { background: rgba(255,255,255,0.2); }
+
+/* 최근 메모(홈 허브) — 헤더 아래에 붙는 목록 */
+.jan-home-hub {
+  position: absolute; top: 34px; right: 96px; width: 300px; max-height: 380px; overflow-y: auto;
+  background: var(--jan-bg, #fff); border: 1px solid rgba(0,0,0,0.12); border-radius: 8px;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.18); z-index: 300; padding: 6px 0; color: var(--jan-fg, #191919);
+}
+.jan-home-hub-head { padding: 4px 12px 8px; font-weight: 700; font-size: 13px; border-bottom: 1px solid rgba(0,0,0,0.06); }
+.jan-home-hub-item { display: block; width: 100%; text-align: left; padding: 7px 12px; background: none; border: 0; cursor: pointer; }
+.jan-home-hub-item:hover { background: rgba(108,79,216,0.1); }
+.jan-home-hub-title { display: block; font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jan-home-hub-time { display: block; font-size: 11px; color: #888; }
+.jan-home-hub-empty { padding: 10px 12px; color: #999; font-size: 12px; }
+
+/* ============================================================
+   기능 설명 카드 — 아이콘 위에 마우스를 올리면 뜨는 안내
+   ============================================================ */
+.jan-help-tip {
+  position: fixed; z-index: 4000;
+  --tip-bg: #F4F1FF; --tip-paper: #fff; --tip-line: #D9D3EC; --tip-ink: #332E4D;
+  --tip-soft: #8C85A8; --tip-brand: #6C4FD8; --tip-warm: #D97757;
+  background: #fff; color: #2c2745;
+  border: 1px solid rgba(76,58,140,0.18); border-radius: 12px;
+  box-shadow: 0 14px 40px rgba(40,28,90,0.22);
+  overflow: hidden; pointer-events: auto;
+  animation: jan-help-in 120ms ease-out;
+}
+@keyframes jan-help-in { from { opacity: 0; transform: translateY(-4px) } to { opacity: 1; transform: none } }
+.jan-help-arrow {
+  position: absolute; top: -6px; width: 12px; height: 12px; transform: translateX(-50%) rotate(45deg);
+  background: #fff; border-left: 1px solid rgba(76,58,140,0.18); border-top: 1px solid rgba(76,58,140,0.18);
+}
+.jan-help-art { display: block; }
+.jan-help-body { padding: 10px 13px 12px; }
+.jan-help-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.jan-help-title { font-size: 13.5px; font-weight: 700; color: #2a2350; }
+.jan-help-key {
+  margin-left: auto; font-family: Consolas, monospace; font-size: 10.5px; color: #4b3ea8;
+  background: #EFEBFF; border: 1px solid #DAD2F7; border-radius: 4px; padding: 1px 6px; white-space: nowrap;
+}
+.jan-help-summary { margin: 0; font-size: 12.5px; line-height: 1.55; color: #46405f; }
+.jan-help-when { margin: 8px 0 0; font-size: 12px; line-height: 1.5; color: #5b5478; }
+.jan-help-when-tag {
+  display: inline-block; margin-right: 6px; padding: 1px 6px; border-radius: 4px;
+  background: rgba(217,119,87,0.14); color: #b8552f; font-size: 10.5px; font-weight: 700;
+}
+.jan-help-also { margin: 6px 0 0; font-size: 11.5px; color: #8a83a5; }
+
+.jan-theme-dark .jan-help-tip {
+  --tip-bg: #2b2545; --tip-paper: #3a3358; --tip-line: #4a4270; --tip-ink: #E8E3FF;
+  --tip-soft: #9a92bd; background: #241f3d; color: #ece8ff; border-color: rgba(255,255,255,0.14);
+}
+.jan-theme-dark .jan-help-arrow { background: #241f3d; border-color: rgba(255,255,255,0.14); }
+.jan-theme-dark .jan-help-title { color: #f1eeff; }
+.jan-theme-dark .jan-help-summary { color: #cfc9e8; }
+.jan-theme-dark .jan-help-when { color: #b9b2d6; }
+.jan-theme-dark .jan-help-key { background: #382f63; border-color: #4a4080; color: #d9d0ff; }
+
+/* 좁은 화면 — 제목 입력칸을 감춰 문서 탭이 눌릴 만큼 넓어지게 한다 (제목은 탭에 이미 있다) */
+@media (max-width: 760px) {
+  .jan-app-header .jan-header-title-input { display: none; }
+  .jan-memo-tabs.is-inline { min-width: 110px; }
+  .jan-app-header .jan-header-extra { display: none; }
+}
+
+/* 머리부는 가로로 밀리지 않는다 — 용지가 화면보다 넓을 때 편집 영역만 가로로 움직여야 하고,
+   헤더·리본·서식줄이 함께 밀리면 단추가 화면 밖으로 나간다 */
+.jan-editor-wrap { overflow-x: clip; }
+.jan-app-header, .jan-ribbon, .jan-toolbar-row { position: relative; left: 0; }

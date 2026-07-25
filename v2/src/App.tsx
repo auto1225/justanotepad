@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { HelpTipLayer } from './components/HelpTipLayer'
 import { Editor } from './components/Editor'
 import { Sidebar } from './components/Sidebar'
 import { useMemosStore } from './store/memosStore'
@@ -80,6 +81,7 @@ function App() {
     <div className="jan-app">
       <a href="#jan-editor" className="skip-to-content">본문으로 건너뛰기</a>
       <Editor sidebar={!focusMode && <Sidebar />} />
+      <HelpTipLayer />
     </div>
   )
 }

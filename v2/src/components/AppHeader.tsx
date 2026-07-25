@@ -226,27 +226,25 @@ export function AppHeader(p: AppHeaderProps) {
     setShowMobileMore(false)
     void action()
   }
-  const mobileMoreActions: Array<{ label: string; icon: Parameters<typeof Icon>[0]['name']; onClick: () => void | Promise<void> }> = [
-    { label: '명령 팔레트', icon: 'cmd', onClick: p.onCmdPalette },
-    { label: 'AI 도우미', icon: 'ai', onClick: p.onAi || p.onChat },
-    { label: '웹 검색', icon: 'globe', onClick: openWebSearch },
-    { label: '빠른 메모', icon: 'page', onClick: p.onCalendar },
-    { label: 'JustPin', icon: 'pin', onClick: openJustPin },
-    { label: '강의노트', icon: 'mic', onClick: insertLectureTemplate },
-    { label: '회의노트', icon: 'users', onClick: insertMeetingTemplate },
-    { label: '명함', icon: 'cards', onClick: () => p.onCards?.() },
-    { label: '그림판', icon: 'paint', onClick: () => p.onPaint?.() },
-    { label: '이미지 변환', icon: 'image', onClick: openImageConverter },
-    { label: '테마', icon: themeIcon, onClick: cycleTheme },
-    { label: '집중 모드', icon: 'eye', onClick: toggleFocus },
-    { label: 'OCR', icon: 'image-text', onClick: p.onOcr },
-    { label: 'CMS', icon: 'shield', onClick: openCms },
-    { label: '도움말', icon: 'help', onClick: p.onHelp },
-    { label: '홈 허브', icon: 'home', onClick: openHomeHub },
-    { label: '동기화', icon: 'sync', onClick: openSync },
-    { label: '공유', icon: 'users', onClick: p.onShare },
-    { label: '설정', icon: 'settings', onClick: p.onSettings },
-    { label: '버전', icon: 'info', onClick: p.onAbout },
+  const mobileMoreActions: Array<{ label: string; icon: Parameters<typeof Icon>[0]['name']; help?: string; onClick: () => void | Promise<void> }> = [
+    { label: '그림판', icon: 'paint', help: 'paint', onClick: () => p.onPaint?.() },
+    { label: '글자 인식 (OCR)', icon: 'image-text', help: 'ocr', onClick: p.onOcr },
+    { label: 'JustPin 포스트잇', icon: 'pin', help: 'postit', onClick: openJustPin },
+    { label: '웹 검색', icon: 'globe', help: 'web-search', onClick: openWebSearch },
+    { label: '강의 노트', icon: 'mic', help: 'lecture', onClick: insertLectureTemplate },
+    { label: '회의 노트', icon: 'users', help: 'meeting', onClick: insertMeetingTemplate },
+    { label: '명함 · 카드', icon: 'cards', help: 'cards', onClick: () => p.onCards?.() },
+    { label: '이미지 변환', icon: 'image', help: 'image-convert', onClick: openImageConverter },
+    { label: '홈 허브', icon: 'home', help: 'home', onClick: openHomeHub },
+    { label: '공유', icon: 'users', help: 'share', onClick: p.onShare },
+    { label: '동기화', icon: 'sync', help: 'sync', onClick: openSync },
+    { label: '도움말', icon: 'help', help: 'help', onClick: p.onHelp },
+    { label: '버전 · 변경 내역', icon: 'info', help: 'about', onClick: p.onAbout },
+    { label: 'CMS 관리자', icon: 'shield', help: 'cms', onClick: openCms },
+    /* 좁은 화면에서 헤더에 안 보이는 것들 — 여기서도 닿을 수 있어야 한다 */
+    { label: '빠른 메모', icon: 'page', help: 'quick-memo', onClick: p.onCalendar },
+    { label: '집중 모드', icon: 'eye', help: 'focus', onClick: () => toggleFocus() },
+    { label: '내 도구 · 역할 팩', icon: 'briefcase', help: 'roles', onClick: openRoleDash },
   ]
   return (
     <header className="jan-app-header">
@@ -265,63 +263,43 @@ export function AppHeader(p: AppHeaderProps) {
       {p.tabsSlot}
 
       <div className="jan-header-right">
+        {/* 헤더에는 늘 쓰는 것만 남기고 나머지는 더보기(⋯)로 모았다.
+            같은 기능이 리본에도 있으면 여기서는 뺀다 — 아이콘이 많을수록 아무것도 안 보인다.
+            각 단추의 data-help 는 설명 카드(HelpTipLayer)가 읽는 열쇠다. */}
         {pomoText && (
-          <button className="jan-header-btn jan-pomo-display" onClick={togglePomo} title="포모도로 (클릭: 정지)" style={{ minWidth: 64, fontFamily: 'monospace', fontWeight: 700 }}>
+          <button className="jan-header-btn jan-pomo-display" data-help="pomodoro" onClick={togglePomo} title="집중 타이머 (클릭: 정지)" style={{ minWidth: 58, fontFamily: 'monospace', fontWeight: 700 }}>
             {pomoText}
           </button>
         )}
-        <button className="jan-header-btn jan-header-compact-extra" onClick={p.onCmdPalette} title="명령 팔레트 (Ctrl+Shift+P)" aria-label="명령 팔레트"><Icon name="cmd" /></button>
-        <button className="jan-header-btn jan-header-extra" onClick={openWebSearch} title="웹 검색" aria-label="웹 검색"><Icon name="globe" /></button>
-        <button className="jan-header-btn jan-header-compact-extra" onClick={p.onAi || p.onChat} title="AI 어시스턴트 (Ctrl+/)" aria-label="AI"><Icon name="ai" /></button>
-        <button className="jan-header-btn jan-header-extra" onClick={p.onCalendar} title="빠른 메모 (Ctrl+Shift+J)" aria-label="빠른 메모"><Icon name="page" /></button>
-        <button className="jan-header-btn jan-header-extra" onClick={openJustPin} title="새 JustPin" aria-label="JustPin"><Icon name="pin" /></button>
-        <button className="jan-header-btn jan-header-extra" onClick={insertLectureTemplate} title="강의노트" aria-label="강의노트"><Icon name="mic" /></button>
-        <button className="jan-header-btn jan-header-extra" onClick={insertMeetingTemplate} title="회의노트" aria-label="회의노트"><Icon name="users" /></button>
-        <button className="jan-header-btn jan-header-extra" onClick={p.onCards} title="명함 / 카드 관리" aria-label="명함"><Icon name="cards" /></button>
-        <button className="jan-header-btn jan-header-extra" onClick={p.onPaint} title="그림판" aria-label="그림판"><Icon name="paint" /></button>
-        <button className="jan-header-btn jan-header-extra" onClick={openImageConverter} title="이미지 변환기" aria-label="이미지 변환"><Icon name="image" /></button>
-        <button className="jan-header-btn jan-header-role-btn" onClick={openRoleDash} title="내 도구 / 역할 팩" aria-label="내 도구 / 역할 팩">
+        <button className="jan-header-btn" data-help="cmd-palette" onClick={p.onCmdPalette} title="명령 팔레트 (Ctrl+Shift+P)" aria-label="명령 팔레트"><Icon name="cmd" /></button>
+        <button className="jan-header-btn" data-help="global-search" onClick={p.onGlobalSearch || p.onSearch} title="전체 검색 (Ctrl+Shift+F)" aria-label="전체 검색"><Icon name="search" /></button>
+        <button className="jan-header-btn" data-help="ai" onClick={p.onAi || p.onChat} title="AI 도우미 (Ctrl+/)" aria-label="AI 도우미"><Icon name="ai" /></button>
+        <button className="jan-header-btn jan-header-extra" data-help="quick-memo" onClick={p.onCalendar} title="빠른 메모 (Ctrl+Shift+J)" aria-label="빠른 메모"><Icon name="page" /></button>
+        <button className={'jan-header-btn jan-header-extra' + (focusMode ? ' is-active' : '')} data-help="focus" onClick={() => toggleFocus()} title="집중 모드 (F11)" aria-label="집중 모드"><Icon name="eye" /></button>
+        <button className="jan-header-btn jan-header-role-btn jan-header-extra" data-help="roles" onClick={openRoleDash} title="내 도구 / 역할 팩" aria-label="내 도구 / 역할 팩">
           <Icon name="briefcase" />
           {roleCount > 0 && <span className="jan-header-role-badge">{roleCount}</span>}
         </button>
-        <button className="jan-header-btn jan-header-extra" onClick={cycleTheme} title={`테마: ${theme}`} aria-label="테마"><Icon name={themeIcon} /></button>
-        <button className="jan-header-btn" onClick={p.onGlobalSearch || p.onSearch} title="전체 검색 (Ctrl+Shift+F)" aria-label="전체 검색"><Icon name="search" /></button>
-        <button className={'jan-header-btn jan-header-extra' + (focusMode ? ' is-active' : '')} onClick={() => toggleFocus()} title="집중 모드 (F11)" aria-label="집중 모드"><Icon name="eye" /></button>
-        <button className="jan-header-btn jan-header-extra" onClick={p.onOcr} title="OCR" aria-label="OCR"><Icon name="image-text" /></button>
-        <button className="jan-header-btn jan-header-extra" onClick={openCms} title="CMS 관리자 (Super Admin)" aria-label="CMS"><Icon name="shield" /></button>
-        <button className="jan-header-btn jan-header-extra" onClick={p.onHelp} title="도움말 (F1)" aria-label="도움말"><Icon name="help" /></button>
-        <span style={{ position: 'relative', display: 'inline-flex' }} onPointerDown={(e) => e.stopPropagation()}>
-          <button className="jan-header-btn jan-header-extra" onClick={openHomeHub} title="홈 허브 — 최근 메모" aria-label="홈 허브" aria-expanded={showHomeHub}><Icon name="home" /></button>
-          {showHomeHub && (
-            <div
-              role="menu"
-              aria-label="최근 메모"
-              style={{ position: 'absolute', top: '110%', right: 0, width: 300, maxHeight: 380, overflowY: 'auto', background: 'var(--jan-bg, #fff)', border: '1px solid rgba(0,0,0,0.12)', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.15)', zIndex: 300, padding: '6px 0' }}
-            >
-              <div style={{ padding: '4px 12px 8px', fontWeight: 700, fontSize: 13, borderBottom: '1px solid rgba(0,0,0,0.06)' }}>최근 메모</div>
-              {list().slice(0, 20).map((m) => (
-                <button
-                  key={m.id}
-                  role="menuitem"
-                  onClick={() => { setCurrentMemo(m.id); setShowHomeHub(false) }}
-                  style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 12px', background: 'transparent', border: 0, cursor: 'pointer', fontSize: 13 }}
-                >
-                  <span style={{ display: 'block', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.title || '제목 없음'}</span>
-                  <span style={{ display: 'block', fontSize: 11, color: '#888' }}>{m.updatedAt ? new Date(m.updatedAt).toLocaleString('ko-KR') : ''}</span>
-                </button>
-              ))}
-              {list().length === 0 && <div style={{ padding: '10px 12px', color: '#999', fontSize: 12 }}>메모가 없습니다.</div>}
-            </div>
-          )}
-        </span>
-        <button className="jan-header-btn jan-header-extra" onClick={openSync} title="동기화 설정" aria-label="동기화"><Icon name="sync" /></button>
-        <button className="jan-header-btn jan-header-extra" onClick={p.onShare} title="공유" aria-label="공유"><Icon name="users" /></button>
-        <button className="jan-header-btn jan-header-extra" onClick={p.onSettings} title="설정 (Ctrl+,)" aria-label="설정"><Icon name="settings" /></button>
-        <button className="jan-header-btn jan-header-extra" onClick={p.onAbout} title="버전 / 변경 내역" aria-label="버전"><Icon name="info" /></button>
+        {showHomeHub && (
+          <div className="jan-home-hub" role="menu" aria-label="최근 메모">
+            <div className="jan-home-hub-head">최근 메모</div>
+            {list().slice(0, 20).map((m) => (
+              <button key={m.id} role="menuitem" className="jan-home-hub-item" onClick={() => { setCurrentMemo(m.id); setShowHomeHub(false) }}>
+                <span className="jan-home-hub-title">{m.title || '제목 없음'}</span>
+                <span className="jan-home-hub-time">{m.updatedAt ? new Date(m.updatedAt).toLocaleString('ko-KR') : ''}</span>
+              </button>
+            ))}
+            {list().length === 0 && <div className="jan-home-hub-empty">메모가 없습니다.</div>}
+          </div>
+        )}
+        <span className="jan-header-sep" aria-hidden="true" />
+        <button className="jan-header-btn" data-help="theme" onClick={cycleTheme} title={`테마: ${theme}`} aria-label="테마"><Icon name={themeIcon} /></button>
+        <button className="jan-header-btn" data-help="settings" onClick={p.onSettings} title="설정 (Ctrl+,)" aria-label="설정"><Icon name="settings" /></button>
         <div className="jan-header-more-wrap" onPointerDown={(e) => e.stopPropagation()}>
           <button
             className="jan-header-btn jan-header-more-btn"
             onClick={() => setShowMobileMore((open) => !open)}
+            data-help="more"
             title="더보기"
             aria-label="더보기"
             aria-expanded={showMobileMore}
@@ -332,7 +310,7 @@ export function AppHeader(p: AppHeaderProps) {
           {showMobileMore && (
             <div className="jan-header-more-menu" role="menu">
               {mobileMoreActions.map((action) => (
-                <button key={action.label} onClick={() => runMobileMore(action.onClick)} role="menuitem">
+                <button key={action.label} data-help={action.help} onClick={() => runMobileMore(action.onClick)} role="menuitem">
                   <Icon name={action.icon} size={14} />
                   <span>{action.label}</span>
                 </button>

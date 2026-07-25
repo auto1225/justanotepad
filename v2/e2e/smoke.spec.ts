@@ -488,7 +488,9 @@ test.describe('v2 smoke', () => {
     await page.goto('./')
     await page.locator('.ProseMirror').first().waitFor({ state: 'visible', timeout: 15000 })
 
-    await page.getByLabel('회의노트').click()
+    // 회의 노트는 헤더 정리 후 더보기(⋯) 메뉴로 옮겼다
+    await page.locator('.jan-header-more-btn').click()
+    await page.locator('.jan-header-more-menu').getByRole('menuitem', { name: '회의 노트' }).click()
     await expect(page.locator('.jan-meeting-modal')).toBeVisible()
     await page.locator('.jan-meeting-capture input').first().fill('동기화 점검 회의')
     await page.locator('.jan-meeting-capture textarea').nth(1).fill('오늘 회의에서는 v2 동기화 정책을 확정했습니다.\n민수 담당으로 다음 주까지 Dropbox 백업 테스트를 진행해야 합니다.')
@@ -723,8 +725,6 @@ test.describe('v2 smoke', () => {
     const headerBox = await header.boundingBox()
     expect(headerBox).not.toBeNull()
     expect(Math.ceil((headerBox?.x || 0) + (headerBox?.width || 0))).toBeLessThanOrEqual(360)
-    await expect(page.locator('.jan-header-compact-extra').first()).toBeHidden()
-
     await page.locator('.jan-header-more-btn').click()
     const menu = page.locator('.jan-header-more-menu')
     await expect(menu).toBeVisible()
@@ -737,8 +737,9 @@ test.describe('v2 smoke', () => {
     expect(Math.ceil((menuBox?.x || 0) + (menuBox?.width || 0))).toBeLessThanOrEqual(360)
     expect(Math.ceil((menuBox?.y || 0) + (menuBox?.height || 0))).toBeLessThanOrEqual(740)
 
-    await menu.locator('button').first().click()
-    await expect(page.locator('.jan-cp')).toBeVisible()
+    // 메뉴에서 고른 기능이 실제로 열린다 (첫 항목은 그림판)
+    await menu.getByRole('menuitem', { name: '공유' }).click()
+    await expect(page.locator('.jan-share-modal')).toBeVisible({ timeout: 15000 })
   })
 
   test('좁은 화면에서도 리본 탭·명령이 화면 안에 들어온다', async ({ page }) => {

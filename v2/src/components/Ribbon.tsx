@@ -183,6 +183,10 @@ export function Ribbon({
                       onClick={it.onClick}
                       title={it.hint ? `${it.label} (${it.hint})` : it.label}
                       aria-label={it.label}
+                      /* 설명 카드 — 따로 적어 둔 안내가 있으면 그것을, 없으면 이름·단축키로 만든다 */
+                      data-help={`ribbon:${it.label}`}
+                      data-help-hint={it.hint || undefined}
+                      data-help-group={sec.caption || undefined}
                     >
                       <Icon name={it.icon || 'file-text'} size={18} />
                       <span>{shortLabel(it)}</span>

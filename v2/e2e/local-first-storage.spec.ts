@@ -144,8 +144,10 @@ test.describe('local-first memo storage', () => {
 
     const moreMenu = page.locator('.jan-header-more-menu')
     await expect(moreMenu).toBeVisible()
-    await expect(moreMenu.getByRole('menuitem', { name: '명함' })).toBeVisible()
-    await moreMenu.getByRole('menuitem', { name: '설정' }).click()
+    await expect(moreMenu.getByRole('menuitem', { name: '명함 · 카드' })).toBeVisible()
+    await page.keyboard.press('Escape')
+    // 설정은 자주 쓰므로 더보기가 아니라 헤더에 남겨 두었다
+    await page.locator('[data-help="settings"]').click()
     await expect(page.locator('.jan-settings-modal')).toBeVisible({ timeout: 15000 })
     await page.locator('.jan-settings-modal').getByRole('button', { name: '닫기' }).click()
 
