@@ -41,6 +41,10 @@ import { createImageCapture, createSpeechRecognition, getDisplayMedia } from '..
 type LegacyMemoLike = { title?: string; t?: string; content?: string; html?: string; body?: string }
 
 interface ToolbarProps {
+  /** 리본 탭 줄 왼쪽에 놓을 것 (사이드바·로고·문서 탭) */
+  barLeading?: React.ReactNode
+  /** 리본 탭 줄 오른쪽에 놓을 것 (도구 아이콘) */
+  barTrailing?: React.ReactNode
   editor: Editor | null
   onPrintPreview: () => void
   onAi: () => void
@@ -1159,6 +1163,8 @@ export function Toolbar(p: ToolbarProps) {
       collapsed={ribbonCollapsed}
       onToggleCollapsed={() => setRibbonCollapsed((v) => !v)}
       launchers={ribbonLaunchers}
+      leading={p.barLeading}
+      trailing={p.barTrailing}
     />
     <div
       className="jan-toolbar-row"

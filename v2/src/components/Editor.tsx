@@ -16,7 +16,7 @@ import TaskList from '@tiptap/extension-task-list'
 import TaskItem from '@tiptap/extension-task-item'
 import { useCallback, useEffect, useState, lazy, Suspense, useMemo, useRef, type CSSProperties } from 'react'
 import { Toolbar } from './Toolbar'
-import { AppHeader } from './AppHeader'
+import { AppHeader, HeaderLeading } from './AppHeader'
 import { MemoTabs } from './MemoTabs'
 import { StatusBar } from './StatusBar'
 import { CommandPalette } from './CommandPalette'
@@ -811,7 +811,10 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
 
   return (
     <div className="jan-editor-wrap">
-      <AppHeader
+      <Toolbar
+        barLeading={<HeaderLeading tabsSlot={<MemoTabs inline />} />}
+        barTrailing={(
+          <AppHeader
         onAccount={() => { setSettingsFocus('supabase'); setShowSettings(true) }}
         onCmdPalette={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'P', ctrlKey: true, shiftKey: true, bubbles: true }))}
         onSearch={() => setShowWeb(true)}
@@ -832,9 +835,8 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
         onCards={() => setShowCards(true)}
         onLectureNotes={() => openMeetingNotes('lecture')}
         onMeetingNotes={() => openMeetingNotes('meeting')}
-        tabsSlot={<MemoTabs inline />}
-      />
-      <Toolbar
+          />
+        )}
         editor={editor}
         onNewMemo={handleNewMemo}
         onSave={() => handleSave(false)}

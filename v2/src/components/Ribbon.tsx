@@ -121,6 +121,8 @@ export function Ribbon({
   collapsed,
   onToggleCollapsed,
   launchers = {},
+  leading,
+  trailing,
 }: {
   tabs: RibbonTab[]
   activeTab: string
@@ -129,13 +131,19 @@ export function Ribbon({
   onToggleCollapsed: () => void
   /** 묶음 이름 → 그 묶음의 전체 설정 창 */
   launchers?: Record<string, RibbonLauncher>
+  /** 탭 줄 왼쪽 — 사이드바 단추·로고·문서 탭 (헤더 줄을 없애고 여기에 합쳤다) */
+  leading?: React.ReactNode
+  /** 탭 줄 오른쪽 — 자주 쓰는 도구 아이콘 */
+  trailing?: React.ReactNode
 }) {
   const active = tabs.find((t) => t.label === activeTab) || tabs[0]
   const sections = splitSections(active?.items || [])
 
   return (
     <div className={'jan-ribbon' + (collapsed ? ' is-collapsed' : '')}>
-      <div className="jan-ribbon-tabs" role="tablist" aria-label="리본 메뉴">
+      <div className="jan-ribbon-bar">
+        {leading}
+        <div className="jan-ribbon-tabs" role="tablist" aria-label="리본 메뉴">
         {tabs.map((t) => (
           <button
             key={t.label}
@@ -156,7 +164,9 @@ export function Ribbon({
             {t.label}
           </button>
         ))}
+        </div>
         <span className="jan-ribbon-tabs-spacer" />
+        {trailing}
         <button
           type="button"
           className="jan-ribbon-collapse"

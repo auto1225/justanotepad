@@ -17,8 +17,10 @@ interface TipState {
   guide: FeatureGuide
   x: number
   y: number
-  /** 화살표가 가리키는 x (카드 기준) */
+  /** 화살표가 가리키는 x (카드 기준). 옆에 세운 카드는 -1 (화살표 없음) */
   arrowX: number
+  /** 화살표가 붙는 쪽 — top: 카드 위, bottom: 카드 아래 */
+  side: 'top' | 'bottom' | 'left' | 'right'
 }
 
 /**
@@ -59,10 +61,28 @@ export function HelpTipLayer() {
       const guide = getGuide(key) || fromElement(el, key)
       if (!guide) return
       const r = el.getBoundingClientRect()
-      const margin = 8
+      const M = 8
+      const CARD_H = guide.art ? 250 : 150 // 대략치 — 화면 밖으로 나갈지 판단하는 데만 쓴다
+
+      // 메뉴·드롭다운 안의 항목이면 카드가 아래 항목들을 덮는다 → 목록 옆에 세운다
+      const panel = el.closest('.jan-header-more-menu, .jan-ribbon-dropdown, .jan-menu, .jan-spin-pop') as HTMLElement | null
+      if (panel) {
+        const p = panel.getBoundingClientRect()
+        const left = p.left - CARD_W - 10
+        const right = p.right + 10
+        const x = left >= M ? left : Math.min(right, window.innerWidth - CARD_W - M)
+        const y = Math.max(M, Math.min(r.top - 8, window.innerHeight - CARD_H - M))
+        setTip({ guide, x, y, arrowX: -1, side: left >= M ? 'left' : 'right' })
+        return
+      }
+
       const centered = r.left + r.width / 2 - CARD_W / 2
-      const x = Math.max(margin, Math.min(centered, window.innerWidth - CARD_W - margin))
-      setTip({ guide, x, y: r.bottom + 8, arrowX: Math.max(14, Math.min(r.left + r.width / 2 - x, CARD_W - 14)) })
+      const x = Math.max(M, Math.min(centered, window.innerWidth - CARD_W - M))
+      // 아래로 넘치면 위로 뒤집는다
+      const below = r.bottom + 8
+      const flip = below + CARD_H > window.innerHeight - M && r.top - CARD_H - 8 > M
+      const y = flip ? r.top - CARD_H - 8 : below
+      setTip({ guide, x, y, arrowX: Math.max(14, Math.min(r.left + r.width / 2 - x, CARD_W - 14)), side: flip ? 'bottom' : 'top' })
     }
 
     const onOver = (e: Event) => {
@@ -116,7 +136,9 @@ export function HelpTipLayer() {
       onMouseEnter={() => { if (closeTimer.current) window.clearTimeout(closeTimer.current) }}
       onMouseLeave={() => setTip(null)}
     >
-      <span className="jan-help-arrow" style={{ left: tip.arrowX }} />
+      {tip.arrowX >= 0 && (
+        <span className={'jan-help-arrow is-' + tip.side} style={{ left: tip.arrowX }} />
+      )}
       {g.art && <HelpArt name={g.art} />}
       <div className="jan-help-body">
         <div className="jan-help-head">

@@ -198,15 +198,15 @@ test.describe('글자 모양 도구 상자', () => {
     const m = await page.evaluate(() => {
       const h = (s: string) => Math.round(document.querySelector(s)?.getBoundingClientRect().height || 0)
       const top = Math.round(document.querySelector('.jan-editor-pages')!.getBoundingClientRect().top)
-      return { top, ratio: top / window.innerHeight, header: h('.jan-app-header'), tabs: h('.jan-memo-tabs'), toolbar: h('.jan-toolbar-row') }
+      return { top, ratio: top / window.innerHeight, header: h('.jan-ribbon-bar'), tabs: h('.jan-memo-tabs'), toolbar: h('.jan-toolbar-row') }
     })
     // 문서가 시작되는 지점이 화면의 4분의 1을 넘지 않아야 한다
     expect(m.ratio).toBeLessThan(0.25)
-    expect(m.header).toBeLessThanOrEqual(36)
-    expect(m.tabs).toBeLessThanOrEqual(28)   // 문서 탭은 헤더 줄 안에 들어간다
+    expect(m.header).toBeLessThanOrEqual(36) // 통합 바 (로고·문서탭·리본탭·아이콘)
+    expect(m.tabs).toBeLessThanOrEqual(28)
     expect(m.toolbar).toBeLessThanOrEqual(36)
-    // 머리부는 세 띠(헤더 / 리본 / 서식줄)로만 이뤄진다
-    expect(m.top).toBeLessThan(200)
+    // 머리부는 두 띠(통합 바+리본 본문 / 서식줄)로만 이뤄진다
+    expect(m.top).toBeLessThan(170)
 
     // 리본을 접으면 더 줄어든다 (한글·워드의 리본 접기)
     await page.locator('.jan-ribbon-collapse').click()
@@ -245,7 +245,7 @@ test.describe('글자 모양 도구 상자', () => {
     await page.locator('.ProseMirror').first().waitFor({ state: 'visible', timeout: 15000 })
 
     const bar = await page.evaluate(() => {
-      const h = document.querySelector('.jan-app-header')!
+      const h = document.querySelector('.jan-ribbon-bar')!
       const cs = getComputedStyle(h)
       const lum = (rgb: string) => {
         const [r, g, b] = (rgb.match(/\d+/g) || ['0', '0', '0']).map(Number).map((v) => {

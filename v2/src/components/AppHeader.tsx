@@ -37,17 +37,54 @@ interface AppHeaderProps {
  * 좌: 햄버거 + 로고 + 메모 제목 input + 포모도로 표시
  * 우: 명령팔레트/웹검색/AI/캘린더/JustPin/강의노트/회의노트/명함/그림판/이미지변환/역할대시보드/테마/검색/집중/도움말/홈허브/동기화/공유/로그인/창버튼
  */
-export function AppHeader(p: AppHeaderProps) {
+
+/**
+ * 통합 바 왼쪽 — 사이드바 단추 · 로고 · 문서 제목 · 문서 탭.
+ * 리본 탭 줄과 같은 줄에 놓아 화면 한 줄을 통째로 아낀다 (한글의 제목 표시줄과 같은 구실).
+ */
+export function HeaderLeading({ tabsSlot }: { tabsSlot?: React.ReactNode }) {
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed)
   const toggleSidebar = useUIStore((s) => s.toggleSidebar)
+  const { current, updateCurrent } = useMemosStore()
+  const title = current()?.title || '새 메모'
+
+  function toggleSidebarFromHeader() {
+    // 모바일에서는 사이드바가 겹쳐 뜨므로 body 클래스로 여닫는다
+    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 700px)').matches) {
+      document.body.classList.toggle('jan-mobile-sidebar-open')
+      return
+    }
+    toggleSidebar()
+  }
+
+  return (
+    <div className="jan-bar-leading">
+      <button className="jan-header-btn" onClick={toggleSidebarFromHeader} title={sidebarCollapsed ? '사이드바 열기' : '사이드바 접기'} aria-label="메뉴">
+        <Icon name="menu" size={17} />
+      </button>
+      <div className="jan-header-logo" title="JustANotepad">
+        <Icon name="file-text" size={15} />
+      </div>
+      <input
+        type="text"
+        className="jan-header-title-input"
+        value={title}
+        onChange={(e) => updateCurrent({ title: e.target.value })}
+        placeholder="제목 없음"
+        aria-label="메모 제목"
+      />
+      {tabsSlot}
+    </div>
+  )
+}
+
+export function AppHeader(p: AppHeaderProps) {
   const focusMode = useUIStore((s) => s.focusMode)
   const toggleFocus = useUIStore((s) => s.toggleFocus)
   const theme = useThemeStore((s) => s.theme)
   const setTheme = useThemeStore((s) => s.setTheme)
-  const { current, updateCurrent, newMemo, list } = useMemosStore()
+  const { newMemo, list, updateCurrent } = useMemosStore()
   const roleCount = useRoleToolsStore((s) => s.selectedRoleIds.length)
-  const memo = current()
-  const title = memo?.title || '새 메모'
   const [showMobileMore, setShowMobileMore] = useState(false)
   const [showHomeHub, setShowHomeHub] = useState(false)
   const setCurrentMemo = useMemosStore((s) => s.setCurrent)
@@ -96,14 +133,6 @@ export function AppHeader(p: AppHeaderProps) {
 
   function cycleTheme() {
     setTheme(theme === 'light' ? 'dark' : theme === 'dark' ? 'auto' : 'light')
-  }
-
-  function toggleSidebarFromHeader() {
-    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 700px)').matches) {
-      document.body.classList.toggle('jan-mobile-sidebar-open')
-      return
-    }
-    toggleSidebar()
   }
 
   const themeIcon: 'sun' | 'moon' | 'auto' =
@@ -242,26 +271,16 @@ export function AppHeader(p: AppHeaderProps) {
     { label: '버전 · 변경 내역', icon: 'info', help: 'about', onClick: p.onAbout },
     { label: 'CMS 관리자', icon: 'shield', help: 'cms', onClick: openCms },
     /* 좁은 화면에서 헤더에 안 보이는 것들 — 여기서도 닿을 수 있어야 한다 */
+    { label: '전체 검색', icon: 'search', help: 'global-search', onClick: () => (p.onGlobalSearch || p.onSearch)() },
+    { label: 'AI 도우미', icon: 'ai', help: 'ai', onClick: () => (p.onAi || p.onChat)() },
+    { label: '테마 바꾸기', icon: 'sun', help: 'theme', onClick: cycleTheme },
+    { label: '설정', icon: 'settings', help: 'settings', onClick: p.onSettings },
     { label: '빠른 메모', icon: 'page', help: 'quick-memo', onClick: p.onCalendar },
     { label: '집중 모드', icon: 'eye', help: 'focus', onClick: () => toggleFocus() },
     { label: '내 도구 · 역할 팩', icon: 'briefcase', help: 'roles', onClick: openRoleDash },
   ]
   return (
-    <header className="jan-app-header">
-      <div className="jan-header-left">
-        <button className="jan-header-btn" onClick={toggleSidebarFromHeader} title={sidebarCollapsed ? '사이드바 열기' : '사이드바 접기'} aria-label="메뉴">
-          <Icon name="menu" size={18} />
-        </button>
-        <div className="jan-header-logo">
-          <Icon name="file-text" size={16} />
-          <span>JustANotepad</span>
-        </div>
-      </div>
-
-      <input type="text" className="jan-header-title-input" value={title} onChange={(e) => updateCurrent({ title: e.target.value })} placeholder="제목 없음" aria-label="메모 제목" />
-
-      {p.tabsSlot}
-
+    <>
       <div className="jan-header-right">
         {/* 헤더에는 늘 쓰는 것만 남기고 나머지는 더보기(⋯)로 모았다.
             같은 기능이 리본에도 있으면 여기서는 뺀다 — 아이콘이 많을수록 아무것도 안 보인다.
@@ -272,8 +291,8 @@ export function AppHeader(p: AppHeaderProps) {
           </button>
         )}
         <button className="jan-header-btn" data-help="cmd-palette" onClick={p.onCmdPalette} title="명령 팔레트 (Ctrl+Shift+P)" aria-label="명령 팔레트"><Icon name="cmd" /></button>
-        <button className="jan-header-btn" data-help="global-search" onClick={p.onGlobalSearch || p.onSearch} title="전체 검색 (Ctrl+Shift+F)" aria-label="전체 검색"><Icon name="search" /></button>
-        <button className="jan-header-btn" data-help="ai" onClick={p.onAi || p.onChat} title="AI 도우미 (Ctrl+/)" aria-label="AI 도우미"><Icon name="ai" /></button>
+        <button className="jan-header-btn jan-bar-foldable" data-help="global-search" onClick={p.onGlobalSearch || p.onSearch} title="전체 검색 (Ctrl+Shift+F)" aria-label="전체 검색"><Icon name="search" /></button>
+        <button className="jan-header-btn jan-bar-foldable" data-help="ai" onClick={p.onAi || p.onChat} title="AI 도우미 (Ctrl+/)" aria-label="AI 도우미"><Icon name="ai" /></button>
         <button className="jan-header-btn jan-header-extra" data-help="quick-memo" onClick={p.onCalendar} title="빠른 메모 (Ctrl+Shift+J)" aria-label="빠른 메모"><Icon name="page" /></button>
         <button className={'jan-header-btn jan-header-extra' + (focusMode ? ' is-active' : '')} data-help="focus" onClick={() => toggleFocus()} title="집중 모드 (F11)" aria-label="집중 모드"><Icon name="eye" /></button>
         <button className="jan-header-btn jan-header-role-btn jan-header-extra" data-help="roles" onClick={openRoleDash} title="내 도구 / 역할 팩" aria-label="내 도구 / 역할 팩">
@@ -293,8 +312,8 @@ export function AppHeader(p: AppHeaderProps) {
           </div>
         )}
         <span className="jan-header-sep" aria-hidden="true" />
-        <button className="jan-header-btn" data-help="theme" onClick={cycleTheme} title={`테마: ${theme}`} aria-label="테마"><Icon name={themeIcon} /></button>
-        <button className="jan-header-btn" data-help="settings" onClick={p.onSettings} title="설정 (Ctrl+,)" aria-label="설정"><Icon name="settings" /></button>
+        <button className="jan-header-btn jan-bar-foldable" data-help="theme" onClick={cycleTheme} title={`테마: ${theme}`} aria-label="테마"><Icon name={themeIcon} /></button>
+        <button className="jan-header-btn jan-bar-foldable" data-help="settings" onClick={p.onSettings} title="설정 (Ctrl+,)" aria-label="설정"><Icon name="settings" /></button>
         <div className="jan-header-more-wrap" onPointerDown={(e) => e.stopPropagation()}>
           <button
             className="jan-header-btn jan-header-more-btn"
@@ -329,6 +348,6 @@ export function AppHeader(p: AppHeaderProps) {
           </>
         )}
       </div>
-    </header>
+    </>
   )
 }

@@ -720,7 +720,7 @@ test.describe('v2 smoke', () => {
     await page.goto('./')
     await expect(page.locator('.ProseMirror').first()).toBeVisible({ timeout: 15000 })
 
-    const header = page.locator('.jan-app-header')
+    const header = page.locator('.jan-ribbon-bar')  // 헤더 줄을 리본 탭 줄에 합쳤다
     await expect(header).toBeVisible()
     const headerBox = await header.boundingBox()
     expect(headerBox).not.toBeNull()
