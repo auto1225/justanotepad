@@ -2,9 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { EditorContent, useEditor } from '@tiptap/react'
 import type { Editor as TiptapEditor, AnyExtension } from '@tiptap/core'
 import { Extension } from '@tiptap/core'
-import { Step } from '@tiptap/pm/transform'
 import { Icon } from './Icons'
 import { useUIStore } from '../store/uiStore'
+import { useDocRelay } from '../hooks/useDocRelay'
 
 /**
  * 분할 편집 — 같은 문서를 오른쪽 창에서 "진짜로" 편집하는 보조 에디터 (Word 창 분할).
@@ -35,8 +35,6 @@ interface SplitEditorPaneProps {
   viewLayout: string
   spellCheck: boolean
 }
-
-const RELAY_META = 'jan-split-relay'
 
 export function SplitEditorPane(props: SplitEditorPaneProps) {
   const { mainEditor, extensions, hasYdoc, paginationEnabled, pagePx, pageMarginPx } = props
@@ -81,62 +79,8 @@ export function SplitEditorPane(props: SplitEditorPaneProps) {
     [splitExtensions]
   )
 
-  // 스텝 양방향 릴레이 — y.js 세션이면 ydoc 이 대신 동기화하므로 생략
-  useEffect(() => {
-    if (!secondary || hasYdoc) return
-
-    // setContent 재동기화가 다시 릴레이 핸들러에 잡히면 동기 무한 재귀가 된다 — 가드 필수
-    let resyncing = false
-    const resync = (from: TiptapEditor, to: TiptapEditor) => {
-      if (resyncing || to.isDestroyed) return
-      resyncing = true
-      try {
-        to.commands.setContent(from.getJSON(), { emitUpdate: false })
-      } finally {
-        window.setTimeout(() => { resyncing = false }, 0)
-      }
-    }
-
-    // 마운트 직후 1회 통째 동기화 — 생성 시점 이후 메인이 변했을 수 있고,
-    // 스키마 인스턴스가 달라 doc.eq 비교는 신뢰할 수 없다
-    resync(mainEditor, secondary)
-
-    const relay = (from: TiptapEditor, to: TiptapEditor, keepHistory: boolean) =>
-      ({ transaction }: { transaction: { docChanged: boolean; getMeta: (k: string) => unknown; steps: unknown[] } }) => {
-        if (resyncing) return
-        if (!transaction.docChanged || transaction.getMeta(RELAY_META)) return
-        if (to.isDestroyed) return
-        const tr = to.state.tr
-        try {
-          // 두 에디터는 내용이 같아도 "다른" 스키마 인스턴스를 쓴다 — 스텝 안의 노드가
-          // 발신 스키마 소속이라 그대로 적용하면 콘텐츠 검증이 실패한다.
-          // 협업 프로토콜처럼 JSON 왕복으로 수신 스키마 소속 스텝으로 재구성한다.
-          for (const step of transaction.steps as Step[]) {
-            tr.step(Step.fromJSON(to.state.schema, step.toJSON()))
-          }
-        } catch (e) {
-          // 스텝 적용 실패(문서 불일치) — 원본 기준으로 통째 재동기화
-          console.warn('[분할 편집] 스텝 적용 실패 — 재동기화:', e instanceof Error ? e.message : e)
-          resync(from, to)
-          return
-        }
-        tr.setMeta(RELAY_META, true)
-        if (!keepHistory) tr.setMeta('addToHistory', false)
-        to.view.dispatch(tr)
-      }
-
-    // 메인→보조: 보조 히스토리 없음(무관), 메타만 명시
-    const mainToSecondary = relay(mainEditor, secondary, false)
-    // 보조→메인: 메인 히스토리에 쌓여 Ctrl+Z 로 되돌릴 수 있어야 한다
-    const secondaryToMain = relay(secondary, mainEditor, true)
-
-    mainEditor.on('transaction', mainToSecondary)
-    secondary.on('transaction', secondaryToMain)
-    return () => {
-      mainEditor.off('transaction', mainToSecondary)
-      secondary.off('transaction', secondaryToMain)
-    }
-  }, [secondary, mainEditor, hasYdoc])
+  // 문서 동기화는 공용 릴레이 엔진에 위임 (y.js 세션이면 ydoc 이 담당하므로 끈다)
+  useDocRelay([mainEditor, secondary], !hasYdoc)
 
   // 페이지네이션 크기 반영 (메인과 동일한 커맨드 경로)
   useEffect(() => {

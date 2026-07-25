@@ -924,6 +924,12 @@ export function Toolbar(p: ToolbarProps) {
           if (ui.viewLayout !== 'print' && !ui.pageThumbs) { flash('쪽모음은 인쇄 레이아웃에서 사용할 수 있습니다 — 보기 → 인쇄 레이아웃'); return }
           ui.togglePageThumbs()
         }) },
+        { label: ui.spreadCols ? `쪽 나란히 편집 끝내기 (현재 ${ui.spreadCols}쪽)` : '쪽 나란히 편집 (1·2쪽을 가로로 놓고 편집)', icon: 'columns', onClick: () => run(() => {
+          if (ui.spreadCols) { ui.setSpreadCols(0); flash('쪽 나란히 편집을 끝냈습니다'); return }
+          if (ui.viewLayout !== 'print') { flash('쪽 나란히 편집은 인쇄 레이아웃에서 사용할 수 있습니다 — 보기 → 인쇄 레이아웃'); return }
+          ui.setSpreadCols(2)
+          flash('쪽 나란히 편집 — 각 쪽에서 바로 편집됩니다 (2·3·4쪽 배치 선택, PageUp/PageDown 이동)', 3200)
+        }) },
         { label: `창 나누기 ${ui.splitView ? '취소' : ''}(같은 문서 위·아래 두 창)`, icon: 'columns', onClick: () => run(() => {
           ui.toggleSplitView()
           flash(ui.splitView ? '창 나누기를 취소했습니다' : '창 나누기 — 아래 창에서도 같은 문서를 바로 편집할 수 있습니다 (분할선을 끌어 크기 조절)', 3000)

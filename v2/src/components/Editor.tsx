@@ -81,6 +81,7 @@ import { PaperTag, PaperBlockAttrs } from '../extensions/PaperTag'
 import { CurrentParaHighlight } from '../extensions/CurrentParaHighlight'
 import { PageThumbnailPanel } from './PageThumbnailPanel'
 import { SplitEditorPane } from './SplitEditorPane'
+import { PageSpreadView } from './PageSpreadView'
 import { NormalHorizontalRule } from '../extensions/HorizontalRule'
 import Highlight from '@tiptap/extension-highlight'
 import { Lightbox } from './Lightbox'
@@ -294,6 +295,8 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   const splitView = useUIStore((s) => s.splitView)
   const splitDir = useUIStore((s) => s.splitDir)
   const splitRatio = useUIStore((s) => s.splitRatio)
+  const spreadCols = useUIStore((s) => s.spreadCols)
+  const showSpread = paginationEnabled && spreadCols > 0
   // 줌을 50% 이하로 "내리는 순간" 자동으로 쪽모음을 연다 (수동으로 닫으면 존중)
   const prevZoomRef = useRef(editorZoom)
   useEffect(() => {
@@ -440,8 +443,11 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   }, [collab.ydoc, collab.provider, pagePx, pageMarginPx, paginationHeader, paginationFooter, paginationEnabled])
 
   const editorExtensions = useMemo(() => buildExtensions({ history: true }), [buildExtensions])
-  // 분할 편집이 켜졌을 때만 보조용 확장을 생성 (히스토리 없음)
-  const splitExtensions = useMemo(() => (splitView ? buildExtensions({ history: false }) : null), [buildExtensions, splitView])
+  // 창 나누기·쪽 나란히 편집이 켜졌을 때만 보조용 확장을 생성 (히스토리 없음)
+  const splitExtensions = useMemo(
+    () => (splitView || spreadCols > 0 ? buildExtensions({ history: false }) : null),
+    [buildExtensions, splitView, spreadCols]
+  )
 
   const editor = useEditor(
     {
@@ -850,8 +856,11 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
         {/* 쪽모음은 시각적으로 왼쪽(order:-1)이지만 DOM 은 편집기 뒤에 둔다 —
             스냅샷 내부의 .ProseMirror 복제본이 querySelector 첫 매치를 가로채지 않도록 */}
         <div
-          className={'jan-editor-stack' + (splitView ? ` is-split is-split-${splitDir}` : '')}
-          style={splitView ? ({ ['--jan-split-ratio' as string]: `${Math.round(splitRatio * 100)}%` } as CSSProperties) : undefined}
+          className={
+            'jan-editor-stack' +
+            (showSpread ? ' has-spread' : splitView ? ` is-split is-split-${splitDir}` : '')
+          }
+          style={splitView && !showSpread ? ({ ['--jan-split-ratio' as string]: `${Math.round(splitRatio * 100)}%` } as CSSProperties) : undefined}
         >
         <div className={'jan-editor-main' + (showOutline ? ' has-outline' : '')}>
         {showOutline && <OutlinePanel editor={editor} />}
@@ -950,7 +959,23 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
           {typewriterMode && <div className="jan-typewriter-spacer" aria-hidden="true" />}
         </div>
       </div>
-      {splitView && editor && splitExtensions && (
+      {showSpread && editor && splitExtensions && (
+        <PageSpreadView
+          mainEditor={editor}
+          extensions={splitExtensions}
+          pagePx={pagePx}
+          pageMarginPx={pageMarginPx}
+          paginationEnabled={paginationEnabled}
+          pageStyle={pageStyle}
+          paperStyle={paperStyle}
+          pageSize={pageSize}
+          pageOrientation={pageOrientation}
+          pageColumnCount={pageColumnCount}
+          viewLayout={viewLayout}
+          spellCheck={spellCheck}
+        />
+      )}
+      {!showSpread && splitView && editor && splitExtensions && (
         <>
           <div
             className="jan-split-divider"

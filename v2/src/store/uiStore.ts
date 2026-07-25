@@ -318,6 +318,8 @@ interface UIState {
   splitDir: 'h' | 'v'
   /** 첫 창이 차지하는 비율 (0.2~0.8) — 분할선 드래그로 조절 */
   splitRatio: number
+  /** 쪽 나란히 편집 — 한 번에 가로로 놓을 쪽 수 (0=꺼짐, 2~4) */
+  spreadCols: 0 | 2 | 3 | 4
   spellCheck: boolean
   sidebarCollapsed: boolean
   headingNumbers: boolean
@@ -350,6 +352,7 @@ interface UIState {
   toggleSplitView: () => void
   setSplitDir: (dir: 'h' | 'v') => void
   setSplitRatio: (ratio: number) => void
+  setSpreadCols: (cols: 0 | 2 | 3 | 4) => void
   toggleSpellCheck: () => void
   toggleSidebar: () => void
   toggleHeadingNumbers: () => void
@@ -382,6 +385,7 @@ export const useUIStore = create<UIState>()(
       splitView: false,
       splitDir: 'h',
       splitRatio: 0.5,
+      spreadCols: 0,
       spellCheck: false,
       sidebarCollapsed: false,
       headingNumbers: false,
@@ -413,6 +417,8 @@ export const useUIStore = create<UIState>()(
       toggleSplitView: () => set({ splitView: !get().splitView }),
       setSplitDir: (dir) => set({ splitDir: dir === 'v' ? 'v' : 'h' }),
       setSplitRatio: (ratio) => set({ splitRatio: Math.max(0.2, Math.min(0.8, ratio)) }),
+      // 쪽 나란히 편집을 켜면 창 나누기는 끈다 (둘은 화면을 다투는 배타 모드)
+      setSpreadCols: (cols) => set(cols ? { spreadCols: cols, splitView: false } : { spreadCols: 0 }),
       toggleSpellCheck: () => set({ spellCheck: !get().spellCheck }),
       setFocus: (v) => set({ focusMode: v }),
       toggleSidebar: () => set({ sidebarCollapsed: !get().sidebarCollapsed }),
