@@ -1561,7 +1561,7 @@ body { background: #FFE8E8; }
 }
 .jan-ribbon-tab {
   appearance: none; border: 0; background: transparent; cursor: pointer;
-  padding: 7px 14px; font-size: 13px; font-weight: 600; color: #6b625a;
+  padding: 5px 12px; font-size: 12.5px; font-weight: 600; color: #6b625a;
   border-bottom: 2px solid transparent; border-radius: 4px 4px 0 0;
 }
 .jan-ribbon-tab:hover { background: rgba(0,0,0,0.04); color: #3f3a35; }
@@ -1574,7 +1574,7 @@ body { background: #FFE8E8; }
 .jan-ribbon-collapse:hover { background: rgba(0,0,0,0.06); color: #3f3a35; }
 .jan-ribbon-body {
   display: flex; align-items: stretch; gap: 0;
-  padding: 4px 8px 2px; overflow-x: auto; overflow-y: visible;
+  padding: 2px 8px 1px; overflow-x: auto; overflow-y: visible;
 }
 .jan-ribbon-group {
   display: flex; flex-direction: column; align-items: center;
@@ -1584,7 +1584,7 @@ body { background: #FFE8E8; }
 .jan-ribbon-items { display: flex; align-items: flex-start; gap: 2px; }
 .jan-ribbon-foot { display: flex; align-items: center; gap: 3px; margin-top: 1px; max-width: 100%; }
 .jan-ribbon-caption {
-  font-size: 10px; color: #9a908a; white-space: nowrap;
+  font-size: 9.5px; line-height: 1.25; color: #9a908a; white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis;
 }
 /* 묶음 대화상자 연결 — 그 묶음의 전체 설정 창을 여는 작은 화살표 */
@@ -1603,9 +1603,9 @@ body { background: #FFE8E8; }
 .jan-ribbon-tab.is-context.is-active { color: #12735e; border-bottom-color: #1f9c7d; }
 .jan-ribbon-btn {
   appearance: none; border: 1px solid transparent; background: transparent; cursor: pointer;
-  display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 3px;
-  width: 58px; min-height: 50px; padding: 5px 2px 4px; border-radius: 5px;
-  font-size: 11px; line-height: 1.15; color: #4a423c; text-align: center;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 2px;
+  width: 54px; min-height: 42px; padding: 3px 2px 2px; border-radius: 5px;
+  font-size: 10.5px; line-height: 1.12; color: #4a423c; text-align: center;
 }
 .jan-ribbon-btn span { display: block; word-break: keep-all; }
 .jan-ribbon-btn:hover { background: #fff; border-color: rgba(0,0,0,0.12); }
@@ -1643,6 +1643,27 @@ body { background: #FFE8E8; }
 .jan-toolbar-row .divider { width: 1px; background: rgba(0,0,0,0.1); margin: 2px 4px; height: 22px; flex-shrink: 0; }
 .jan-toolbar-select { padding: 4px 8px; border: 1px solid rgba(0,0,0,0.1); border-radius: 4px; background: #fff; font-size: 12px; min-width: 90px; cursor: pointer; }
 .jan-toolbar-select:hover { border-color: #D97757; }
+
+/* ============================================================
+   화면이 낮을 때 — 메뉴가 차지하는 세로 공간을 한 단계 더 줄인다.
+   노트북(높이 900px 이하)에서는 문서가 보이는 높이가 곧 작업 공간이다.
+   ============================================================ */
+@media (max-height: 900px) {
+  .jan-app-header { height: 30px !important; }
+  .jan-memo-tabs { height: 25px !important; }
+  .jan-ribbon-tab { padding: 4px 10px; font-size: 12px; }
+  .jan-ribbon-btn { min-height: 38px; width: 52px; padding: 2px 2px 1px; }
+  .jan-ribbon-caption { display: none; }        /* 묶음 이름은 접는다 — 아이콘 밑 이름만으로 충분하다 */
+  .jan-ribbon-launcher { display: none; }
+  .jan-ribbon-body { padding: 2px 8px 0; }
+  .jan-toolbar-row { padding: 2px 8px !important; min-height: 27px !important; }
+}
+@media (max-height: 740px) {
+  /* 더 낮으면 리본 아이콘 밑 이름까지 접어 한 줄짜리 도구 모음처럼 쓴다 */
+  .jan-ribbon-btn { min-height: 28px; width: 34px; }
+  .jan-ribbon-btn span { display: none; }
+  .jan-ribbon-btn svg { width: 18px; height: 18px; }
+}
 
 /* ============================================================
    글자 모양 도구 상자 — 글꼴 고르기 + 숫자 입력(증감 단추)
@@ -1847,7 +1868,7 @@ html, body, #root { background: var(--jan-bg); color: var(--jan-fg); }
   display: flex;
   align-items: center;
   gap: 6px;
-  height: 40px;
+  height: 32px;
   padding: 0 8px;
   background: var(--jan-bg-alt);
   border-bottom: 1px solid var(--jan-border);
@@ -1881,7 +1902,7 @@ html, body, #root { background: var(--jan-bg); color: var(--jan-fg); }
 .jan-memo-tabs {
   display: flex;
   align-items: stretch;
-  height: 34px;
+  height: 27px;
   background: var(--jan-bg);
   border-bottom: 1px solid var(--jan-border);
   padding: 0 8px;
@@ -2160,7 +2181,7 @@ html, body, #root { background: var(--jan-bg); color: var(--jan-fg); }
   min-width: 0;
   overflow: auto;
   background: var(--jan-page-bg);
-  padding: 24px 0;
+  padding: 10px 0 24px;   /* 위쪽은 눈금자가 붙는 자리라 좁혀도 된다 */
 }
 .jan-editor-main.has-outline { display: flex; }
 .jan-editor-pages {
@@ -2504,7 +2525,8 @@ html, body, #root {
 .jan-toolbar-row {
   background: var(--paper) !important;
   border-bottom: 1px solid var(--paper-edge) !important;
-  padding: 6px 8px !important;
+  padding: 3px 8px !important;
+  min-height: 30px !important;
   height: auto !important;
   min-height: 40px;
 }
@@ -2706,7 +2728,7 @@ html, body, #root {
 .jan-toolbar-row {
   flex-wrap: wrap !important;
   height: auto !important;
-  min-height: 38px !important;
+  min-height: 30px !important;   /* 안의 칸이 24px — 그보다 크면 빈 띠만 남는다 */
   overflow: visible !important;
 }
 @media (max-width: 800px) {
@@ -2907,25 +2929,25 @@ html, body, #root {
   color: #f0c0aa;
 }
 
-/* --- 5) AppHeader 높이 v1 과 일치 (46px) --- */
+/* --- 5) AppHeader — v1 은 46px 였지만 문서에 쓸 세로 공간을 벌기 위해 34px 로 낮춘다 --- */
 .jan-app-header {
-  height: 46px !important;
+  height: 34px !important;
   padding: 0 10px !important;
   gap: 4px !important;
 }
 .jan-app-header .jan-hdr-btn {
-  width: 30px;
-  height: 30px;
+  width: 26px;
+  height: 26px;
 }
 
-/* --- 6) Tabs row 높이 v1 과 일치 (44px) --- */
+/* --- 6) 메모 탭 줄 — 탭 높이에 맞춰 딱 붙인다 (44 → 30px) --- */
 .jan-memo-tabs {
-  height: 44px !important;
+  height: 30px !important;
   align-items: flex-end !important;
-  padding: 8px 8px 0 !important;
+  padding: 4px 8px 0 !important;
 }
 .jan-memo-tab {
-  height: 32px !important;
+  height: 26px !important;
 }
 
 /* --- 7) v1 .topbar .title 스타일 그대로 적용 --- */

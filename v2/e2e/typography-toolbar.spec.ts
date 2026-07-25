@@ -185,4 +185,28 @@ test.describe('글자 모양 도구 상자', () => {
     await page.waitForTimeout(300)
     expect(await page.locator('input[aria-label="글자 크기"]').inputValue()).toBe('18')
   })
+
+  test('머리부(헤더·탭·리본·서식줄)가 화면 세로를 지나치게 먹지 않는다', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await page.goto('./')
+    await page.locator('.ProseMirror').first().waitFor({ state: 'visible', timeout: 15000 })
+    await page.waitForTimeout(400)
+
+    const m = await page.evaluate(() => {
+      const h = (s: string) => Math.round(document.querySelector(s)?.getBoundingClientRect().height || 0)
+      const top = Math.round(document.querySelector('.jan-editor-pages')!.getBoundingClientRect().top)
+      return { top, ratio: top / window.innerHeight, header: h('.jan-app-header'), tabs: h('.jan-memo-tabs'), toolbar: h('.jan-toolbar-row') }
+    })
+    // 문서가 시작되는 지점이 화면의 4분의 1을 넘지 않아야 한다
+    expect(m.ratio).toBeLessThan(0.25)
+    expect(m.header).toBeLessThanOrEqual(36)
+    expect(m.tabs).toBeLessThanOrEqual(34)
+    expect(m.toolbar).toBeLessThanOrEqual(36)
+
+    // 리본을 접으면 더 줄어든다 (한글·워드의 리본 접기)
+    await page.locator('.jan-ribbon-collapse').click()
+    await page.waitForTimeout(300)
+    const after = await page.evaluate(() => Math.round(document.querySelector('.jan-editor-pages')!.getBoundingClientRect().top))
+    expect(after).toBeLessThan(m.top - 40)
+  })
 })
