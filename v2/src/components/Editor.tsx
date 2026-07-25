@@ -79,7 +79,7 @@ import { AudioNode, VideoNode } from '../extensions/Media'
 import { PageBreak } from '../extensions/PageBreak'
 import { PaperTag, PaperBlockAttrs } from '../extensions/PaperTag'
 import { CurrentParaHighlight } from '../extensions/CurrentParaHighlight'
-import { PageDoc, PageNode, PageReflow, getSavableHtml } from '../extensions/PageDocument'
+import { PageDoc, PageNode, PageReflow, ContinuedAttr, getSavableHtml } from '../extensions/PageDocument'
 import { PageThumbnailPanel } from './PageThumbnailPanel'
 import { SplitEditorPane } from './SplitEditorPane'
 import { PageSpreadView } from './PageSpreadView'
@@ -426,6 +426,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       base.push(
         PageDoc,
         PageNode,
+        ContinuedAttr,
         PageReflow.configure({
           getContentHeight: () =>
             pagePx.pageHeight - pageMarginPx.top - pageMarginPx.bottom,

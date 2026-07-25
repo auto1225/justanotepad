@@ -47,6 +47,88 @@ export const PageNode = Node.create({
   },
 })
 
+/**
+ * 쪼개진 문단 표시 — 페이지 경계에서 줄 단위로 나뉜 뒷조각에 붙는다.
+ * 저장할 때 이 표시를 가진 문단을 앞 문단에 다시 합쳐 원래 구조를 보존한다.
+ */
+export const ContinuedAttr = Extension.create({
+  name: 'janContinuedAttr',
+  addGlobalAttributes() {
+    return [
+      {
+        types: ['paragraph', 'heading'],
+        attributes: {
+          janCont: {
+            default: null,
+            parseHTML: (el) => (el.getAttribute('data-jan-cont') ? '1' : null),
+            renderHTML: (attrs) => (attrs.janCont ? { 'data-jan-cont': '1' } : {}),
+          },
+        },
+      },
+    ]
+  },
+})
+
+/**
+ * 요소 안에서 주어진 높이까지 들어가는 마지막 줄의 끝 문자 위치를 찾는다.
+ * 문자 하나씩 재면 긴 문단에서 너무 느리므로 이진 탐색으로 좁힌 뒤,
+ * 그 문자가 속한 줄의 시작으로 되돌려 "줄 단위"로 자를 지점을 반환한다.
+ */
+function findLineCut(el: HTMLElement, maxHeight: number): { node: Text; offset: number } | null {
+  const texts: Array<{ node: Text; start: number }> = []
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+  let total = 0
+  let n: globalThis.Node | null
+  while ((n = walker.nextNode())) {
+    const t = n as unknown as Text
+    if (!t.length) continue
+    texts.push({ node: t, start: total })
+    total += t.length
+  }
+  if (total < 2) return null
+
+  const elTop = el.getBoundingClientRect().top
+  const range = document.createRange()
+  const locate = (i: number) => {
+    for (let k = texts.length - 1; k >= 0; k--) {
+      if (i >= texts[k].start) {
+        const off = Math.max(0, Math.min(i - texts[k].start, texts[k].node.length - 1))
+        return { node: texts[k].node, off }
+      }
+    }
+    return { node: texts[0].node, off: 0 }
+  }
+  const rectAt = (i: number) => {
+    const { node, off } = locate(i)
+    range.setStart(node, off)
+    range.setEnd(node, off + 1)
+    return range.getBoundingClientRect()
+  }
+
+  // 1) maxHeight 안에 들어가는 마지막 문자 찾기
+  let lo = 0
+  let hi = total - 1
+  let fit = -1
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1
+    if (rectAt(mid).bottom - elTop <= maxHeight) { fit = mid; lo = mid + 1 } else { hi = mid - 1 }
+  }
+  if (fit < 0) return null            // 첫 줄도 안 들어간다 → 쪼갤 수 없다
+  if (fit >= total - 1) return null   // 전부 들어간다 → 쪼갤 필요 없다
+
+  // 2) 다음 문자가 속한 줄의 시작으로 되돌린다 (줄 중간에서 자르지 않기 위해)
+  const nextTop = Math.round(rectAt(fit + 1).top)
+  let cut = fit + 1
+  for (let i = fit; i >= 0 && cut - i < 400; i--) {
+    if (Math.round(rectAt(i).top) !== nextTop) break
+    cut = i
+  }
+  if (cut <= 0) return null           // 첫 줄부터 넘어간다 → 통째로 옮기는 편이 낫다
+
+  const { node, off } = locate(cut)
+  return { node, offset: off }
+}
+
 /** 문서 최상위를 page+ 로 교체 */
 export const PageDoc = Node.create({
   name: 'doc',
@@ -135,20 +217,62 @@ function reflowOnce(view: EditorView, contentHeight: number): boolean {
     const m = measure(view, pos)
     if (!m || m.heights.length !== node.childCount) continue
     if (m.used <= contentHeight + 1) continue
-    // 블록이 하나뿐이면 더 밀 수 없다 (한 쪽보다 큰 표·이미지) — 넘침을 허용해 무한 루프를 막는다
-    if (node.childCount <= 1) continue
 
-    // 용지 안쪽 높이를 처음 넘기는 블록을 찾는다 (최소 한 블록은 남긴다)
+    // 용지 안쪽 높이를 처음 넘기는 블록을 찾는다
+    // (첫 블록이라도 경계에 걸리면 줄 단위 분할 대상이므로 c===0 도 포함한다)
     let acc = 0
     let cutIndex = -1
     for (let c = 0; c < node.childCount; c++) {
       const h = m.heights[c]
-      if (c > 0 && acc + h > contentHeight) { cutIndex = c; break }
+      if (acc + h > contentHeight) { cutIndex = c; break }
       acc += h
     }
-    if (cutIndex < 1) continue
-    // 잘라낼 지점 앞이 거의 비어 있다면(큰 글씨 문단·큰 표가 남은 자리를 다 먹는 경우)
-    // 그 큰 블록까지 이 쪽에 두고 그 다음부터 넘긴다. 앞 쪽을 백지로 만들고 뒤로
+    if (cutIndex < 0) continue
+
+    // ── 줄 단위 분할 — 경계에 걸친 문단을 남는 자리만큼 채우고 그 줄에서 쪼갠다
+    //    (워드·한글과 같은 흐름. 문단을 통째로 넘기면 쪽 바닥이 비어 버린다)
+    {
+      const boundary = cutIndex // 경계에 걸친 블록
+      const child = node.child(boundary)
+      const room = contentHeight - acc
+      // 텍스트 문단·제목만 쪼갠다 (표·이미지·콜아웃은 블록 단위로 옮긴다)
+      if (child.isTextblock && child.content.size > 1 && room > 24) {
+        const childPos = (() => {
+          let off = 0
+          for (let c = 0; c < boundary; c++) off += node.child(c).nodeSize
+          return pos + 1 + off
+        })()
+        const dom = view.nodeDOM(childPos)
+        if (dom instanceof HTMLElement) {
+          const rect = dom.getBoundingClientRect()
+          const scale = dom.offsetWidth > 0 ? rect.width / dom.offsetWidth : 1
+          // 문자 아래끝 기준이라 실제 렌더 높이가 몇 px 더 크다 → 여유를 둔다
+          const hit = findLineCut(dom, room * (scale || 1) - 8)
+          if (hit) {
+            let splitAt = -1
+            try { splitAt = view.posAtDOM(hit.node, hit.offset) } catch { splitAt = -1 }
+            const inside = splitAt > childPos && splitAt < childPos + child.nodeSize - 1
+            if (inside) {
+              const tr = state.tr
+              // 쪼갠 뒷조각에 "이어짐" 표시를 처음부터 붙인다 (저장 시 원래 한 문단으로 합침)
+              tr.split(splitAt, 1, [{ type: child.type, attrs: { ...child.attrs, janCont: '1' } }])
+              tr.setMeta(reflowKey, true)
+              tr.setMeta('addToHistory', false)
+              view.dispatch(tr)
+              return true // 다음 패스에서 뒷조각부터 다음 쪽으로 밀려간다
+            }
+          }
+        }
+      }
+    }
+
+    // 줄 단위로 쪼갤 수 없는 블록(표·이미지)만 남았다면 블록 단위로 옮긴다.
+    // 블록이 하나뿐이면 옮길 곳이 없으므로 넘침을 허용한다 (무한 루프 방지)
+    if (node.childCount <= 1) continue
+    // 첫 블록부터 넘치지만 쪼갤 수 없다면 그 블록만 이 쪽에 두고 나머지를 넘긴다
+    if (cutIndex < 1) cutIndex = 1
+    // 잘라낼 지점 앞이 거의 비어 있다면(큰 표·이미지가 남은 자리를 다 먹는 경우)
+    // 그 블록까지 이 쪽에 두고 그 다음부터 넘긴다. 앞 쪽을 백지로 만들고 뒤로
     // 넘기는 것이 가장 나쁘고, 밀기를 아예 포기하면 문서 전체가 한 쪽에 쌓인다.
     if (acc <= NEARLY_EMPTY) {
       if (cutIndex + 1 >= node.childCount) continue // 뒤에 밀 것이 없다 → 넘침 허용
@@ -290,7 +414,32 @@ export const PageReflow = Extension.create<ReflowOptions>({
  */
 export function getSavableHtml(editor: { getHTML: () => string } | null | undefined): string {
   if (!editor) return ''
-  return stripPageWrappers(editor.getHTML())
+  return mergeContinuedBlocks(stripPageWrappers(editor.getHTML()))
+}
+
+/**
+ * 페이지 경계에서 줄 단위로 쪼개진 문단(data-jan-cont)을 앞 문단에 다시 합친다.
+ * 저장·내보내기에서 원래 문단 구조를 그대로 유지하기 위한 역변환.
+ */
+export function mergeContinuedBlocks(html: string): string {
+  if (!html || !html.includes('data-jan-cont')) return html
+  const doc = new DOMParser().parseFromString(`<div id="r">${html}</div>`, 'text/html')
+  const root = doc.getElementById('r')
+  if (!root) return html
+  let guard = 0
+  let target = root.querySelector('[data-jan-cont]')
+  while (target && guard++ < 5000) {
+    const prev = target.previousElementSibling
+    if (prev) {
+      while (target.firstChild) prev.appendChild(target.firstChild)
+      target.remove()
+    } else {
+      // 앞 형제가 없으면 표시만 지운다 (쪽 첫 블록으로 남은 경우)
+      target.removeAttribute('data-jan-cont')
+    }
+    target = root.querySelector('[data-jan-cont]')
+  }
+  return root.innerHTML
 }
 
 /** 페이지 래퍼를 벗겨 기존 저장 형식(평면 HTML)으로 되돌린다 */
