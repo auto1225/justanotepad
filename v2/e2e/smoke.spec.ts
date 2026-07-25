@@ -53,11 +53,11 @@ test.describe('v2 smoke', () => {
     await page.keyboard.type('OpenAI')
     await page.keyboard.press('Control+A')
 
-    page.once('dialog', async (dialog) => {
-      expect(dialog.message()).toContain('링크 URL')
-      await dialog.accept('https://openai.com')
-    })
     await page.keyboard.press('Control+K')
+    const linkPop = page.locator('.jan-link-popover')
+    await expect(linkPop).toBeVisible()
+    await linkPop.getByLabel('링크 URL').fill('https://openai.com')
+    await linkPop.getByRole('button', { name: '적용' }).click()
     await expect(editor.locator('a[href="https://openai.com"]')).toContainText('OpenAI')
 
     await page.keyboard.press('Control+Shift+P')
@@ -87,17 +87,17 @@ test.describe('v2 smoke', () => {
   test('toolbar buttons present', async ({ page }) => {
     await page.goto('./')
     await page.locator('.ProseMirror').first().waitFor()
-    for (const label of ['논문', '서식', '삽입', '페이지', '미디어', '도구', '보기', '파일']) {
-      await expect(page.getByRole('button', { name: label, exact: true })).toBeVisible({ timeout: 5000 })
+    for (const label of ['파일', '편집', '보기', '입력', '서식', '쪽', 'AI', '도구', '논문']) {
+      await expect(page.getByRole('tab', { name: label, exact: true })).toBeVisible({ timeout: 5000 })
     }
     await page.getByRole('tab', { name: '파일', exact: true }).click()
-    await expect(page.getByRole('button', { name: '저장 Ctrl+S' })).toBeVisible()
-    await expect(page.getByRole('button', { name: /HWPX/ })).toBeVisible()
-    await expect(page.getByRole('button', { name: /Markdown/ })).toBeVisible()
+    await expect(page.locator('.jan-ribbon-body').getByRole('button', { name: '저장', exact: true })).toBeVisible()
+    await expect(page.locator('.jan-ribbon-body').getByRole('button', { name: /HWPX/ })).toBeVisible()
+    await expect(page.locator('.jan-ribbon-body').getByRole('button', { name: /Markdown/ }).first()).toBeVisible()
     await page.getByRole('tab', { name: '쪽', exact: true }).click()
-    await expect(page.getByRole('button', { name: /페이지 크기 설정/ })).toBeVisible()
-    await expect(page.getByRole('button', { name: /노트 배경 스타일/ })).toBeVisible()
-    await page.getByRole('button', { name: /페이지 크기 설정/ }).click()
+    await expect(page.locator('.jan-ribbon-body').getByRole('button', { name: /페이지 크기 설정/ })).toBeVisible()
+    await expect(page.locator('.jan-ribbon-body').getByRole('button', { name: /노트 배경 스타일/ })).toBeVisible()
+    await page.locator('.jan-ribbon-body').getByRole('button', { name: /페이지 크기 설정/ }).click()
     await expect(page.locator('.jan-page-settings-modal')).toBeVisible()
   })
 
@@ -389,13 +389,13 @@ test.describe('v2 smoke', () => {
 
     await expect(zoomValue).toHaveText('100%')
     await page.getByRole('tab', { name: '보기', exact: true }).click()
-    await page.getByRole('button', { name: '한 페이지 보기', exact: true }).click()
+    await page.locator('.jan-ribbon-body').getByRole('button', { name: '한 페이지 보기', exact: true }).click()
     await expect.poll(readZoom).toBeLessThan(1)
     await expect(zoomValue).not.toHaveText('100%')
     const wholePageZoom = await readZoom()
 
     await page.getByRole('tab', { name: '보기', exact: true }).click()
-    await page.getByRole('button', { name: '페이지 너비에 맞춤', exact: true }).click()
+    await page.locator('.jan-ribbon-body').getByRole('button', { name: '페이지 너비에 맞춤', exact: true }).click()
     await expect.poll(readZoom).toBeGreaterThan(wholePageZoom)
     const widthZoom = await readZoom()
 

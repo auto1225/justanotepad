@@ -133,6 +133,8 @@ test.describe('local-first memo storage', () => {
 
   test('keeps mobile header actions and toolbar menus reachable', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 })
+    // 첫 방문 역할 선택 창이 1초쯤 뒤 떠서 열어둔 메뉴를 덮는다 — 끄고 시작한다
+    await page.addInitScript(() => localStorage.setItem('jan-v2-role-onboarded', '1'))
     await page.goto('./')
 
     await page.locator('.ProseMirror').first().waitFor({ state: 'visible', timeout: 15000 })
@@ -142,8 +144,8 @@ test.describe('local-first memo storage', () => {
 
     const moreMenu = page.locator('.jan-header-more-menu')
     await expect(moreMenu).toBeVisible()
-    await expect(moreMenu.getByRole('button', { name: '명함' })).toBeVisible()
-    await moreMenu.getByRole('button', { name: '설정' }).click()
+    await expect(moreMenu.getByRole('menuitem', { name: '명함' })).toBeVisible()
+    await moreMenu.getByRole('menuitem', { name: '설정' }).click()
     await expect(page.locator('.jan-settings-modal')).toBeVisible({ timeout: 15000 })
     await page.locator('.jan-settings-modal').getByRole('button', { name: '닫기' }).click()
 

@@ -58,7 +58,11 @@ export function installWordKeymap(editor: Editor, opts: {
     if (ctrl && alt && !shift && (k === '1' || k === '2' || k === '3')) {
       e.preventDefault()
       const level = parseInt(k, 10) as 1 | 2 | 3
-      editor.chain().focus().toggleHeading({ level }).run()
+      const chain = editor.chain().focus()
+      /* 빈 문서에서 전체 선택(Ctrl+A) 상태면 제목이 걸리지 않는다 — 고를 글자가 없어
+         서식 범위가 잡히지 않기 때문. 커서 위치로 좁혀서 적용한다(리본 버튼과 같은 결과). */
+      if (!editor.state.doc.textContent) chain.setTextSelection(editor.state.selection.from)
+      chain.toggleHeading({ level }).run()
       return
     }
     if (ctrl && !shift && !alt && k === 'enter') {
