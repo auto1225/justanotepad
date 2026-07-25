@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useMemosStore } from '../store/memosStore'
 import { Icon } from './Icons'
 
@@ -10,7 +10,10 @@ const OPEN_TABS_KEY = 'jan-v2-open-tabs'
  * 탭 X → 닫기. + → 새 메모. 활성 탭 강조.
  */
 export function MemoTabs({ inline = false }: { inline?: boolean } = {}) {
-  const { memos, currentId, setCurrent, newMemo } = useMemosStore()
+  const { memos, currentId, setCurrent, newMemo, updateCurrent } = useMemosStore()
+  /* 탭을 두 번 누르면 그 자리에서 이름을 고친다 (헤더의 제목 칸을 없앤 대신) */
+  const [renaming, setRenaming] = useState<string | null>(null)
+  const renameRef = useRef<HTMLInputElement>(null)
   const [openIds, setOpenIds] = useState<string[]>(() => {
     try {
       const parsed = JSON.parse(localStorage.getItem(OPEN_TABS_KEY) || '[]')
@@ -81,11 +84,29 @@ export function MemoTabs({ inline = false }: { inline?: boolean } = {}) {
             key={id}
             className={'jan-memo-tab' + (active ? ' is-active' : '')}
             onClick={() => setCurrent(id)}
+            onDoubleClick={() => { setCurrent(id); setRenaming(id) }}
+            title={(m.title || '무제') + ' — 두 번 누르면 이름 바꾸기'}
             onAuxClick={(e) => { if (e.button === 1) close(id, e) }}
-            title={m.title || '무제'}
           >
             <span className="jan-memo-tab-dot" style={{ background: dotColor(id) }} />
-            <span className="jan-memo-tab-title">{m.title || '무제'}</span>
+            {renaming === id ? (
+              <input
+                ref={renameRef}
+                className="jan-memo-tab-rename"
+                defaultValue={m.title || ''}
+                autoFocus
+                placeholder="문서 이름"
+                onClick={(e) => e.stopPropagation()}
+                onBlur={(e) => { if (e.target.value.trim()) updateCurrent({ title: e.target.value.trim() }); setRenaming(null) }}
+                onKeyDown={(e) => {
+                  e.stopPropagation()
+                  if (e.key === 'Enter') { const v = (e.target as HTMLInputElement).value.trim(); if (v) updateCurrent({ title: v }); setRenaming(null) }
+                  else if (e.key === 'Escape') setRenaming(null)
+                }}
+              />
+            ) : (
+              <span className="jan-memo-tab-title">{m.title || '무제'}</span>
+            )}
             <button
               className="jan-memo-tab-close"
               onClick={(e) => close(id, e)}

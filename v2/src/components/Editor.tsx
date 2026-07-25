@@ -812,7 +812,8 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   return (
     <div className="jan-editor-wrap">
       <Toolbar
-        barLeading={<HeaderLeading tabsSlot={<MemoTabs inline />} />}
+        barLeading={<HeaderLeading />}
+        barTail={<MemoTabs inline />}
         barTrailing={(
           <AppHeader
         onAccount={() => { setSettingsFocus('supabase'); setShowSettings(true) }}

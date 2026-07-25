@@ -140,7 +140,7 @@ test.describe('v2 smoke', () => {
     })
 
     await expect(editor).toContainText('Opened from fallback')
-    await expect(page.locator('.jan-header-title-input')).toHaveValue('opened-fallback')
+    // 문서 이름은 헤더 칸이 아니라 문서 탭에 나온다 (탭을 두 번 누르면 이름 바꾸기)
     await expect(page.locator('.jan-memo-tab.is-active')).toContainText('opened-fallback')
   })
 
@@ -261,7 +261,12 @@ test.describe('v2 smoke', () => {
     expect(pageUi.pageColumnCount).toBe(2)
     expect(pageUi.pageMarginsMm).toEqual({ top: 12, right: 16, bottom: 20, left: 24 })
 
-    await page.getByRole('textbox', { name: '메모 제목' }).fill('B4 layout memo')
+    // 이름 바꾸기 — 문서 탭을 두 번 누르면 그 자리에서 고친다 (열려 있는 설정 창을 먼저 닫는다)
+    await page.evaluate(() => document.querySelectorAll('.jan-modal-overlay .jan-modal-close, .jan-modal-overlay [aria-label="닫기"]').forEach((b) => (b as HTMLElement).click()))
+    await page.waitForTimeout(300)
+    await page.locator('.jan-memo-tab.is-active').dblclick()
+    await page.locator('.jan-memo-tab-rename').fill('B4 layout memo')
+    await page.locator('.jan-memo-tab-rename').press('Enter')
     await page.reload()
     await expect(page.locator('.ProseMirror').first()).toBeVisible({ timeout: 15000 })
     await expect(pages).toHaveAttribute('data-paper', 'grid')

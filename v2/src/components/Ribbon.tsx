@@ -123,6 +123,7 @@ export function Ribbon({
   launchers = {},
   leading,
   trailing,
+  tail,
 }: {
   tabs: RibbonTab[]
   activeTab: string
@@ -133,8 +134,10 @@ export function Ribbon({
   launchers?: Record<string, RibbonLauncher>
   /** 탭 줄 왼쪽 — 사이드바 단추·로고·문서 탭 (헤더 줄을 없애고 여기에 합쳤다) */
   leading?: React.ReactNode
-  /** 탭 줄 오른쪽 — 자주 쓰는 도구 아이콘 */
+  /** 탭 줄에서 리본 탭 바로 뒤 — 자주 쓰는 도구 아이콘 (멀리 떨어뜨리면 있는 줄도 모른다) */
   trailing?: React.ReactNode
+  /** 바 오른쪽 끝 — 문서 탭 (브라우저 탭처럼) */
+  tail?: React.ReactNode
 }) {
   const active = tabs.find((t) => t.label === activeTab) || tabs[0]
   const sections = splitSections(active?.items || [])
@@ -165,8 +168,9 @@ export function Ribbon({
           </button>
         ))}
         </div>
-        <span className="jan-ribbon-tabs-spacer" />
         {trailing}
+        <span className="jan-ribbon-tabs-spacer" />
+        {tail}
         <button
           type="button"
           className="jan-ribbon-collapse"

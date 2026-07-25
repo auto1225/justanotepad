@@ -6459,60 +6459,71 @@ body.jan-split-dragging * { cursor: inherit !important; }
 .jan-fontcombo-list { padding-bottom: 4px; }
 
 /* ============================================================
-   통합 바 — 사이드바·로고·문서 탭 · 리본 탭 · 도구 아이콘을 한 줄에.
-   (헤더 줄을 없애 세로 공간을 한 줄 더 아꼈다 — 한글의 제목 표시줄과 같은 구실)
+   통합 바 — 워드의 제목 표시줄 + 리본 탭 줄을 한 줄로.
+     왼쪽:  사이드바 · 로고
+     가운데: 리본 탭(파일 편집 …) — 아래 리본 본문과 왼쪽 선을 맞춘다
+     그 옆:  자주 쓰는 도구 아이콘 (탭에 붙여 둬야 눈에 들어온다)
+     오른쪽: 문서 탭 (브라우저 탭처럼, 두 번 누르면 이름 바꾸기)
    ============================================================ */
 .jan-ribbon-bar {
-  display: flex; align-items: stretch; gap: 6px;
-  height: 32px; padding: 0 6px;
+  display: flex; align-items: flex-end; gap: 0;
+  height: 34px; padding: 0 8px;
   background: var(--bar-grad, linear-gradient(180deg, #5B4BC4, #45379E));
   border-bottom: 1px solid var(--bar-edge, #372C82);
   color: var(--bar-ink, #F4F1FF);
 }
-.jan-bar-leading { display: flex; align-items: center; gap: 4px; min-width: 0; flex: 0 1 auto; }
-.jan-ribbon-bar .jan-header-logo { display: flex; align-items: center; color: var(--bar-ink, #F4F1FF); opacity: 0.9; }
-.jan-ribbon-bar .jan-header-title-input {
-  width: 132px; height: 21px; padding: 0 7px; font-size: 11.5px;
-  background: rgba(255,255,255,0.14); color: #fff;
-  border: 1px solid rgba(255,255,255,0.2); border-radius: 5px;
-}
-.jan-ribbon-bar .jan-header-title-input::placeholder { color: rgba(255,255,255,0.6); }
-.jan-ribbon-bar .jan-header-title-input:focus { background: #fff; color: #241d55; border-color: #fff; outline: none; }
-.jan-ribbon-bar .jan-memo-tabs.is-inline { max-width: 320px; }
-.jan-ribbon-bar .jan-header-btn { width: 25px; height: 25px; color: var(--bar-ink, #F4F1FF); }
-.jan-ribbon-bar .jan-header-btn:hover { background: rgba(255,255,255,0.18); color: #fff; }
-.jan-ribbon-bar .jan-header-btn.is-active { background: rgba(255,255,255,0.26); }
-.jan-ribbon-bar .jan-header-right { display: flex; align-items: center; gap: 1px; flex: 0 0 auto; }
+.jan-bar-leading { display: flex; align-items: center; gap: 2px; height: 100%; padding-right: 6px; flex: 0 0 auto; }
+.jan-bar-logo { display: flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 5px; background: rgba(255,255,255,0.16); color: #fff; }
 
-/* 리본 탭 — 보라 바 위에 놓이므로 글자를 밝게, 고른 탭만 밝은 판 */
+/* 리본 탭 — 아래 리본 본문과 이어져 보이도록 활성 탭만 같은 색으로 물려 놓는다 */
 .jan-ribbon-bar .jan-ribbon-tabs {
-  display: flex; align-items: stretch; gap: 1px; padding: 0; margin: 0 2px;
+  display: flex; align-items: stretch; gap: 2px; padding: 0; margin: 0;
   background: none; border: 0; min-width: 0; overflow-x: auto; scrollbar-width: none;
 }
 .jan-ribbon-bar .jan-ribbon-tabs::-webkit-scrollbar { display: none; }
 .jan-ribbon-bar .jan-ribbon-tab {
-  padding: 0 10px; font-size: 12px; color: rgba(255,255,255,0.82);
-  border: 0; border-radius: 5px 5px 0 0; white-space: nowrap;
+  display: flex; align-items: center; height: 26px; margin-top: 8px;
+  padding: 0 12px; font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.85);
+  border: 0; border-radius: 6px 6px 0 0; white-space: nowrap; transition: background 90ms;
 }
-.jan-ribbon-bar .jan-ribbon-tab:hover { background: rgba(255,255,255,0.16); color: #fff; }
+.jan-ribbon-bar .jan-ribbon-tab:hover { background: rgba(255,255,255,0.18); color: #fff; }
 .jan-ribbon-bar .jan-ribbon-tab.is-active {
-  background: var(--jan-bg-alt, #FFF8F1); color: #3a2f7a; font-weight: 700; border: 0;
+  background: var(--jan-bg-alt, #FFF8F1); color: #3a2f7a; font-weight: 700;
+  box-shadow: 0 1px 0 var(--jan-bg-alt, #FFF8F1); /* 아래 리본과 이어 붙인다 */
 }
-.jan-ribbon-bar .jan-ribbon-tab.is-context { color: #b8f0dd; }
-.jan-ribbon-bar .jan-ribbon-tab.is-context.is-active { background: #E9FBF4; color: #12735e; }
-.jan-ribbon-bar .jan-ribbon-collapse { color: rgba(255,255,255,0.8); padding: 0 6px; }
-.jan-ribbon-bar .jan-ribbon-collapse:hover { background: rgba(255,255,255,0.18); color: #fff; }
-.jan-ribbon-bar .jan-ribbon-tabs-spacer { flex: 1 1 auto; min-width: 4px; }
-.jan-ribbon-bar .jan-header-sep { background: rgba(255,255,255,0.28); }
+.jan-ribbon-bar .jan-ribbon-tab.is-context { color: #a9f0d9; }
+.jan-ribbon-bar .jan-ribbon-tab.is-context.is-active { background: #E9FBF4; color: #12735e; box-shadow: 0 1px 0 #E9FBF4; }
 
-/* 좁은 화면 — 제목칸부터 접고, 그다음 문서 탭 폭을 줄인다 */
-@media (max-width: 1180px) {
-  .jan-ribbon-bar .jan-header-title-input { display: none; }
-  .jan-ribbon-bar .jan-memo-tabs.is-inline { max-width: 200px; }
+/* 도구 아이콘 — 탭 바로 옆에 옅은 판을 깔아 한 묶음으로 보이게 한다 */
+.jan-ribbon-bar .jan-header-right {
+  display: flex; align-items: center; gap: 1px; height: 24px; margin: 0 0 4px 10px; padding: 0 3px;
+  background: rgba(255,255,255,0.12); border-radius: 7px; flex: 0 0 auto;
 }
-@media (max-width: 900px) {
-  .jan-ribbon-bar .jan-memo-tabs.is-inline { max-width: 130px; }
-  .jan-ribbon-bar { gap: 3px; padding: 0 4px; }
+.jan-ribbon-bar .jan-header-btn { width: 24px; height: 20px; border-radius: 5px; color: var(--bar-ink, #F4F1FF); }
+.jan-ribbon-bar .jan-header-btn:hover { background: rgba(255,255,255,0.24); color: #fff; }
+.jan-ribbon-bar .jan-header-btn.is-active { background: rgba(255,255,255,0.34); color: #fff; }
+.jan-ribbon-bar .jan-header-sep { height: 14px; margin: 0 3px; background: rgba(255,255,255,0.3); }
+.jan-ribbon-bar .jan-header-divider { display: none; }
+.jan-ribbon-bar .jan-ribbon-collapse { align-self: center; margin-bottom: 2px; color: rgba(255,255,255,0.8); padding: 0 4px; }
+.jan-ribbon-bar .jan-ribbon-collapse:hover { background: rgba(255,255,255,0.18); color: #fff; }
+.jan-ribbon-bar .jan-ribbon-tabs-spacer { flex: 1 1 auto; min-width: 12px; }
+
+/* 문서 탭 — 리본 탭과 헷갈리지 않게 둥근 알약 모양 */
+.jan-ribbon-bar .jan-memo-tabs.is-inline {
+  height: 24px !important; align-items: center !important; margin: 0 4px 4px 0; padding: 0 !important;
+  max-width: 42vw; flex: 0 1 auto;
+}
+.jan-ribbon-bar .jan-memo-tabs.is-inline .jan-memo-tab {
+  height: 22px !important; padding: 0 6px 0 8px; border-radius: 11px;
+  font-size: 11.5px; max-width: 168px;
+  background: rgba(255,255,255,0.16) !important; color: rgba(255,255,255,0.9) !important;
+}
+.jan-ribbon-bar .jan-memo-tabs.is-inline .jan-memo-tab.is-active {
+  background: #fff !important; color: #2f2660 !important;
+}
+.jan-memo-tab-rename {
+  width: 110px; height: 17px; padding: 0 5px; font-size: 11.5px;
+  border: 1px solid rgba(80,60,180,0.5); border-radius: 4px; background: #fff; color: #2f2660; outline: none;
 }
 
 /* 좁은 화면 — 통합 바에서는 명령 팔레트와 더보기(⋯)만 남기고 접는다.

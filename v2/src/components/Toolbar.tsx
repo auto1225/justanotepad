@@ -45,6 +45,8 @@ interface ToolbarProps {
   barLeading?: React.ReactNode
   /** 리본 탭 줄 오른쪽에 놓을 것 (도구 아이콘) */
   barTrailing?: React.ReactNode
+  /** 바 오른쪽 끝 (문서 탭) */
+  barTail?: React.ReactNode
   editor: Editor | null
   onPrintPreview: () => void
   onAi: () => void
@@ -1165,6 +1167,7 @@ export function Toolbar(p: ToolbarProps) {
       launchers={ribbonLaunchers}
       leading={p.barLeading}
       trailing={p.barTrailing}
+      tail={p.barTail}
     />
     <div
       className="jan-toolbar-row"

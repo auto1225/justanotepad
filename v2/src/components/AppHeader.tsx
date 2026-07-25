@@ -42,11 +42,9 @@ interface AppHeaderProps {
  * 통합 바 왼쪽 — 사이드바 단추 · 로고 · 문서 제목 · 문서 탭.
  * 리본 탭 줄과 같은 줄에 놓아 화면 한 줄을 통째로 아낀다 (한글의 제목 표시줄과 같은 구실).
  */
-export function HeaderLeading({ tabsSlot }: { tabsSlot?: React.ReactNode }) {
+export function HeaderLeading() {
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed)
   const toggleSidebar = useUIStore((s) => s.toggleSidebar)
-  const { current, updateCurrent } = useMemosStore()
-  const title = current()?.title || '새 메모'
 
   function toggleSidebarFromHeader() {
     // 모바일에서는 사이드바가 겹쳐 뜨므로 body 클래스로 여닫는다
@@ -62,18 +60,9 @@ export function HeaderLeading({ tabsSlot }: { tabsSlot?: React.ReactNode }) {
       <button className="jan-header-btn" onClick={toggleSidebarFromHeader} title={sidebarCollapsed ? '사이드바 열기' : '사이드바 접기'} aria-label="메뉴">
         <Icon name="menu" size={17} />
       </button>
-      <div className="jan-header-logo" title="JustANotepad">
+      <div className="jan-bar-logo" title="JustANotepad" aria-label="JustANotepad">
         <Icon name="file-text" size={15} />
       </div>
-      <input
-        type="text"
-        className="jan-header-title-input"
-        value={title}
-        onChange={(e) => updateCurrent({ title: e.target.value })}
-        placeholder="제목 없음"
-        aria-label="메모 제목"
-      />
-      {tabsSlot}
     </div>
   )
 }
