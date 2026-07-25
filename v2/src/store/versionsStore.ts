@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import { createLocalFirstStorage } from '../lib/localFirstStorage'
+import { stripPageWrappers } from '../extensions/PageDocument'
 
 /**
  * Phase 11 — 메모 자동 버전 히스토리.
@@ -32,7 +33,9 @@ export const useVersionsStore = create<VersionsState>()(
   persist(
     (set, get) => ({
       byMemo: {},
-      takeSnapshot: (memoId, title, content, opts) => {
+      takeSnapshot: (memoId, title, rawContent, opts) => {
+        // 어느 경로로 들어와도 용지 래퍼는 저장하지 않는다 (버전 복원 시 구조 오염 방지)
+        const content = stripPageWrappers(rawContent)
         const list = get().byMemo[memoId] || []
         const last = list[0]
         const now = Date.now()

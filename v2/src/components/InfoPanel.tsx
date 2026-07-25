@@ -3,6 +3,7 @@ import type { Editor } from '@tiptap/react'
 import { useMemosStore } from '../store/memosStore'
 import { useTagsStore } from '../store/tagsStore'
 import { useVersionsStore } from '../store/versionsStore'
+import { getSavableHtml } from '../extensions/PageDocument'
 
 interface InfoPanelProps {
   editor: Editor | null
@@ -25,7 +26,7 @@ export function InfoPanel({ editor, onClose }: InfoPanelProps) {
 
   const stats = useMemo(() => {
     if (!editor) return { chars: 0, words: 0, paras: 0, headings: 0, links: 0, images: 0, tables: 0, readMin: 0 }
-    const html = editor.getHTML()
+    const html = getSavableHtml(editor)
     const div = document.createElement('div')
     div.innerHTML = html
     const text = (div.textContent || '').replace(/\s+/g, ' ').trim()

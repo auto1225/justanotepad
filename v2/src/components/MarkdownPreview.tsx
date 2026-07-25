@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import type { Editor } from '@tiptap/react'
 import { htmlToMd } from '../lib/markdownIO'
+import { getSavableHtml } from '../extensions/PageDocument'
 
 interface MarkdownPreviewProps {
   editor: Editor | null
@@ -13,7 +14,7 @@ interface MarkdownPreviewProps {
  * 클립보드 복사 / .md 다운로드 버튼.
  */
 export function MarkdownPreview({ editor, onClose }: MarkdownPreviewProps) {
-  const html = editor ? editor.getHTML() : ''
+  const html = editor ? getSavableHtml(editor) : ''
   const md = useMemo(() => htmlToMd(html), [html])
   if (!editor) return null
 

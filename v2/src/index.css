@@ -5577,8 +5577,13 @@ body.jan-typewriter .jan-editor-main { scroll-behavior: auto; }
 .jan-typewriter-spacer { height: 50vh; }
 
 /* 현재 문단 하이라이트 — 커서 문단 외에는 흐리게 (읽기 흐름 유지 위해 완전히 숨기지 않음) */
-body.jan-para-focus .ProseMirror > *:not(.jan-current-para) { opacity: 0.35; transition: opacity 0.25s ease; }
-body.jan-para-focus .ProseMirror > .jan-current-para { opacity: 1; transition: opacity 0.15s ease; }
+/* 문단 단위 강조 — 독립 페이지 모델에서는 문단이 page 노드 안에 있으므로
+   직접 자식(>)이 아니라 후손 셀렉터로 잡고, page 래퍼 자체는 흐리게 하지 않는다 */
+body.jan-para-focus .ProseMirror :where(p, h1, h2, h3, h4, h5, h6, li, blockquote, pre):not(.jan-current-para) {
+  opacity: 0.35; transition: opacity 0.25s ease;
+}
+body.jan-para-focus .ProseMirror .jan-current-para { opacity: 1; transition: opacity 0.15s ease; }
+body.jan-para-focus .ProseMirror .jan-current-para :where(p, li) { opacity: 1; }
 
 /* ============================================================
    분할 편집 — 같은 문서를 두 창에서 동시 편집 (Word 창 나누기)
@@ -5773,3 +5778,61 @@ body.jan-split-dragging * { cursor: inherit !important; }
 .jan-theme-dark .jan-spread-nav button:hover:not(:disabled),
 .jan-theme-dark .jan-spread-colseg button:hover,
 .jan-theme-dark .jan-spread-bar > button:last-child:hover { background: rgba(255, 255, 255, 0.12); }
+
+/* ============================================================
+   독립 페이지 모델 — 용지 규격대로 각 쪽이 실제 노드(page)인 문서
+   (데코레이션 기반 눈금이 아니라 진짜 낱장이므로 엔터·삭제에 정확히 반응하고
+    가로 배치도 편집기 하나로 된다)
+   ============================================================ */
+/* 편집기 루트는 용지가 아니라 '책상'이 된다 — 기존 용지 스타일을 무효화 */
+.jan-editor-pages[data-page-model="nodes"] .ProseMirror {
+  width: auto !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 32px;
+}
+/* 한 장의 용지 */
+.jan-page-node {
+  position: relative;
+  box-sizing: border-box;
+  width: var(--jan-page-w, 210mm);
+  height: var(--jan-page-h, 297mm);
+  padding:
+    var(--jan-page-margin-top, var(--jan-page-margin, 20mm))
+    var(--jan-page-margin-right, var(--jan-page-margin, 20mm))
+    var(--jan-page-margin-bottom, var(--jan-page-margin, 20mm))
+    var(--jan-page-margin-left, var(--jan-page-margin, 20mm));
+  background-color: var(--paper, var(--jan-paper, #ffffff));
+  color: var(--ink, var(--jan-fg, #191919));
+  border: 1px solid var(--paper-edge, var(--jan-border, #e5e5e5));
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05), 0 12px 28px rgba(0, 0, 0, 0.08);
+  background-clip: padding-box;
+  overflow: hidden;
+  flex: 0 0 auto;
+}
+/* 쪽 번호 — 용지 오른쪽 아래 (인쇄 꼬리말과 별개인 화면 안내) */
+.jan-page-node::after {
+  content: counter(jan-page-counter);
+  position: absolute; right: 10px; bottom: 6px;
+  font-size: 10px; color: #999; pointer-events: none;
+}
+.jan-editor-pages[data-page-model="nodes"] .ProseMirror { counter-reset: jan-page-counter; }
+.jan-page-node { counter-increment: jan-page-counter; }
+
+/* 쪽 나란히 — 같은 편집기 안에서 용지를 가로로 흘린다 (인스턴스 복제 불필요) */
+.jan-editor-pages[data-page-model="nodes"][data-spread="on"] .ProseMirror {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 20px;
+}
+.jan-theme-dark .jan-page-node::after { color: #777; }

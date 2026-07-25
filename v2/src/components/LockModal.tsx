@@ -3,6 +3,7 @@ import type { Editor } from '@tiptap/react'
 import { encryptHtml, decryptHtml, isLocked } from '../lib/memoCrypto'
 import { useMemosStore } from '../store/memosStore'
 import { useVersionsStore } from '../store/versionsStore'
+import { getSavableHtml } from '../extensions/PageDocument'
 
 interface LockModalProps {
   editor: Editor | null
@@ -23,7 +24,7 @@ export function LockModal({ editor, onClose }: LockModalProps) {
   const [busy, setBusy] = useState(false)
   if (!editor) return null
 
-  const editorHtml = editor.getHTML()
+  const editorHtml = getSavableHtml(editor)
   const storeContent = memo?.content || ''
   // 스토어 내용이 진실의 원천 — 에디터 스키마가 sentinel 을 벗겨낸 경우에도 잠금을 인식해야 한다
   const locked = isLocked(editorHtml) || isLocked(storeContent)

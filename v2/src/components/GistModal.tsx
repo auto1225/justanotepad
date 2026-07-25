@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { Editor } from '@tiptap/react'
 import { createGistFromMemo } from '../lib/gistExport'
 import { useMemosStore } from '../store/memosStore'
+import { getSavableHtml } from '../extensions/PageDocument'
 
 interface GistModalProps {
   editor: Editor | null
@@ -22,7 +23,7 @@ export function GistModal({ editor, onClose }: GistModalProps) {
     if (!token.trim()) { setResult({ error: 'GitHub PAT 입력 필요 (gist scope)' }); return }
     setBusy(true); setResult(null)
     try {
-      const r = await createGistFromMemo(token.trim(), isPublic, memo.title, editor.getHTML())
+      const r = await createGistFromMemo(token.trim(), isPublic, memo.title, getSavableHtml(editor))
       // 성공한 토큰만 저장 — 오타/무효 토큰이 영구 저장되지 않게
       if (r.ok) localStorage.setItem(TOKEN_KEY, token.trim())
       setResult(r.ok ? { url: r.url, rawUrl: r.rawUrl } : { error: r.error })

@@ -21,7 +21,11 @@ export const CurrentParaHighlight = Extension.create({
             if (typeof document === 'undefined' || !document.body.classList.contains('jan-para-focus')) return null
             const { $head } = state.selection
             if ($head.depth < 1) return null
-            const from = $head.before(1)
+            // 독립 페이지 모델에서는 depth 1 이 page 노드다 — 문단(텍스트블록)이 있는
+            // 깊이를 찾아 그 블록만 강조한다 (페이지 전체가 강조되면 의미가 없다)
+            let depth = $head.depth
+            while (depth > 1 && !$head.node(depth).isTextblock) depth--
+            const from = $head.before(depth)
             const node = state.doc.nodeAt(from)
             if (!node) return null
             return DecorationSet.create(state.doc, [

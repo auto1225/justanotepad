@@ -4,6 +4,7 @@ import { useTemplatesStore } from '../store/templatesStore'
 import { flash } from '../lib/flash'
 import { useMemosStore } from '../store/memosStore'
 import { expandVars } from '../store/macrosStore'
+import { getSavableHtml } from '../extensions/PageDocument'
 
 interface TemplatesModalProps {
   editor?: Editor | null
@@ -26,7 +27,7 @@ export function TemplatesModal({ editor, onClose }: TemplatesModalProps) {
 
   function saveCurrent() {
     if (!memo || !name.trim()) return
-    const content = editor && !editor.isDestroyed ? editor.getHTML() : memo.content
+    const content = editor && !editor.isDestroyed ? getSavableHtml(editor) : memo.content
     if (editingId) {
       // 기존 템플릿 갱신 — 삭제 후 재저장하면 id 가 바뀌어 중복이 쌓인다
       update(editingId, { name: name.trim(), title: memo.title || '무제', content, category: category.trim() || undefined })
@@ -90,7 +91,7 @@ export function TemplatesModal({ editor, onClose }: TemplatesModalProps) {
                       title="현재 메모 내용으로 이 템플릿을 즉시 갱신"
                       onClick={() => {
                         if (!memo) return
-                        const content = editor && !editor.isDestroyed ? editor.getHTML() : memo.content
+                        const content = editor && !editor.isDestroyed ? getSavableHtml(editor) : memo.content
                         update(t.id, { title: memo.title || '무제', content })
                         flash(`템플릿 "${t.name}" 을 현재 메모 내용으로 갱신했습니다`)
                       }}

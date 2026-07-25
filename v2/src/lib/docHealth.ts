@@ -1,4 +1,5 @@
 import type { Editor } from '@tiptap/react'
+import { getSavableHtml } from '../extensions/PageDocument'
 
 /**
  * 문서 건강 점수 — 일반 문서용 품질 진단 (논문 검사기의 일반화판).
@@ -209,7 +210,7 @@ export function computeDocHealth(editor: Editor): HealthReport {
       }
     }
     // 문서 크기 (대용량 dataURL 이미지 내장 경고)
-    const htmlLen = editor.getHTML().length
+    const htmlLen = getSavableHtml(editor).length
     if (htmlLen > 2_000_000) {
       score -= 6
       details.push({ level: 'warn', text: `문서 크기 ${(htmlLen / 1048576).toFixed(1)}MB — 매우 큽니다`, fix: '큰 이미지는 첨부 파일로 옮기면 속도가 개선됩니다' })

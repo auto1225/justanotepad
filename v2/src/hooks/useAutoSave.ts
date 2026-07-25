@@ -5,6 +5,7 @@ import { saveToFile } from '../lib/fileOps'
 import { pushActiveSnapshot } from '../lib/activeSync'
 import { useMemosStore } from '../store/memosStore'
 import { trackEvent } from '../lib/analytics'
+import { getSavableHtml } from '../extensions/PageDocument'
 
 /**
  * Phase 10 — 자동 저장.
@@ -29,7 +30,7 @@ export function useAutoSave(editor: Editor | null, title: string) {
         const { fileHandle: handleNow, fileHandleMemoId: ownerNow } = useDocStore.getState()
         const { currentId } = useMemosStore.getState()
         if (!handleNow || (ownerNow && ownerNow !== currentId)) return
-        const html = editor.getHTML()
+        const html = getSavableHtml(editor)
         const result = await saveToFile({ title, content: html, handle: handleNow })
         if (result.ok) {
           useDocStore.getState().setSavedAt(Date.now())

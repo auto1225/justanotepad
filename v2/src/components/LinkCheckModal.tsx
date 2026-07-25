@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { Editor } from '@tiptap/react'
+import { getSavableHtml } from '../extensions/PageDocument'
 
 interface LinkCheckModalProps {
   editor: Editor | null
@@ -25,7 +26,7 @@ export function LinkCheckModal({ editor, onClose }: LinkCheckModalProps) {
 
   useEffect(() => {
     if (!editor) return
-    const html = editor.getHTML()
+    const html = getSavableHtml(editor)
     const div = document.createElement('div')
     div.innerHTML = html
     const links: LinkStatus[] = []

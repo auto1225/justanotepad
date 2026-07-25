@@ -79,6 +79,7 @@ import { AudioNode, VideoNode } from '../extensions/Media'
 import { PageBreak } from '../extensions/PageBreak'
 import { PaperTag, PaperBlockAttrs } from '../extensions/PaperTag'
 import { CurrentParaHighlight } from '../extensions/CurrentParaHighlight'
+import { PageDoc, PageNode, PageReflow, getSavableHtml } from '../extensions/PageDocument'
 import { PageThumbnailPanel } from './PageThumbnailPanel'
 import { SplitEditorPane } from './SplitEditorPane'
 import { PageSpreadView } from './PageSpreadView'
@@ -286,6 +287,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   const shouldShowRulers = viewLayout === 'print' && showRulers
   // 페이지 분할은 1단 + 인쇄 보기에서만 (다단 CSS column 과 float 페이지 기구는 공존 불가)
   const paginationEnabled = viewLayout === 'print' && pageColumnCount === 1
+  const pageModel = useUIStore((s) => s.pageModel)
   // 화면상 페이지 반복 주기 (페이지 높이 + 갭 32 + 머리/꼬리글 렌더 오차) — 워터마크 반복 배경용
   const pageRhythmPx = pagePx.pageHeight + 32 + 6
   // 쪽모음 패널 — 편집과 공존하는 페이지 축소판 (여러쪽보기 재설계: 오버레이 → 사이드 패널)
@@ -308,7 +310,8 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   const commitEditorContent = useCallback((targetEditor: TiptapEditor, memoId: string | null, seq: number) => {
     if (!memoId || targetEditor.isDestroyed) return
 
-    const html = targetEditor.getHTML()
+    // 독립 페이지 모델에서는 용지 래퍼를 벗겨 기존 저장 형식(평면 HTML)을 유지한다
+    const html = getSavableHtml(targetEditor)
     if (html.includes('data:')) {
       externalizeLargeDataUrlsInHtml(html)
         .then((storedHtml) => {
@@ -361,6 +364,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
 
   // history:false 는 분할 편집 보조 창용 — 실행취소를 메인 히스토리로 일원화하기 위해
   // 보조에는 undoRedo 를 아예 빼고, CollaborationCursor(원격 커서 브로드캐스트)도 메인만 단다.
+  const usePageNodes = pageModel === 'nodes' && paginationEnabled
   const buildExtensions = useCallback((opts: { history: boolean }) => {
     const base: AnyExtension[] = [
       StarterKit.configure({
@@ -369,6 +373,8 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
         link: false,
         horizontalRule: false,
         underline: false,
+        // 독립 페이지 모델은 최상위를 page+ 로 바꾼 자체 doc 을 쓴다
+        ...(usePageNodes ? { document: false } : {}),
       }),
       PageBreak,
       NormalHorizontalRule,
@@ -409,6 +415,18 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       CurrentParaHighlight,
       PaperBlockAttrs,
     ]
+    // 독립 페이지 모델 — 용지마다 실제 page 노드 + 자동 리플로우 (PaginationPlus 대체)
+    if (usePageNodes) {
+      base.push(
+        PageDoc,
+        PageNode,
+        PageReflow.configure({
+          getContentHeight: () =>
+            pagePx.pageHeight - pageMarginPx.top - pageMarginPx.bottom,
+        }),
+      )
+      return base
+    }
     // 페이지 분할(PaginationPlus)은 float 기반이라 CSS 다단(column)과 공존 불가
     // — 다단(2/3단)·초안 보기에서는 연속 시트로 표시하고, 1단 인쇄 보기에서만 켠다.
     if (paginationEnabled) {
@@ -440,7 +458,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       if (opts.history) base.push(CollaborationCursor.configure({ provider: collab.provider }))
     }
     return base
-  }, [collab.ydoc, collab.provider, pagePx, pageMarginPx, paginationHeader, paginationFooter, paginationEnabled])
+  }, [collab.ydoc, collab.provider, pagePx, pageMarginPx, paginationHeader, paginationFooter, paginationEnabled, usePageNodes])
 
   const editorExtensions = useMemo(() => buildExtensions({ history: true }), [buildExtensions])
   // 창 나누기·쪽 나란히 편집이 켜졌을 때만 보조용 확장을 생성 (히스토리 없음)
@@ -574,7 +592,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   useEffect(() => {
     if (!editor || !snapshotMemoId) return
     const t = setInterval(() => {
-      takeSnapshot(snapshotMemoId, snapshotMemoTitle, editor.getHTML())
+      takeSnapshot(snapshotMemoId, snapshotMemoTitle, getSavableHtml(editor))
     }, 60000)
     return () => clearInterval(t)
   }, [editor, snapshotMemoId, snapshotMemoTitle, takeSnapshot])
@@ -637,7 +655,9 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   useEffect(() => {
     if (!editor || !memo) return
     if (collab.ydoc) return
-    const cur = editor.getHTML()
+    // 독립 페이지 모델에서는 편집기 HTML 에 용지 래퍼가 들어 있어 저장본과 그대로
+    // 비교하면 항상 불일치 → setContent 무한 반복이 된다. 래퍼를 벗겨 비교한다.
+    const cur = getSavableHtml(editor)
     if (cur !== memo.content) {
       editor.commands.setContent(memo.content, { emitUpdate: false })
       resolveBlobRefsInElement(editor.view.dom).catch(() => {})
@@ -739,7 +759,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   async function handleSave(saveAs = false) {
     if (!editor) return
     flushPendingEditorContent()
-    const html = editor.getHTML()
+    const html = getSavableHtml(editor)
     // saveAs: 항상 새 위치를 묻는다. 아니면 이 메모의 핸들이 있을 때만 재사용
     const ownHandle = saveAs || (fileHandleMemoId && fileHandleMemoId !== currentId) ? null : fileHandle
     const result = await saveToFile({ title, content: html, handle: ownHandle })
@@ -873,6 +893,8 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
           data-rulers={shouldShowRulers ? 'true' : 'false'}
           data-view-layout={viewLayout}
           data-page-num-format={pageNumberFormat}
+          data-page-model={usePageNodes ? 'nodes' : 'legacy'}
+          data-spread={usePageNodes && spreadCols > 0 ? 'on' : 'off'}
           data-first-running={firstPageRunningOff ? 'off' : 'on'}
           style={pageStyle}
         >
@@ -959,7 +981,9 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
           {typewriterMode && <div className="jan-typewriter-spacer" aria-hidden="true" />}
         </div>
       </div>
-      {showSpread && editor && splitExtensions && (
+      {/* 독립 페이지 모델에서는 용지가 실제 노드라 CSS 로 가로 배치하면 끝이다
+          (인스턴스 복제가 필요 없다) → PageSpreadView 는 legacy 모델에서만 쓴다 */}
+      {showSpread && !usePageNodes && editor && splitExtensions && (
         <PageSpreadView
           mainEditor={editor}
           extensions={splitExtensions}
@@ -1043,7 +1067,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       <Suspense fallback={<ModalSkeleton />}>
         {showAi && <AiHelper editor={editor} onClose={() => setShowAi(false)} />}
         {showSettings && <SettingsModal onClose={() => setShowSettings(false)} focusSection={settingsFocus} />}
-        {showPrint && editor && <PrintPreview html={editor.getHTML()} title={title} onClose={() => setShowPrint(false)} />}
+        {showPrint && editor && <PrintPreview html={getSavableHtml(editor)} title={title} onClose={() => setShowPrint(false)} />}
         {showRoles && <RolesPanel editor={editor} initialTool={initialRoleTool} onClose={() => { setShowRoles(false); setInitialRoleTool(null) }} />}
         {showPaper && <PaperPanel editor={editor} onClose={() => setShowPaper(false)} />}
         {showPostit && <PostitPanel onClose={() => setShowPostit(false)} />}

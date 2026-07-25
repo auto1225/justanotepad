@@ -11,6 +11,7 @@ import { PomodoroWidget } from './PomodoroWidget'
 import { Icon } from './Icons'
 import { fitPageZoom, setPageZoom } from '../lib/pageZoom'
 import { readByocSyncHealth, readLocalSyncLabel, type ByocSyncHealth } from '../lib/byocSync'
+import { countPages, pageAtViewportY, scrollToPage } from '../lib/pageInfo'
 
 interface StatusBarProps {
   editor: Editor | null
@@ -228,16 +229,16 @@ export function StatusBar({ editor, onPageSettings, onSettings }: StatusBarProps
 function getPageInfo(editor: Editor | null): { current: number; total: number } | null {
   if (!editor || editor.isDestroyed) return null
   const root = editor.view.dom
-  if (!root.classList.contains('rm-with-pagination')) return null
-  const breakers = root.querySelectorAll('.rm-page-break .breaker')
-  const total = breakers.length || 1
+  const hasPageNodes = !!root.querySelector('.jan-page-node')
+  // 두 모델(page 노드 / 데코레이션 눈금) 어느 쪽도 아니면 페이지 개념이 없다
+  if (!hasPageNodes && !root.classList.contains('rm-with-pagination')) return null
+  const total = countPages(root)
   let current = 1
   try {
     const caret = editor.view.coordsAtPos(editor.state.selection.head)
-    breakers.forEach((b) => { if (b.getBoundingClientRect().top < caret.top) current++ })
-    current = Math.max(1, Math.min(current, total))
+    current = pageAtViewportY(root, caret.top)
   } catch { /* 커서 좌표를 계산할 수 없으면 1쪽으로 */ }
-  return { current, total }
+  return { current: Math.max(1, Math.min(current, total)), total }
 }
 
 /** "n쪽으로 이동" — 해당 페이지 시작 지점으로 스크롤 */
@@ -246,14 +247,7 @@ async function jumpToPage(editor: Editor | null, total: number): Promise<void> {
   const v = await askText(`페이지로 이동 (1~${total})`, '', { placeholder: '페이지 번호' })
   if (!v) return
   const n = Math.max(1, Math.min(total, Math.round(Number(v)) || 1))
-  const root = editor.view.dom
-  const breakers = root.querySelectorAll('.rm-page-break .breaker')
-  if (n === 1 || breakers.length === 0) {
-    root.closest('.jan-editor-pages')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    return
-  }
-  const target = breakers[Math.min(n - 2, breakers.length - 1)]
-  target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  scrollToPage(editor.view.dom, n)
 }
 
 function getDocumentStats(editor: Editor): TextStats {

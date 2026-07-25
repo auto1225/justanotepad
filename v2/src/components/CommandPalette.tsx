@@ -12,6 +12,7 @@ import { downloadMd } from '../lib/markdownIO'
 import { exportToPdf } from '../lib/pdfExport'
 import { fitPageZoom, setPageZoom } from '../lib/pageZoom'
 import { PAGE_BREAK_HTML } from '../lib/pageBreak'
+import { getSavableHtml } from '../extensions/PageDocument'
 
 interface Command {
   id: string
@@ -204,19 +205,19 @@ export function CommandPalette(p: CommandPaletteProps) {
     w.document.write(`<!doctype html><html><head><title>플래시카드</title></head><body><div id="c" onclick="f=!f;s()"></div><script>const c=${JSON.stringify(cards)};let i=0,f=0;function s(){document.getElementById('c').innerHTML=f?c[i].a:c[i].q;}s();</script></body></html>`)
     w.document.close()
   }
-  const exportHwpx = async () => { if (!editor) return; try { await downloadHwpx(editor.getHTML(), '메모') } catch (e: any) { alert('실패: ' + e.message) } }
-  const exportMd = () => { if (!editor) return; try { downloadMd(editor.getHTML(), '메모') } catch (e: any) { alert('실패: ' + e.message) } }
-  const exportPdf = async () => { if (!editor) return; try { await exportToPdf(editor.getHTML(), '메모') } catch (e: any) { alert('실패: ' + e.message) } }
+  const exportHwpx = async () => { if (!editor) return; try { await downloadHwpx(getSavableHtml(editor), '메모') } catch (e: any) { alert('실패: ' + e.message) } }
+  const exportMd = () => { if (!editor) return; try { downloadMd(getSavableHtml(editor), '메모') } catch (e: any) { alert('실패: ' + e.message) } }
+  const exportPdf = async () => { if (!editor) return; try { await exportToPdf(getSavableHtml(editor), '메모') } catch (e: any) { alert('실패: ' + e.message) } }
   const exportHtml = () => {
     if (!editor) return
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>메모</title></head><body>${editor.getHTML()}</body></html>`
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>메모</title></head><body>${getSavableHtml(editor)}</body></html>`
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
     const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = '메모.html'
     document.body.appendChild(a); a.click(); document.body.removeChild(a); setTimeout(() => URL.revokeObjectURL(url), 800)
   }
   const exportDocx = () => {
     if (!editor) return
-    const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"></head><body>${editor.getHTML()}</body></html>`
+    const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"></head><body>${getSavableHtml(editor)}</body></html>`
     const blob = new Blob(['\ufeff', html], { type: 'application/msword' })
     const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = '메모.doc'
     document.body.appendChild(a); a.click(); document.body.removeChild(a); setTimeout(() => URL.revokeObjectURL(url), 800)

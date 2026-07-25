@@ -28,6 +28,7 @@ import { pickMathTemplate, lintPaper, showLintReport, insertCreditBlock, insertC
 import { downloadLatex } from '../lib/latexExport'
 import { downloadHtmlFile, downloadDocFile } from '../lib/htmlDocExport'
 import { MathStudio } from './MathStudio'
+import { getSavableHtml } from '../extensions/PageDocument'
 
 interface ToolbarProps {
   editor: Editor | null
@@ -353,7 +354,7 @@ export function Toolbar(p: ToolbarProps) {
   const runPaperLint = () => showLintReport(lintPaper(editor))
   const exportLatex = () => {
     const memoTitle = useMemosStore.getState().current()?.title || 'paper'
-    downloadLatex(editor.getHTML(), memoTitle)
+    downloadLatex(getSavableHtml(editor), memoTitle)
     flash('LaTeX(.tex) 내보내기 — Overleaf 에서 바로 열 수 있습니다')
   }
   const setRunningHeader = async () => {
@@ -614,14 +615,14 @@ export function Toolbar(p: ToolbarProps) {
 
   /* === 파일 / 백업 === */
   const memoTitle = () => (useMemosStore.getState().current()?.title || '메모').trim() || '메모'
-  const exportHwpx = async () => { try { await downloadHwpx(editor.getHTML(), memoTitle()) } catch (e: any) { flash('HWPX 실패: ' + (e.message || e), 2600) } }
-  const exportMd = () => { try { downloadMd(editor.getHTML(), memoTitle()) } catch (e: any) { flash('MD 실패: ' + (e.message || e), 2600) } }
-  const exportPdf = async () => { try { await exportToPdf(editor.getHTML(), memoTitle()) } catch (e: any) { flash('PDF 실패: ' + (e.message || e), 2600) } }
-  const exportTex = () => { try { downloadLatex(editor.getHTML(), memoTitle()) } catch (e: any) { flash('LaTeX 실패: ' + (e.message || e), 2600) } }
+  const exportHwpx = async () => { try { await downloadHwpx(getSavableHtml(editor), memoTitle()) } catch (e: any) { flash('HWPX 실패: ' + (e.message || e), 2600) } }
+  const exportMd = () => { try { downloadMd(getSavableHtml(editor), memoTitle()) } catch (e: any) { flash('MD 실패: ' + (e.message || e), 2600) } }
+  const exportPdf = async () => { try { await exportToPdf(getSavableHtml(editor), memoTitle()) } catch (e: any) { flash('PDF 실패: ' + (e.message || e), 2600) } }
+  const exportTex = () => { try { downloadLatex(getSavableHtml(editor), memoTitle()) } catch (e: any) { flash('LaTeX 실패: ' + (e.message || e), 2600) } }
   /** 원클릭 전체 내보내기 — MD·HTML·LaTeX·HWPX·DOC 를 한 번에 (브라우저 다중 다운로드 차단 회피를 위해 순차 실행) */
   const exportAll = async () => {
     const title = memoTitle()
-    const html = editor.getHTML()
+    const html = getSavableHtml(editor)
     const jobs: Array<[string, () => void | Promise<void>]> = [
       ['MD', () => downloadMd(html, title)],
       ['HTML', () => downloadHtmlFile(html, title)],
@@ -637,8 +638,8 @@ export function Toolbar(p: ToolbarProps) {
     }
     flash(failed.length ? `완료 — 실패: ${failed.join(', ')}` : '모든 형식 내보내기 완료 (5개 파일)', 3000)
   }
-  const exportHtml = () => downloadHtmlFile(editor.getHTML(), memoTitle())
-  const exportDocx = () => downloadDocFile(editor.getHTML(), memoTitle())
+  const exportHtml = () => downloadHtmlFile(getSavableHtml(editor), memoTitle())
+  const exportDocx = () => downloadDocFile(getSavableHtml(editor), memoTitle())
   const exportJsonBackup = async () => {
     const json = await exportV2ToJson()
     const blob = new Blob([json], { type: 'application/json' })

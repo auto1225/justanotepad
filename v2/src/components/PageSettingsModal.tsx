@@ -302,6 +302,32 @@ export function PageSettingsModal({ onClose }: PageSettingsModalProps) {
 
             <section className="jan-page-settings-section">
               <div className="jan-page-settings-section-head">
+                <Icon name="page-break" size={15} />
+                <h4>페이지 분할 방식</h4>
+              </div>
+              <div className="jan-page-segmented" role="group" aria-label="페이지 분할 방식">
+                <button
+                  type="button"
+                  className={ui.pageModel === 'nodes' ? 'is-selected' : ''}
+                  onClick={() => ui.setPageModel('nodes')}
+                  aria-pressed={ui.pageModel === 'nodes'}
+                >독립 페이지 (권장)</button>
+                <button
+                  type="button"
+                  className={ui.pageModel === 'legacy' ? 'is-selected' : ''}
+                  onClick={() => ui.setPageModel('legacy')}
+                  aria-pressed={ui.pageModel === 'legacy'}
+                >기존 방식</button>
+              </div>
+              <p className="jan-page-settings-hint">
+                {ui.pageModel === 'nodes'
+                  ? '용지마다 낱장으로 나뉘어 입력·삭제에 즉시 맞춰집니다. 쪽 나란히 보기도 이 방식에서 정확합니다.'
+                  : '페이지를 눈금으로만 표시합니다. 내용이 밀릴 때 분할 위치가 늦게 따라옵니다.'}
+              </p>
+            </section>
+
+            <section className="jan-page-settings-section">
+              <div className="jan-page-settings-section-head">
                 <Icon name="palette" size={15} />
                 <h4>배경</h4>
               </div>

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { Editor } from '@tiptap/react'
 import { Icon } from './Icons'
 import { useUIStore } from '../store/uiStore'
+import { pageAtViewportY, readPageGeometry, scrollToPage } from '../lib/pageInfo'
 
 /**
  * 쪽모음 패널 — HWP 쪽모음처럼 페이지 축소판을 편집기 "옆에" 세로로 나열한다.
@@ -33,16 +34,11 @@ interface Snap {
 
 function capture(editor: Editor, rhythmFallback: number): Snap {
   const root = editor.view.dom
-  const rootRect = root.getBoundingClientRect()
-  const breakers = [...root.querySelectorAll<HTMLElement>('.rm-page-break .breaker')]
-  const tops = breakers.map((b) => b.getBoundingClientRect().top - rootRect.top)
-  // CSS zoom 으로 축소된 상태에서도 원본 px 로 환산
-  const scale = root.offsetWidth > 0 ? rootRect.width / root.offsetWidth : 1
-  const rhythm = tops.length >= 2 ? (tops[1] - tops[0]) / (scale || 1) : rhythmFallback
-  // 페이지네이션 구조상 브레이커 수 = 페이지 수 (마지막 쪽 뒤에도 브레이커가 렌더됨)
-  const count = Math.max(1, Math.min(MAX_PAGES, breakers.length || 1))
+  // 두 페이지 모델(page 노드 / 데코레이션 눈금)을 공용 유틸로 함께 지원
+  const geo = readPageGeometry(root, rhythmFallback)
+  const count = Math.max(1, Math.min(MAX_PAGES, geo.total))
   const html = root.outerHTML.replace(/contenteditable="true"/g, 'contenteditable="false"')
-  return { html, rhythm, count, truncated: breakers.length > MAX_PAGES }
+  return { html, rhythm: geo.rhythm || rhythmFallback, count, truncated: geo.total > MAX_PAGES }
 }
 
 export function PageThumbnailPanel({ editor, pageW, pageH, rhythmFallback, pageStyle, paperStyle }: PageThumbnailPanelProps) {
@@ -76,14 +72,10 @@ export function PageThumbnailPanel({ editor, pageW, pageH, rhythmFallback, pageS
     const onScroll = () => {
       window.cancelAnimationFrame(raf)
       raf = window.requestAnimationFrame(() => {
-        const root = editor.view.dom
-        const rootRect = root.getBoundingClientRect()
         const scRect = scroller.getBoundingClientRect()
         const probeY = scRect.top + scRect.height * 0.35 // 화면 상단 1/3 지점 기준
-        const scale = root.offsetWidth > 0 ? rootRect.width / root.offsetWidth : 1
-        const offset = (probeY - rootRect.top) / (scale || 1)
-        const page = Math.max(0, Math.min(snap.count - 1, Math.floor(offset / (snap.rhythm || 1))))
-        setCurrentPage(page)
+        const page = pageAtViewportY(editor.view.dom, probeY, snap.rhythm) - 1
+        setCurrentPage(Math.max(0, Math.min(snap.count - 1, page)))
       })
     }
     onScroll()
@@ -102,13 +94,7 @@ export function PageThumbnailPanel({ editor, pageW, pageH, rhythmFallback, pageS
 
   // 클릭 — 줌을 유지한 채 해당 페이지로 이동 (편집 흐름을 끊지 않는다)
   function jumpTo(i: number) {
-    const root = editor.view.dom
-    if (i === 0) {
-      root.closest('.jan-editor-pages')?.scrollIntoView({ behavior: 'auto', block: 'start' })
-    } else {
-      const breakers = root.querySelectorAll('.rm-page-break .breaker')
-      breakers[Math.min(i - 1, breakers.length - 1)]?.scrollIntoView({ behavior: 'auto', block: 'start' })
-    }
+    scrollToPage(editor.view.dom, i + 1)
   }
 
   const thumbScale = THUMB_W / Math.max(1, pageW)
