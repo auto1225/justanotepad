@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import type { Editor } from '@tiptap/react'
 import { PAGE_BREAK_HTML } from '../lib/pageBreak'
 
@@ -23,26 +23,26 @@ const ITEMS: SlashItem[] = [
   { label: '제목 3', hint: 'H3', run: (e) => e.chain().focus().toggleHeading({ level: 3 }).run() },
   { label: '글머리 기호', run: (e) => e.chain().focus().toggleBulletList().run() },
   { label: '번호 매기기', run: (e) => e.chain().focus().toggleOrderedList().run() },
-  { label: '체크리스트', run: (e) => (e.chain() as any).focus().toggleList('taskList', 'taskItem').run() },
+  { label: '체크리스트', run: (e) => e.chain().focus().toggleList('taskList', 'taskItem').run() },
   { label: '인용', run: (e) => e.chain().focus().toggleBlockquote().run() },
   { label: '코드 블록', run: (e) => e.chain().focus().toggleCodeBlock().run() },
   { label: '구분선', run: (e) => e.chain().focus().setHorizontalRule().run() },
   { label: '페이지 구분', hint: 'Ctrl+Enter', run: (e) => e.chain().focus().insertContent(PAGE_BREAK_HTML).run() },
   { label: '표 (3×3)', run: (e) => e.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
-  { label: '콜아웃: 정보', run: (e) => (e.chain() as any).focus().setCallout('info').run() },
-  { label: '콜아웃: 경고', run: (e) => (e.chain() as any).focus().setCallout('warn').run() },
-  { label: '콜아웃: 팁', run: (e) => (e.chain() as any).focus().setCallout('tip').run() },
+  { label: '콜아웃: 정보', run: (e) => e.chain().focus().setCallout('info').run() },
+  { label: '콜아웃: 경고', run: (e) => e.chain().focus().setCallout('warn').run() },
+  { label: '콜아웃: 팁', run: (e) => e.chain().focus().setCallout('tip').run() },
   { label: '수식 (LaTeX)', run: (e) => {
     const tex = window.prompt('LaTeX:')
-    if (tex) (e.chain() as any).focus().setMath(tex).run()
+    if (tex) e.chain().focus().setMath(tex).run()
   }},
   { label: '다이어그램 (Mermaid)', run: (e) => {
     const code = window.prompt('Mermaid:', 'graph TD\n  A-->B')
-    if (code) (e.chain() as any).focus().setMermaid(code).run()
+    if (code) e.chain().focus().setMermaid(code).run()
   }},
   { label: '임베드 (URL)', run: (e) => {
     const url = window.prompt('URL:')
-    if (url) (e.chain() as any).focus().setEmbed(url).run()
+    if (url) e.chain().focus().setEmbed(url).run()
   }},
   { label: '이미지 URL', run: (e) => {
     const url = window.prompt('이미지 URL:')
@@ -99,6 +99,18 @@ export function SlashMenu({ editor }: SlashMenuProps) {
     }
   }, [editor])
 
+  const execute = useCallback((item: SlashItem) => {
+    if (!editor) return
+    // / 와 그 뒤 query 제거
+    const start = slashStartRef.current
+    if (start != null) {
+      editor.chain().focus().setTextSelection({ from: start, to: start + 1 + query.length }).deleteSelection().run()
+    }
+    item.run(editor)
+    setOpen(false)
+    setQuery('')
+  }, [editor, query])
+
   useEffect(() => {
     if (!open || !editor) return
     function onKey(e: KeyboardEvent) {
@@ -114,19 +126,7 @@ export function SlashMenu({ editor }: SlashMenuProps) {
     }
     document.addEventListener('keydown', onKey, true)
     return () => document.removeEventListener('keydown', onKey, true)
-  }, [open, filtered, selected, editor])
-
-  function execute(item: SlashItem) {
-    if (!editor) return
-    // / 와 그 뒤 query 제거
-    const start = slashStartRef.current
-    if (start != null) {
-      editor.chain().focus().setTextSelection({ from: start, to: start + 1 + query.length }).deleteSelection().run()
-    }
-    item.run(editor)
-    setOpen(false)
-    setQuery('')
-  }
+  }, [open, filtered, selected, editor, execute])
 
   if (!open || !editor) return null
 

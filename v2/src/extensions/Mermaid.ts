@@ -4,6 +4,7 @@
  * mermaid 라이브러리는 lazy import (~600KB).
  */
 import { Node, mergeAttributes } from '@tiptap/core'
+import { errText } from '../lib/errText'
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
@@ -13,11 +14,19 @@ declare module '@tiptap/core' {
   }
 }
 
-let mermaidLib: any = null
+
+/** mermaid 를 CDN 에서 불러 쓰는 만큼만 타입을 둔다 */
+interface MermaidLike {
+  initialize: (o: Record<string, unknown>) => void
+  render: (id: string, code: string) => Promise<{ svg: string }>
+}
+const MERMAID_CDN = 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs'
+
+let mermaidLib: MermaidLike | null = null
 async function getMermaid() {
   if (mermaidLib) return mermaidLib
-  const m = await import('https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs' as any).catch(() => null as any)
-  if (m) {
+  const m = (await import(/* @vite-ignore */ MERMAID_CDN).catch(() => null)) as { default?: MermaidLike } | null
+  if (m?.default) {
     m.default.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'loose' })
     mermaidLib = m.default
   }
@@ -72,8 +81,8 @@ export const Mermaid = Node.create({
           const id = 'mer-' + Math.random().toString(36).slice(2)
           const { svg } = await m.render(id, node.attrs.code)
           dom.innerHTML = svg
-        } catch (e: any) {
-          dom.innerHTML = `<pre style="color:red;text-align:left;">${e?.message || e}\n${node.attrs.code}</pre>`
+        } catch (e) {
+          dom.innerHTML = `<pre style="color:red;text-align:left;">${errText(e)}\n${node.attrs.code}</pre>`
         }
       })()
 

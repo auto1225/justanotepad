@@ -475,10 +475,8 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   /* 세로 눈금자를 쪽마다 하나씩 놓기 위해 현재 쪽 수를 따라간다 (독립 페이지 모델) */
   const [pageCount, setPageCount] = useState(1)
   useEffect(() => {
-    if (!editor || !usePageNodes) {
-      setPageCount(1)
-      return
-    }
+    // 쪽 노드 모델이 아니면 세지 않는다 — 쓰는 자리에서 1 로 본다
+    if (!editor || !usePageNodes) return
     const read = () => {
       let n = 0
       editor.state.doc.forEach((node) => {
@@ -520,7 +518,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
         const rect = scroller.getBoundingClientRect()
         const delta = coords.top - (rect.top + rect.height / 2)
         if (Math.abs(delta) > 4) scroller.scrollBy({ top: delta, behavior: 'auto' })
-      } catch {}
+      } catch { /* 실패해도 진행 — 부가 기능이라 무시한다 */ }
     }
     editor.on('selectionUpdate', center)
     editor.on('update', center)
@@ -536,7 +534,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   useEffect(() => {
     document.body.classList.toggle('jan-para-focus', paragraphFocus)
     if (!editor) return
-    try { editor.view.dispatch(editor.state.tr) } catch {}
+    try { editor.view.dispatch(editor.state.tr) } catch { /* 실패해도 진행 — 부가 기능이라 무시한다 */ }
   }, [editor, paragraphFocus])
 
   useEffect(() => {

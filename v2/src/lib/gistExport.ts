@@ -4,6 +4,7 @@
  * 메모 1개 → 1 Gist (.md 파일).
  */
 import { htmlToMd } from './markdownIO'
+import { errText } from './errText'
 
 export interface GistResult {
   ok: boolean
@@ -40,10 +41,10 @@ export async function createGist(opts: GistOptions): Promise<GistResult> {
       return { ok: false, error: `GitHub ${r.status}: ${err.slice(0, 250)}` }
     }
     const data = await r.json()
-    const file = Object.values(data.files || {})[0] as any
+    const file = Object.values(data.files || {})[0] as { raw_url?: string } | undefined
     return { ok: true, url: data.html_url, rawUrl: file?.raw_url }
-  } catch (e: any) {
-    return { ok: false, error: '네트워크 오류: ' + (e?.message || e) }
+  } catch (e) {
+    return { ok: false, error: '네트워크 오류: ' + errText(e) }
   }
 }
 

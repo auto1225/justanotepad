@@ -147,6 +147,37 @@ function floodFill(ctx: CanvasRenderingContext2D, sx: number, sy: number, hex: s
   return true
 }
 
+
+/**
+ * 흩뿌림이 들어가는 두 브러시는 컴포넌트 밖에 둔다 —
+ * 난수는 렌더 중에 부르면 안 되는 값이라, 포인터 이동에서만 불리는 이 자리로 분리한다.
+ */
+function paintAirbrush(ctx: CanvasRenderingContext2D, pt: Pt, col: string, s: number, op: number) {
+  ctx.fillStyle = col; ctx.globalAlpha = op
+  const radius = s * 2
+  const dots = Math.round(radius * 1.5)
+  for (let i = 0; i < dots; i++) {
+    const a = Math.random() * Math.PI * 2
+    const rr = Math.sqrt(Math.random()) * radius
+    ctx.beginPath(); ctx.arc(pt.x + Math.cos(a) * rr, pt.y + Math.sin(a) * rr, 0.6, 0, Math.PI * 2); ctx.fill()
+  }
+  ctx.globalAlpha = 1
+}
+
+function paintCrayon(ctx: CanvasRenderingContext2D, last: Pt, pt: Pt, col: string, s: number, op: number) {
+  ctx.strokeStyle = col; ctx.lineCap = 'round'; ctx.lineJoin = 'round'
+  const steps = Math.max(1, Math.hypot(pt.x - last.x, pt.y - last.y) / 1.5)
+  for (let i = 0; i <= steps; i++) {
+    const x = last.x + (pt.x - last.x) * (i / steps)
+    const y = last.y + (pt.y - last.y) * (i / steps)
+    ctx.globalAlpha = (0.25 + Math.random() * 0.35) * op
+    const jx = (Math.random() - 0.5) * s, jy = (Math.random() - 0.5) * s
+    ctx.lineWidth = 1 + Math.random() * (s * 0.4)
+    ctx.beginPath(); ctx.moveTo(x + jx, y + jy); ctx.lineTo(x + jx + 0.1, y + jy + 0.1); ctx.stroke()
+  }
+  ctx.globalAlpha = 1
+}
+
 function pad(n: number): string { return String(n).padStart(2, '0') }
 
 // ── 도형 기하 ──────────────────────────────────────────────
@@ -379,7 +410,6 @@ export function PaintCanvas({ editor, onClose, initialImageSrc, onReplace }: Pai
   const [lineStyle, setLineStyle] = useState<LineStyle>('solid')
   const [color, setColor] = useState('#000000')
   const [bgColor, setBgColor] = useState('#ffffff')
-  const [hexDraft, setHexDraft] = useState('#000000')
   const [opacity, setOpacity] = useState(100)
   const [size, setSize] = useState(4)
   const [fontSize, setFontSize] = useState(28)
@@ -426,26 +456,28 @@ export function PaintCanvas({ editor, onClose, initialImageSrc, onReplace }: Pai
   const curveLine = useRef<{ x0: number; y0: number; x1: number; y1: number } | null>(null)
   const strokeColor = useRef('#000000') // pointerdown 때 결정 (좌클릭 전경/우클릭 배경)
 
-  toolRef.current = tool
-  shapeRef.current = shape
-  brushRef.current = brush
-  fillModeRef.current = fillMode
-  lineStyleRef.current = lineStyle
-  colorRef.current = color
-  bgColorRef.current = bgColor
-  opacityRef.current = opacity
-  sizeRef.current = size
-  fontSizeRef.current = fontSize
-  fontFamilyRef.current = fontFamily
-  fontBoldRef.current = fontBold
-  fontItalicRef.current = fontItalic
-  textDraftRef.current = textDraft
+  /* 포인터 핸들러가 최신 도구 설정을 읽도록 ref 에 담아 둔다.
+     렌더 중에 ref 를 쓰면 React 규칙 위반이라 렌더가 끝난 뒤(effect)에 옮긴다. */
+  useEffect(() => {
+    toolRef.current = tool
+    shapeRef.current = shape
+    brushRef.current = brush
+    fillModeRef.current = fillMode
+    lineStyleRef.current = lineStyle
+    colorRef.current = color
+    bgColorRef.current = bgColor
+    opacityRef.current = opacity
+    sizeRef.current = size
+    fontSizeRef.current = fontSize
+    fontFamilyRef.current = fontFamily
+    fontBoldRef.current = fontBold
+    fontItalicRef.current = fontItalic
+    textDraftRef.current = textDraft
+  })
 
   const getCtx = useCallback(() => canvasRef.current?.getContext('2d', { willReadFrequently: true }) ?? null, [])
   const getOverlay = useCallback(() => overlayRef.current?.getContext('2d') ?? null, [])
   const syncHistLen = useCallback(() => setHistLen({ undo: undoStack.current.length, redo: redoStack.current.length }), [])
-
-  useEffect(() => { setHexDraft(color) }, [color])
 
   useEffect(() => {
     const ctx = getCtx()
@@ -636,32 +668,8 @@ export function PaintCanvas({ editor, onClose, initialImageSrc, onReplace }: Pai
       ctx.globalAlpha = 1
       return
     }
-    if (b === 'airbrush') {
-      ctx.fillStyle = col; ctx.globalAlpha = op
-      const radius = s * 2
-      const dots = Math.round(radius * 1.5)
-      for (let i = 0; i < dots; i++) {
-        const a = Math.random() * Math.PI * 2
-        const rr = Math.sqrt(Math.random()) * radius
-        ctx.beginPath(); ctx.arc(pt.x + Math.cos(a) * rr, pt.y + Math.sin(a) * rr, 0.6, 0, Math.PI * 2); ctx.fill()
-      }
-      ctx.globalAlpha = 1
-      return
-    }
-    if (b === 'crayon') {
-      ctx.strokeStyle = col; ctx.lineCap = 'round'; ctx.lineJoin = 'round'
-      const steps = Math.max(1, Math.hypot(pt.x - last.x, pt.y - last.y) / 1.5)
-      for (let i = 0; i <= steps; i++) {
-        const x = last.x + (pt.x - last.x) * (i / steps)
-        const y = last.y + (pt.y - last.y) * (i / steps)
-        ctx.globalAlpha = (0.25 + Math.random() * 0.35) * op
-        const jx = (Math.random() - 0.5) * s, jy = (Math.random() - 0.5) * s
-        ctx.lineWidth = 1 + Math.random() * (s * 0.4)
-        ctx.beginPath(); ctx.moveTo(x + jx, y + jy); ctx.lineTo(x + jx + 0.1, y + jy + 0.1); ctx.stroke()
-      }
-      ctx.globalAlpha = 1
-      return
-    }
+    if (b === 'airbrush') { paintAirbrush(ctx, pt, col, s, op); return }
+    if (b === 'crayon') { paintCrayon(ctx, last, pt, col, s, op); return }
   }
 
   function strokeQuad(ctx: CanvasRenderingContext2D, last: Pt, pt: Pt) {
@@ -1029,54 +1037,6 @@ export function PaintCanvas({ editor, onClose, initialImageSrc, onReplace }: Pai
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const ctrl = e.ctrlKey || e.metaKey
-      if (textDraftRef.current) return
-      if (ctrl && e.key.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return }
-      if (ctrl && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) { e.preventDefault(); redo(); return }
-      if (ctrl && e.key.toLowerCase() === 'o') { e.preventDefault(); openImageFile(); return }
-      if (ctrl && e.key.toLowerCase() === 'a') { e.preventDefault(); selectAll(); return }
-      if (ctrl && (e.key === '=' || e.key === '+')) { e.preventDefault(); setZoomPct((z) => Math.min(ZOOM_MAX, z + 25)); return }
-      if (ctrl && (e.key === '-' || e.key === '_')) { e.preventDefault(); setZoomPct((z) => Math.max(ZOOM_MIN, z - 25)); return }
-      if (selection.current && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
-        e.preventDefault()
-        floatSelection()
-        const step = e.shiftKey ? 10 : 1
-        const sel = selection.current!
-        if (e.key === 'ArrowLeft') sel.rect.x -= step
-        else if (e.key === 'ArrowRight') sel.rect.x += step
-        else if (e.key === 'ArrowUp') sel.rect.y -= step
-        else sel.rect.y += step
-        renderSelectionOverlay()
-        return
-      }
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selection.current) {
-        e.preventDefault()
-        const ctx = getCtx()
-        const sel = selection.current
-        if (ctx) {
-          if (!sel.floated) { pushHistory(); ctx.fillStyle = bgColorRef.current; ctx.fillRect(sel.rect.x, sel.rect.y, sel.rect.w, sel.rect.h) }
-          setDirty(true)
-        }
-        selection.current = null
-        clearOverlay()
-        return
-      }
-      if (ctrl && e.key.toLowerCase() === 'c' && selection.current) { e.preventDefault(); copySelectionToClipboard(); return }
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        if (menuOpen) { setMenuOpen(null); return }
-        if (textDraftRef.current) { commitText(); return }
-        if (curveStage.current === 1) { curveStage.current = 0; curveLine.current = null; snapshot.current = null; setDirty(true); return }
-        if (selection.current) { commitFloatingSelection(); return }
-        requestClose()
-      }
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [undo, redo, menuOpen])
 
   async function copySelectionToClipboard() {
     const sel = selection.current
@@ -1325,10 +1285,60 @@ export function PaintCanvas({ editor, onClose, initialImageSrc, onReplace }: Pai
     onClose()
   }
 
-  function applyHex(v: string) {
+  /* 그림판 단축키 — 아래 함수들(선택·복사·닫기)보다 뒤에 두어야 선언 전 사용이 되지 않는다 */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const ctrl = e.ctrlKey || e.metaKey
+      if (textDraftRef.current) return
+      if (ctrl && e.key.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return }
+      if (ctrl && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) { e.preventDefault(); redo(); return }
+      if (ctrl && e.key.toLowerCase() === 'o') { e.preventDefault(); openImageFile(); return }
+      if (ctrl && e.key.toLowerCase() === 'a') { e.preventDefault(); selectAll(); return }
+      if (ctrl && (e.key === '=' || e.key === '+')) { e.preventDefault(); setZoomPct((z) => Math.min(ZOOM_MAX, z + 25)); return }
+      if (ctrl && (e.key === '-' || e.key === '_')) { e.preventDefault(); setZoomPct((z) => Math.max(ZOOM_MIN, z - 25)); return }
+      if (selection.current && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+        e.preventDefault()
+        floatSelection()
+        const step = e.shiftKey ? 10 : 1
+        const sel = selection.current!
+        if (e.key === 'ArrowLeft') sel.rect.x -= step
+        else if (e.key === 'ArrowRight') sel.rect.x += step
+        else if (e.key === 'ArrowUp') sel.rect.y -= step
+        else sel.rect.y += step
+        renderSelectionOverlay()
+        return
+      }
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selection.current) {
+        e.preventDefault()
+        const ctx = getCtx()
+        const sel = selection.current
+        if (ctx) {
+          if (!sel.floated) { pushHistory(); ctx.fillStyle = bgColorRef.current; ctx.fillRect(sel.rect.x, sel.rect.y, sel.rect.w, sel.rect.h) }
+          setDirty(true)
+        }
+        selection.current = null
+        clearOverlay()
+        return
+      }
+      if (ctrl && e.key.toLowerCase() === 'c' && selection.current) { e.preventDefault(); copySelectionToClipboard(); return }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        if (menuOpen) { setMenuOpen(null); return }
+        if (textDraftRef.current) { commitText(); return }
+        if (curveStage.current === 1) { curveStage.current = 0; curveLine.current = null; snapshot.current = null; setDirty(true); return }
+        if (selection.current) { commitFloatingSelection(); return }
+        requestClose()
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [undo, redo, menuOpen])
+
+  function applyHex(v: string, input?: HTMLInputElement) {
     const s = v.trim()
     if (/^#[0-9a-fA-F]{6}$/.test(s)) { setColor(s.toLowerCase()); rememberColor(s.toLowerCase()) }
-    else setHexDraft(color)
+    else if (input) input.value = color // 형식이 틀리면 현재 색으로 되돌린다
   }
 
   const zoom = zoomPct / 100
@@ -1576,10 +1586,11 @@ export function PaintCanvas({ editor, onClose, initialImageSrc, onReplace }: Pai
                 <span>HEX</span>
                 <input
                   className="pcx-hex"
-                  value={hexDraft}
-                  onChange={(e) => setHexDraft(e.target.value)}
-                  onBlur={(e) => applyHex(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyHex((e.target as HTMLInputElement).value) } e.stopPropagation() }}
+                  /* 입력 중 글자는 DOM 이 들고 있고, 색이 밖에서 바뀌면 key 가 달라져 새 값으로 다시 시작한다 */
+                  key={color}
+                  defaultValue={color}
+                  onBlur={(e) => applyHex(e.target.value, e.target)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); const el = e.target as HTMLInputElement; applyHex(el.value, el) } e.stopPropagation() }}
                   aria-label="HEX 색상 코드"
                   placeholder="#000000"
                   maxLength={7}

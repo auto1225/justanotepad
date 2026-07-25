@@ -56,7 +56,7 @@ export const LinkCard = Node.create({
       ],
       a.image
         ? ['img', { src: a.image, class: 'jan-linkcard-img', referrerpolicy: 'no-referrer', loading: 'lazy' }]
-        : ['div', { class: 'jan-linkcard-favicon' }, faviconUrl(a.url)],
+        : ['div', { class: 'jan-linkcard-favicon' }, faviconUrl()],
     ]
   },
 
@@ -87,7 +87,8 @@ export const LinkCard = Node.create({
 function hostname(url: string): string {
   try { return new URL(url).hostname } catch { return url }
 }
-function faviconUrl(_url: string): any {
+/** 파비콘은 외부 서비스로 요청이 새는 것을 막기 위해 쓰지 않는다 (자리만 비워 둔다) */
+function faviconUrl(): string {
   return ''
 }
 

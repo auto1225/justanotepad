@@ -312,7 +312,8 @@ export function MathStudio({ editor, onClose, initial = '', onSave }: MathStudio
   }
 
   const acOpenRef = useRef(false)
-  acOpenRef.current = !!ac
+  // 렌더가 끝난 뒤 동기화 (렌더 중 ref 쓰기 금지)
+  useEffect(() => { acOpenRef.current = !!ac })
   // 드롭다운 클릭이 진행 중이면 textarea blur 로 목록을 닫지 않는다
   const acClickingRef = useRef(false)
 

@@ -5,6 +5,7 @@
  */
 import { mdToHtml } from './markdownIO'
 import { useMemosStore } from '../store/memosStore'
+import { errText } from './errText'
 
 export interface ImportResult {
   imported: number
@@ -34,8 +35,8 @@ export async function importMarkdownFiles(files: File[]): Promise<ImportResult> 
         return { memos: { ...s.memos, [id]: next } }
       })
       result.imported++
-    } catch (e: any) {
-      result.errors.push(`${f.name}: ${e?.message || e}`)
+    } catch (e) {
+      result.errors.push(`${f.name}: ${errText(e)}`)
     }
   }
   return result

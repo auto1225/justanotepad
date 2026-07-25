@@ -19,7 +19,7 @@ export interface Postit {
 declare global {
   interface Window {
     __TAURI__?: {
-      core?: { invoke: (cmd: string, args?: any) => Promise<any> }
+      core?: { invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> }
     }
   }
 }
@@ -28,7 +28,7 @@ function isTauri(): boolean {
   return typeof window !== 'undefined' && !!window.__TAURI__?.core?.invoke
 }
 
-async function tauriInvoke<T = any>(cmd: string, args?: any): Promise<T | null> {
+async function tauriInvoke<T = unknown>(cmd: string, args?: Record<string, unknown>): Promise<T | null> {
   try {
     return (await window.__TAURI__!.core!.invoke(cmd, args)) as T
   } catch (e) {
@@ -121,7 +121,7 @@ export async function openPostitWindow(p: Postit): Promise<boolean> {
         if (i >= 0) { list[i].text = ta.value; localStorage.setItem('${STORAGE}', JSON.stringify(list)); }
       } catch(e) {}
     });
-  <\/script>
+  <${'/'}script>
 </body></html>`
 
   const blob = new Blob([html], { type: 'text/html' })
@@ -138,9 +138,23 @@ export async function openPostitWindow(p: Postit): Promise<boolean> {
 }
 
 /** Tauri 환경에서 모든 native 포스트잇 동기화 (앱 시작 시). */
+
+/** 데스크톱(타우리) 쪽 포스트잇 레코드 — 쓰는 항목만 */
+interface TauriPostit {
+  id: string
+  content?: string
+  color?: string
+  x?: number
+  y?: number
+  w?: number
+  h?: number
+  pinned?: boolean
+  updated_at?: number
+}
+
 export async function tauriSyncOnBoot() {
   if (!isTauri()) return
-  const list = await tauriInvoke<any[]>('postit_list')
+  const list = await tauriInvoke<TauriPostit[]>('postit_list')
   if (!Array.isArray(list)) return
   const local = load()
   const localIds = new Set(local.map((p) => p.id))

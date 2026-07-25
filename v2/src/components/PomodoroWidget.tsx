@@ -47,7 +47,7 @@ export function PomodoroWidget() {
               o.connect(ctx.destination)
               o.start()
               setTimeout(() => { o.stop(); ctx.close() }, 200)
-            } catch {}
+            } catch { /* 실패해도 진행 — 부가 기능이라 무시한다 */ }
             return DURATIONS[next]
           }
           return r - 1

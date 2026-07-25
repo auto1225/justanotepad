@@ -11,6 +11,12 @@ const ITERATIONS = 100000
 const SALT_LEN = 16
 const IV_LEN = 12
 
+
+/** Uint8Array → WebCrypto 가 받는 ArrayBuffer (뷰 오프셋을 지켜 잘라낸다) */
+function toBuffer(u: Uint8Array): ArrayBuffer {
+  return u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength) as ArrayBuffer
+}
+
 async function deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey> {
   const enc = new TextEncoder()
   const passwordKey = await crypto.subtle.importKey(
@@ -21,7 +27,7 @@ async function deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey>
     ['deriveKey']
   )
   return crypto.subtle.deriveKey(
-    { name: 'PBKDF2', salt: salt as any, iterations: ITERATIONS, hash: 'SHA-256' },
+    { name: 'PBKDF2', salt: toBuffer(salt), iterations: ITERATIONS, hash: 'SHA-256' },
     passwordKey,
     { name: 'AES-GCM', length: 256 },
     false,
@@ -46,9 +52,9 @@ export async function encryptHtml(html: string, password: string): Promise<strin
   const iv = crypto.getRandomValues(new Uint8Array(IV_LEN))
   const key = await deriveKey(password, salt)
   const cipher = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv: iv as any },
+    { name: 'AES-GCM', iv: toBuffer(iv) },
     key,
-    new TextEncoder().encode(html) as any
+    toBuffer(new TextEncoder().encode(html))
   )
   const cipherB64 = bytesToB64(new Uint8Array(cipher))
   return `<div class="jan-locked" data-iv="${bytesToB64(iv)}" data-salt="${bytesToB64(salt)}" data-cipher="${cipherB64}"><p>비밀번호로 보호된 메모 — 잠금 해제 필요</p></div>`
@@ -85,9 +91,9 @@ export async function decryptHtml(html: string, password: string): Promise<strin
   try {
     const key = await deriveKey(password, salt)
     const plain = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: iv as any },
+      { name: 'AES-GCM', iv: toBuffer(iv) },
       key,
-      cipher as any
+      toBuffer(cipher)
     )
     return new TextDecoder().decode(plain)
   } catch {

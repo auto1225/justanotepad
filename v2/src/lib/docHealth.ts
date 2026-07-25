@@ -32,7 +32,7 @@ export const LAST_BACKUP_KEY = 'jan-v2-last-backup'
 
 /** 백업 실행 시각 기록 — JSON 백업/Gist 공유 성공 시 호출 */
 export function markBackupDone(): void {
-  try { localStorage.setItem(LAST_BACKUP_KEY, String(Date.now())) } catch {}
+  try { localStorage.setItem(LAST_BACKUP_KEY, String(Date.now())) } catch { /* 실패해도 진행 — 부가 기능이라 무시한다 */ }
 }
 
 function clamp(n: number, min: number, max: number): number {
@@ -193,7 +193,7 @@ export function computeDocHealth(editor: Editor): HealthReport {
     const details: HealthDetail[] = []
     let score = 20
     let last = 0
-    try { last = Number(localStorage.getItem(LAST_BACKUP_KEY)) || 0 } catch {}
+    try { last = Number(localStorage.getItem(LAST_BACKUP_KEY)) || 0 } catch { /* 실패해도 진행 — 부가 기능이라 무시한다 */ }
     if (!last) {
       score -= 10
       details.push({ level: 'warn', text: '백업 기록이 없습니다', fix: '파일 메뉴 → "JSON 백업 내보내기"로 전체 백업을 남기세요' })

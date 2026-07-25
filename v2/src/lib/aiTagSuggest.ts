@@ -32,7 +32,7 @@ export function parseTagsFromText(text: string): string[] {
     try {
       const data = JSON.parse(jsonMatch[0])
       if (Array.isArray(data.tags)) return data.tags.slice(0, 6).map(String)
-    } catch {}
+    } catch { /* 실패해도 진행 — 부가 기능이라 무시한다 */ }
   }
   // 평문에서 # 또는 따옴표 패턴
   const tags: string[] = []
@@ -42,7 +42,7 @@ export function parseTagsFromText(text: string): string[] {
   if (tags.length > 0) return tags.slice(0, 5)
   // 마지막 fallback: 콤마/줄 분리
   return text
-    .replace(/[\[\]"]/g, '')
+    .replace(/[[\]"]/g, '')
     .split(/[,\n]/)
     .map((s) => s.trim())
     .filter((s) => s.length >= 2 && s.length <= 16)

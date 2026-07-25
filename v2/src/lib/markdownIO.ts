@@ -1,3 +1,6 @@
+
+/** 블록 자리표시자 구분자 — 본문에 나올 수 없는 NUL 문자를 쓴다 */
+const BLK_MARK = String.fromCharCode(0)
 /**
  * Phase 6 — TipTap HTML ↔ Markdown 변환.
  * Turndown.js / marked 추가 의존 없이 자체 구현 (간단/빠름).
@@ -167,14 +170,14 @@ export function mdToHtml(md: string): string {
       const t = para.trim()
       if (!t) return ''
       if (/^<(h[1-6]|ul|ol|blockquote|pre|hr|table|p)/i.test(t)) return t
-      if (/^\u0000BLK\d+\u0000$/.test(t)) return t
+      if (new RegExp(`^${BLK_MARK}BLK\\d+${BLK_MARK}$`).test(t)) return t
       return `<p>${t.replace(/\n/g, '<br>')}</p>`
     })
     .filter(Boolean)
     .join('\n')
 
   // 코드 블록 복원
-  s = s.replace(/\u0000BLK(\d+)\u0000/g, (_, i) => blocks[parseInt(i, 10)] || '')
+  s = s.replace(new RegExp(`${BLK_MARK}BLK(\\d+)${BLK_MARK}`, 'g'), (_, i) => blocks[parseInt(i, 10)] || '')
 
   return s
 }

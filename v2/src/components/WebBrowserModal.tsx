@@ -2,6 +2,7 @@
 import type { Editor } from '@tiptap/react'
 import { Icon } from './Icons'
 import { sanitizeUntrustedHtml, escapeHtmlText } from '../lib/sanitizeHtml'
+import { errText } from '../lib/errText'
 
 interface WebBrowserModalProps {
   editor: Editor | null
@@ -203,7 +204,7 @@ export function WebBrowserModal({ editor, onClose }: WebBrowserModalProps) {
     setResults([]); setPreview(null); setView('results')
     try {
       let html = ''
-      try { html = await fetchViaProxy(engine.searchUrl(Q)) } catch {}
+      try { html = await fetchViaProxy(engine.searchUrl(Q)) } catch { /* 실패해도 진행 — 부가 기능이라 무시한다 */ }
       let doc = new DOMParser().parseFromString(html, 'text/html')
       let items = engine.parse(doc, Q)
       let usedEngine = engine.label
@@ -215,7 +216,7 @@ export function WebBrowserModal({ editor, onClose }: WebBrowserModalProps) {
           doc = new DOMParser().parseFromString(html, 'text/html')
           items = ENGINES.ddg.parse(doc, Q)
           if (items.length) usedEngine = 'DuckDuckGo (' + engine.label + ' 폴백)'
-        } catch {}
+        } catch { /* 실패해도 진행 — 부가 기능이라 무시한다 */ }
       }
       /* DDG 도 실패면 Wikipedia 폴백 */
       if (items.length === 0 && engineKey !== 'wiki') {
@@ -225,13 +226,13 @@ export function WebBrowserModal({ editor, onClose }: WebBrowserModalProps) {
           doc = new DOMParser().parseFromString(html, 'text/html')
           items = ENGINES.wiki.parse(doc, Q)
           if (items.length) usedEngine = 'Wikipedia (' + engine.label + ' 폴백)'
-        } catch {}
+        } catch { /* 실패해도 진행 — 부가 기능이라 무시한다 */ }
       }
       setResults(items)
       if (items.length) setStatusMsg(usedEngine + ': ' + items.length + '개 결과 — 클릭하면 본문 미리보기')
       else setStatusMsg(engine.label + ' 차단됨 — 우상단 [외부] 버튼으로 새 탭에서 검색')
-    } catch (e: any) {
-      setStatusMsg(engine.label + ' 실패: ' + e.message)
+    } catch (e) {
+      setStatusMsg(engine.label + ' 실패: ' + errText(e))
     } finally { setBusy(false) }
   }
 
@@ -250,8 +251,8 @@ export function WebBrowserModal({ editor, onClose }: WebBrowserModalProps) {
       setSelectedImgs(new Set())
       setView('preview')
       setStatusMsg(`이미지 ${images.length}개 · 표 ${tables.length}개 발견`)
-    } catch (e: any) {
-      setStatusMsg('추출 실패: ' + e.message)
+    } catch (e) {
+      setStatusMsg('추출 실패: ' + errText(e))
     } finally { setBusy(false) }
   }
 

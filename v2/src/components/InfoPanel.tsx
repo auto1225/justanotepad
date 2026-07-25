@@ -25,8 +25,9 @@ export function InfoPanel({ editor, onClose }: InfoPanelProps) {
   const versions = useVersionsStore((s) => (memo ? s.byMemo[memo.id] : undefined)) ?? EMPTY_VERSIONS
 
   const stats = useMemo(() => {
-    if (!editor) return { chars: 0, words: 0, paras: 0, headings: 0, links: 0, images: 0, tables: 0, readMin: 0 }
-    const html = getSavableHtml(editor)
+    // 편집 중이면 에디터의 현재 HTML, 아니면 저장된 본문 — 저장본이 바뀌면 다시 센다
+    const html = editor ? getSavableHtml(editor) : (memo?.content ?? '')
+    if (!html) return { chars: 0, words: 0, paras: 0, headings: 0, links: 0, images: 0, tables: 0, readMin: 0 }
     const div = document.createElement('div')
     div.innerHTML = html
     const text = (div.textContent || '').replace(/\s+/g, ' ').trim()

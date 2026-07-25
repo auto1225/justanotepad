@@ -22,7 +22,8 @@ export function PrintPreview({ html, title, onClose }: PrintPreviewProps) {
   // 여러 페이지 나란히 보기 (HWP 스타일) — 1·2·3열
   const [cols, setCols] = useState<1 | 2 | 3>(1)
   const colsRef = useRef<1 | 2 | 3>(1)
-  colsRef.current = cols
+  // 렌더가 끝난 뒤 동기화 (렌더 중 ref 쓰기 금지)
+  useEffect(() => { colsRef.current = cols })
 
   /** iframe 문서에 다열 레이아웃 스타일을 주입/갱신 — 재로드 없이 전환 */
   function applyMultiPageLayout(nextCols: 1 | 2 | 3) {

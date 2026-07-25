@@ -31,6 +31,11 @@ import { downloadLatex } from '../lib/latexExport'
 import { downloadHtmlFile, downloadDocFile } from '../lib/htmlDocExport'
 import { MathStudio } from './MathStudio'
 import { getSavableHtml } from '../extensions/PageDocument'
+import { errText } from '../lib/errText'
+import { createImageCapture, createSpeechRecognition, getDisplayMedia } from '../lib/browserApis'
+
+/** v1·외부 백업에서 읽어 들이는 메모 — 키 이름이 버전마다 달라 넉넉히 받는다 */
+type LegacyMemoLike = { title?: string; t?: string; content?: string; html?: string; body?: string }
 
 interface ToolbarProps {
   editor: Editor | null
@@ -205,7 +210,7 @@ export function Toolbar(p: ToolbarProps) {
 
   const togglePilcrow = () => {
     document.body.classList.toggle('jan-show-pilcrow')
-    try { localStorage.setItem('jan-show-pilcrow', document.body.classList.contains('jan-show-pilcrow') ? '1' : '0') } catch {}
+    try { localStorage.setItem('jan-show-pilcrow', document.body.classList.contains('jan-show-pilcrow') ? '1' : '0') } catch { /* 실패해도 진행 — 부가 기능이라 무시한다 */ }
   }
   const insertTable = () => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
   const insertImageURL = async () => { const url = await askText('이미지 URL:', '', { placeholder: 'https://...' }); if (url) editor.chain().focus().setImage({ src: url }).run() }
@@ -375,6 +380,7 @@ export function Toolbar(p: ToolbarProps) {
 
   /* === 책갈피 / 텍스트 상자 / 구분선 스타일 === */
   const insertBookmark = async () => {
+    // eslint-disable-next-line react-hooks/purity -- 렌더가 아니라 사용자 동작(클릭/타이머)에서만 실행된다
     const id = await askText('책갈피 ID (앵커):', 'bm-' + Date.now()); if (!id) return
     // 스키마에 커스텀 앵커 노드가 없어 원시 HTML 은 텍스트로 노출된다 — 눈에 보이는 라벨로 삽입
     const safe = id.replace(/[<>&"]/g, '')
@@ -474,16 +480,16 @@ export function Toolbar(p: ToolbarProps) {
   /* === 미디어 / Web API === */
   const captureScreen = async () => {
     try {
-      const stream = await (navigator.mediaDevices as any).getDisplayMedia({ video: true })
+      const stream = await getDisplayMedia({ video: true })
       const track = stream.getVideoTracks()[0]
-      const cap = new (window as any).ImageCapture(track)
+      const cap = createImageCapture(track)
       const bitmap = await cap.grabFrame()
       const cv = document.createElement('canvas'); cv.width = bitmap.width; cv.height = bitmap.height
       cv.getContext('2d')!.drawImage(bitmap, 0, 0)
       track.stop()
       const dataUrl = cv.toDataURL('image/png')
       editor.chain().focus().setImage({ src: dataUrl }).run()
-    } catch (e: any) { flash('화면 캡쳐 취소 또는 실패: ' + (e.message || e), 2600) }
+    } catch (e) { flash('화면 캡쳐 취소 또는 실패: ' + errText(e), 2600) }
   }
   const openGallery = () => {
     const root = document.querySelector('.ProseMirror'); if (!root) return
@@ -497,13 +503,13 @@ export function Toolbar(p: ToolbarProps) {
     w.document.write(html); w.document.close()
   }
   const startVoiceInput = () => {
-    const SR: any = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-    if (!SR) { flash('이 브라우저는 음성 인식을 지원하지 않습니다'); return }
-    const r = new SR(); r.lang = 'ko-KR'; r.interimResults = true; r.continuous = false
+    const r = createSpeechRecognition()
+    if (!r) { flash('이 브라우저는 음성 인식을 지원하지 않습니다'); return }
+    r.lang = 'ko-KR'; r.interimResults = true; r.continuous = false
     let final = ''
-    r.onresult = (e: any) => { for (let i = e.resultIndex; i < e.results.length; i++) { if (e.results[i].isFinal) final += e.results[i][0].transcript } }
+    r.onresult = (e) => { for (let i = e.resultIndex; i < e.results.length; i++) { if (e.results[i].isFinal) final += e.results[i][0].transcript } }
     r.onend = () => { if (final) editor.chain().focus().insertContent(final).run(); else flash('인식된 음성이 없습니다') }
-    r.onerror = (e: any) => flash('음성 인식 오류: ' + e.error, 2600)
+    r.onerror = (e) => flash('음성 인식 오류: ' + e.error, 2600)
     r.start()
     flash('말하세요... (한 문장 인식 후 자동 종료)', 2600)
   }
@@ -525,7 +531,7 @@ export function Toolbar(p: ToolbarProps) {
         stream.getTracks().forEach(t => t.stop())
       }
       rec.start()
-      const stop = () => { try { rec.stop() } catch {} }
+      const stop = () => { try { rec.stop() } catch { /* 실패해도 진행 — 부가 기능이라 무시한다 */ } }
       /* Auto-stop after 30 sec or user click */
       setTimeout(stop, 30000)
       const overlay = document.createElement('div')
@@ -535,7 +541,7 @@ export function Toolbar(p: ToolbarProps) {
       document.body.appendChild(overlay)
       rec.onstart = () => {}
       rec.addEventListener('stop', () => overlay.remove())
-    } catch (e: any) { flash('마이크 접근 실패: ' + (e.message || e), 2600) }
+    } catch (e) { flash('마이크 접근 실패: ' + errText(e), 2600) }
   }
   const meetingNote = () => {
     insertHTML(`
@@ -549,7 +555,7 @@ export function Toolbar(p: ToolbarProps) {
     const prompt = await askText('AI 이미지 프롬프트 (Pollinations 무료 생성):', '오브젝트의 단순한 라인아트')
     if (!prompt) return
     const u = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=512&height=512&nologo=true`
-    editor.chain().focus().setImage({ src: u, title: prompt } as any).run()
+    editor.chain().focus().setImage({ src: u, title: prompt }).run()
     flash('AI 이미지 생성 중 — 잠시 후 이미지가 나타납니다')
   }
 
@@ -557,7 +563,7 @@ export function Toolbar(p: ToolbarProps) {
   const wordCloud = () => {
     const text = editor.state.doc.textContent
     const words: Record<string, number> = {}
-    text.split(/[\s,.\-—()\[\]{}!?;:'"]+/).forEach(w => {
+    text.split(/[\s,.—()[\]{}!?;:'"-]+/).forEach(w => {
       w = w.trim(); if (w.length < 2) return
       words[w] = (words[w] || 0) + 1
     })
@@ -565,6 +571,7 @@ export function Toolbar(p: ToolbarProps) {
     if (!sorted.length) { flash('워드 클라우드를 만들 단어가 없습니다'); return }
     const max = sorted[0][1]
     const w = window.open('', '_blank', 'width=900,height=600'); if (!w) return
+    // eslint-disable-next-line react-hooks/purity -- 렌더가 아니라 사용자 동작(클릭/타이머)에서만 실행된다
     let html = `<!doctype html><html><head><title>워드 클라우드</title><style>body{font-family:sans-serif;padding:2em;line-height:2;text-align:center;background:#fff8e7;} span{display:inline-block;margin:0.2em 0.4em;color:hsl(${Math.random()*360},60%,40%);}</style></head><body><h2>워드 클라우드 — ${sorted.length}개</h2><div>`
     sorted.forEach(([word, n]) => { const sz = Math.round(12 + (n / max) * 36); html += `<span style="font-size:${sz}px;">${word}</span> ` })
     html += '</div></body></html>'; w.document.write(html); w.document.close()
@@ -587,8 +594,10 @@ export function Toolbar(p: ToolbarProps) {
     if (v === null) return
     const min = Number(v)
     if (!min || min <= 0) { flash('1 이상의 숫자를 입력하세요'); return }
+    // eslint-disable-next-line react-hooks/purity -- 렌더가 아니라 사용자 동작(클릭/타이머)에서만 실행된다
     const end = Date.now() + min * 60000
     const id = setInterval(() => {
+      // eslint-disable-next-line react-hooks/purity -- 타이머 콜백
       const left = Math.max(0, end - Date.now())
       const m = Math.floor(left / 60000), s = Math.floor((left % 60000) / 1000)
       const el = document.getElementById('jan-pomo-display') || (() => { const d = document.createElement('div'); d.id = 'jan-pomo-display'; d.title = '클릭하면 타이머 중단'; d.style.cssText = 'position:fixed;top:8px;right:8px;background:#FAE100;color:#333;padding:6px 12px;border-radius:6px;font-weight:700;z-index:9999;cursor:pointer;'; document.body.appendChild(d); return d })()
@@ -597,10 +606,10 @@ export function Toolbar(p: ToolbarProps) {
       if (left <= 0) {
         clearInterval(id); el.remove()
         flash('포모도로 완료! 5분 휴식하세요', 4000)
-        try { if ('Notification' in window && Notification.permission === 'granted') new Notification('포모도로 완료', { body: '5분 휴식하세요' }) } catch {}
+        try { if ('Notification' in window && Notification.permission === 'granted') new Notification('포모도로 완료', { body: '5분 휴식하세요' }) } catch { /* 실패해도 진행 — 부가 기능이라 무시한다 */ }
       }
     }, 500)
-    try { if ('Notification' in window && Notification.permission === 'default') void Notification.requestPermission() } catch {}
+    try { if ('Notification' in window && Notification.permission === 'default') void Notification.requestPermission() } catch { /* 실패해도 진행 — 부가 기능이라 무시한다 */ }
     flash(`포모도로 ${min}분 시작 — 우측 상단 타이머를 클릭하면 중단`)
   }
   const toggleSpellCheck = () => {
@@ -613,10 +622,10 @@ export function Toolbar(p: ToolbarProps) {
 
   /* === 파일 / 백업 === */
   const memoTitle = () => (useMemosStore.getState().current()?.title || '메모').trim() || '메모'
-  const exportHwpx = async () => { try { await downloadHwpx(getSavableHtml(editor), memoTitle()) } catch (e: any) { flash('HWPX 실패: ' + (e.message || e), 2600) } }
-  const exportMd = () => { try { downloadMd(getSavableHtml(editor), memoTitle()) } catch (e: any) { flash('MD 실패: ' + (e.message || e), 2600) } }
-  const exportPdf = async () => { try { await exportToPdf(getSavableHtml(editor), memoTitle()) } catch (e: any) { flash('PDF 실패: ' + (e.message || e), 2600) } }
-  const exportTex = () => { try { downloadLatex(getSavableHtml(editor), memoTitle()) } catch (e: any) { flash('LaTeX 실패: ' + (e.message || e), 2600) } }
+  const exportHwpx = async () => { try { await downloadHwpx(getSavableHtml(editor), memoTitle()) } catch (e) { flash('HWPX 실패: ' + errText(e), 2600) } }
+  const exportMd = () => { try { downloadMd(getSavableHtml(editor), memoTitle()) } catch (e) { flash('MD 실패: ' + errText(e), 2600) } }
+  const exportPdf = async () => { try { await exportToPdf(getSavableHtml(editor), memoTitle()) } catch (e) { flash('PDF 실패: ' + errText(e), 2600) } }
+  const exportTex = () => { try { downloadLatex(getSavableHtml(editor), memoTitle()) } catch (e) { flash('LaTeX 실패: ' + errText(e), 2600) } }
   /** 원클릭 전체 내보내기 — MD·HTML·LaTeX·HWPX·DOC 를 한 번에 (브라우저 다중 다운로드 차단 회피를 위해 순차 실행) */
   const exportAll = async () => {
     const title = memoTitle()
@@ -641,6 +650,7 @@ export function Toolbar(p: ToolbarProps) {
   const exportJsonBackup = async () => {
     const json = await exportV2ToJson()
     const blob = new Blob([json], { type: 'application/json' })
+    // eslint-disable-next-line react-hooks/purity -- 렌더가 아니라 사용자 동작(클릭/타이머)에서만 실행된다
     const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `JustANotepad-backup-${Date.now()}.json`
     document.body.appendChild(a); a.click(); document.body.removeChild(a); setTimeout(() => URL.revokeObjectURL(url), 800)
     markBackupDone()
@@ -659,7 +669,7 @@ export function Toolbar(p: ToolbarProps) {
             return
           }
           flash(`백업 가져오기 완료: ${result.imported}개 항목 반영`, 2600)
-        } catch (e: any) { flash('가져오기 실패: ' + (e.message || e), 3200) }
+        } catch (e) { flash('가져오기 실패: ' + errText(e), 3200) }
       }
       r.readAsText(file)
     }
@@ -676,18 +686,18 @@ export function Toolbar(p: ToolbarProps) {
         try {
           const data = JSON.parse(raw)
           const list = Array.isArray(data) ? data : (data.memos || data.list || [])
-          const store = useMemosStore.getState() as any
-          list.forEach((m: any) => {
+          const store = useMemosStore.getState()
+          list.forEach((m: LegacyMemoLike) => {
             if (store.newMemo && store.updateCurrent) {
               store.newMemo()
               store.updateCurrent({ title: m.title || m.t || '가져온 메모', content: m.content || m.html || m.body || '<p></p>' })
               imported++
             }
           })
-        } catch {}
+        } catch { /* 실패해도 진행 — 부가 기능이라 무시한다 */ }
       }
       flash(imported ? `${imported}개 가져오기 완료` : 'v1 메모를 찾지 못했습니다', 2600)
-    } catch (e: any) { flash('실패: ' + (e.message || e), 3200) }
+    } catch (e) { flash('실패: ' + errText(e), 3200) }
   }
 
   /* === 명령 팔레트 / 검색 등 === */
@@ -757,7 +767,7 @@ export function Toolbar(p: ToolbarProps) {
         { label: '기울임', hint: 'Ctrl+I', icon: 'italic', onClick: () => run(() => editor.chain().focus().toggleItalic().run()) },
         { label: '밑줄', hint: 'Ctrl+U', icon: 'underline', onClick: () => run(() => editor.chain().focus().toggleUnderline().run()) },
         { label: '취소선', icon: 'strike', onClick: () => run(() => editor.chain().focus().toggleStrike().run()) },
-        { label: '형광펜', icon: 'highlight', onClick: () => run(() => (editor.chain() as any).focus().toggleHighlight({ color: '#FFEB3B' }).run()) },
+        { label: '형광펜', icon: 'highlight', onClick: () => run(() => editor.chain().focus().toggleHighlight({ color: '#FFEB3B' }).run()) },
         { divider: '제목', label: '' },
         { label: '제목 1', hint: 'Ctrl+Alt+1', icon: 'h1', onClick: () => run(() => editor.chain().focus().toggleHeading({ level: 1 }).run()) },
         { label: '제목 2', hint: 'Ctrl+Alt+2', icon: 'h2', onClick: () => run(() => editor.chain().focus().toggleHeading({ level: 2 }).run()) },
@@ -804,7 +814,7 @@ export function Toolbar(p: ToolbarProps) {
         { divider: '리스트', label: '' },
         { label: '글머리 기호', icon: 'list-bullet', onClick: () => run(() => editor.chain().focus().toggleBulletList().run()) },
         { label: '번호 매기기', icon: 'list-numbered', onClick: () => run(() => editor.chain().focus().toggleOrderedList().run()) },
-        { label: '체크리스트', icon: 'list-check', onClick: () => run(() => (editor.chain() as any).focus().toggleList('taskList', 'taskItem').run()) },
+        { label: '체크리스트', icon: 'list-check', onClick: () => run(() => editor.chain().focus().toggleList('taskList', 'taskItem').run()) },
         { label: '인용', icon: 'quote', onClick: () => run(() => editor.chain().focus().toggleBlockquote().run()) },
         { label: '코드 블록', icon: 'code', onClick: () => run(() => editor.chain().focus().toggleCodeBlock().run()) },
         { divider: '논문 요소', label: '' },
@@ -816,10 +826,10 @@ export function Toolbar(p: ToolbarProps) {
         { label: '구분선 스타일', icon: 'minus', onClick: () => run(insertHrStyle) },
         { divider: '특수 노드', label: '' },
         { label: '수식 — 수식 스튜디오 (전 분야)', icon: 'hash', onClick: () => run(() => setMathStudio({ initial: '' })) },
-        { label: '다이어그램 (Mermaid)', icon: 'hash', onClick: () => run(async () => { const c = await askText('Mermaid 다이어그램:', 'graph TD\n  A-->B', { multiline: true }); if (c) (editor.chain() as any).focus().setMermaid(c).run() }) },
-        { short: '정보 상자', label: '콜아웃 (정보)', icon: 'info', onClick: () => run(() => (editor.chain() as any).focus().setCallout('info').run()) },
-        { short: '경고 상자', label: '콜아웃 (경고)', icon: 'bell', onClick: () => run(() => (editor.chain() as any).focus().setCallout('warn').run()) },
-        { label: '임베드 URL', icon: 'globe', onClick: () => run(async () => { const u = await askText('임베드 URL (YouTube/Vimeo 등):'); if (u) (editor.chain() as any).focus().setEmbed(u).run() }) },
+        { label: '다이어그램 (Mermaid)', icon: 'hash', onClick: () => run(async () => { const c = await askText('Mermaid 다이어그램:', 'graph TD\n  A-->B', { multiline: true }); if (c) editor.chain().focus().setMermaid(c).run() }) },
+        { short: '정보 상자', label: '콜아웃 (정보)', icon: 'info', onClick: () => run(() => editor.chain().focus().setCallout('info').run()) },
+        { short: '경고 상자', label: '콜아웃 (경고)', icon: 'bell', onClick: () => run(() => editor.chain().focus().setCallout('warn').run()) },
+        { label: '임베드 URL', icon: 'globe', onClick: () => run(async () => { const u = await askText('임베드 URL (YouTube/Vimeo 등):'); if (u) editor.chain().focus().setEmbed(u).run() }) },
         { divider: '빠른 입력', label: '' },
         { label: '날짜/시간', icon: 'clock', onClick: () => run(insertDateTime) },
         { label: '특수 문자', icon: 'sparkle', onClick: () => run(insertSymbol) },
@@ -1143,7 +1153,7 @@ export function Toolbar(p: ToolbarProps) {
       <button onClick={() => editor.chain().focus().toggleStrike().run()} className={editor.isActive('strike') ? 'is-active' : ''} title="취소선"><Icon name="strike" /></button>
       <button onClick={() => editor.chain().focus().toggleSuperscript().run()} className={editor.isActive('superscript') ? 'is-active' : ''} title="위 첨자" aria-label="위 첨자"><span style={{ fontSize: 12 }}>X<sup style={{ fontSize: 8 }}>2</sup></span></button>
       <button onClick={() => editor.chain().focus().toggleSubscript().run()} className={editor.isActive('subscript') ? 'is-active' : ''} title="아래 첨자" aria-label="아래 첨자"><span style={{ fontSize: 12 }}>X<sub style={{ fontSize: 8 }}>2</sub></span></button>
-      <button onClick={() => (editor.chain() as any).focus().toggleHighlight({ color: '#FFEB3B' }).run()} className={editor.isActive('highlight') ? 'is-active' : ''} title="형광펜"><Icon name="highlight" /></button>
+      <button onClick={() => editor.chain().focus().toggleHighlight({ color: '#FFEB3B' }).run()} className={editor.isActive('highlight') ? 'is-active' : ''} title="형광펜"><Icon name="highlight" /></button>
       <ColorPicker editor={editor} />
       <span className="divider" />
 
@@ -1156,7 +1166,7 @@ export function Toolbar(p: ToolbarProps) {
 
       <button onClick={() => editor.chain().focus().toggleBulletList().run()} className={editor.isActive('bulletList') ? 'is-active' : ''} title="글머리 기호"><Icon name="list-bullet" /></button>
       <button onClick={() => editor.chain().focus().toggleOrderedList().run()} className={editor.isActive('orderedList') ? 'is-active' : ''} title="번호 목록"><Icon name="list-numbered" /></button>
-      <button onClick={() => (editor.chain() as any).focus().toggleList('taskList', 'taskItem').run()} title="체크리스트"><Icon name="list-check" /></button>
+      <button onClick={() => editor.chain().focus().toggleList('taskList', 'taskItem').run()} title="체크리스트"><Icon name="list-check" /></button>
       <span className="divider" />
 
       <button onClick={() => editor.chain().focus().undo().run()} title="실행 취소 (Ctrl+Z)"><Icon name="undo" /></button>

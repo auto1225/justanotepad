@@ -9,7 +9,7 @@ import type { Editor } from '@tiptap/react'
  * Word 의 "Format Painter" 와 동일 UX.
  */
 interface SavedFormat {
-  marks: Array<{ type: string; attrs: any }>
+  marks: Array<{ type: string; attrs: Record<string, unknown> }>
   textAlign?: string
 }
 
@@ -42,8 +42,8 @@ export function useFormatPainter(editor: Editor | null) {
       chain.unsetAllMarks()
       for (const mark of saved.current.marks) {
         try {
-          chain.setMark(mark.type as any, mark.attrs)
-        } catch {}
+          chain.setMark(mark.type, mark.attrs)
+        } catch { /* 실패해도 진행 — 부가 기능이라 무시한다 */ }
       }
       if (saved.current.textAlign) chain.setTextAlign(saved.current.textAlign)
       chain.run()

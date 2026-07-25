@@ -16,7 +16,7 @@ function load(): CursorMap {
   try { return JSON.parse(localStorage.getItem(STORAGE) || '{}') } catch { return {} }
 }
 function save(map: CursorMap) {
-  try { localStorage.setItem(STORAGE, JSON.stringify(map)) } catch {}
+  try { localStorage.setItem(STORAGE, JSON.stringify(map)) } catch { /* 실패해도 진행 — 부가 기능이라 무시한다 */ }
 }
 
 export function useCursorMemory(editor: Editor | null, memoId: string | null) {
@@ -33,7 +33,7 @@ export function useCursorMemory(editor: Editor | null, memoId: string | null) {
           const docSize = editor.state.doc.content.size
           const safe = Math.min(pos, docSize - 1)
           editor.chain().focus().setTextSelection({ from: safe, to: safe }).scrollIntoView().run()
-        } catch {}
+        } catch { /* 실패해도 진행 — 부가 기능이라 무시한다 */ }
       }
     }, 50)
     return () => clearTimeout(t)

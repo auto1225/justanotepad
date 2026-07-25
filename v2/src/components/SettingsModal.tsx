@@ -152,6 +152,8 @@ export function SettingsModal({ onClose, focusSection }: SettingsModalProps) {
   }, [])
 
   useEffect(() => {
+    // 동작 결과 메시지가 바뀌면 외부(localStorage·동기화 계층) 값을 다시 읽는다 — 외부 상태 구독이라 남긴다
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     refreshSyncHealth()
   }, [status])
 

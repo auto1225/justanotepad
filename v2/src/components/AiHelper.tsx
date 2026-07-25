@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Editor } from '@tiptap/react'
 import { runAi, aiConfigured } from '../lib/aiApi'
+import { errText } from '../lib/errText'
 
 interface AiHelperProps {
   editor: Editor | null
@@ -50,8 +51,8 @@ export function AiHelper({ editor, onClose }: AiHelperProps) {
       } else {
         setError(res.error || '알 수 없는 오류')
       }
-    } catch (e: any) {
-      setError(e.message || String(e))
+    } catch (e) {
+      setError(errText(e) || String(e))
     } finally {
       setLoading(false)
     }

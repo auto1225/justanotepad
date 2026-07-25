@@ -5,11 +5,23 @@
 const PDF_CDN = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4/build/pdf.min.mjs'
 const WORKER_CDN = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4/build/pdf.worker.min.mjs'
 
-let pdfjsLib: any = null
+
+/** pdf.js 를 CDN 에서 불러 쓰는 만큼만 타입을 둔다 */
+interface PdfJsLike {
+  GlobalWorkerOptions: { workerSrc: string }
+  getDocument: (src: { data: ArrayBuffer } | string) => {
+    promise: Promise<{
+      numPages: number
+      getPage: (n: number) => Promise<{ getTextContent: () => Promise<{ items: unknown[] }> }>
+    }>
+  }
+}
+
+let pdfjsLib: PdfJsLike | null = null
 
 async function loadPdfJs() {
   if (pdfjsLib) return pdfjsLib
-  pdfjsLib = await import(/* @vite-ignore */ PDF_CDN as any)
+  pdfjsLib = (await import(/* @vite-ignore */ PDF_CDN)) as unknown as PdfJsLike
   pdfjsLib.GlobalWorkerOptions.workerSrc = WORKER_CDN
   return pdfjsLib
 }
@@ -29,7 +41,7 @@ export async function pdfFileToHtml(file: File, onProgress?: (p: number) => void
     const page = await pdf.getPage(i)
     const content = await page.getTextContent()
     const pageText = content.items
-      .map((it: any) => it.str)
+      .map((it) => (it as { str?: string }).str ?? '')
       .filter((s: string) => s.trim())
       .join(' ')
       .replace(/\s+/g, ' ')

@@ -25,16 +25,16 @@ function load(): AnalyticsState {
   }
 }
 function save(s: AnalyticsState) {
-  try { localStorage.setItem(STORAGE, JSON.stringify(s)) } catch {}
+  try { localStorage.setItem(STORAGE, JSON.stringify(s)) } catch { /* 실패해도 진행 — 부가 기능이라 무시한다 */ }
 }
 
 /** 이벤트 카운터 증가 + 콘솔 로그 (DEV 모드만). */
-export function trackEvent(name: string, props?: Record<string, any>) {
+export function trackEvent(name: string, props?: Record<string, unknown>) {
   const s = load()
   s.events[name] = (s.events[name] || 0) + 1
   s.lastEventAt = Date.now()
   save(s)
-  if (typeof process !== 'undefined' && (process as any).env?.NODE_ENV !== 'production') {
+  if (typeof process !== 'undefined' && (process as { env?: { NODE_ENV?: string } }).env?.NODE_ENV !== 'production') {
     console.log('[analytics]', name, props || '')
   }
 }

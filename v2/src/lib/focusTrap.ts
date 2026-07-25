@@ -42,7 +42,7 @@ export function trapFocus(container: HTMLElement): () => void {
   return () => {
     container.removeEventListener('keydown', onKey)
     if (previouslyFocused && document.contains(previouslyFocused)) {
-      try { previouslyFocused.focus() } catch {}
+      try { previouslyFocused.focus() } catch { /* 실패해도 진행 — 부가 기능이라 무시한다 */ }
     }
   }
 }

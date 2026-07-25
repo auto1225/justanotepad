@@ -39,7 +39,7 @@ async function gzipString(s: string): Promise<Uint8Array> {
   }
   const cs = new CompressionStream('gzip')
   const writer = cs.writable.getWriter()
-  writer.write(new TextEncoder().encode(s) as any)
+  writer.write(new TextEncoder().encode(s))
   writer.close()
   const reader = cs.readable.getReader()
   const chunks: Uint8Array[] = []
@@ -55,13 +55,18 @@ async function gzipString(s: string): Promise<Uint8Array> {
   return out
 }
 
+/** 스트림에 넣을 수 있는 버퍼로 — Uint8Array 의 buffer 는 SharedArrayBuffer 일 수도 있다 */
+function asBuffer(u: Uint8Array): ArrayBuffer {
+  return u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength) as ArrayBuffer
+}
+
 async function gunzipBytes(b: Uint8Array): Promise<string> {
   if (typeof DecompressionStream === 'undefined') {
     return new TextDecoder().decode(b)
   }
   const ds = new DecompressionStream('gzip')
   const writer = ds.writable.getWriter()
-  writer.write(b as any)
+  writer.write(asBuffer(b))
   writer.close()
   const reader = ds.readable.getReader()
   const chunks: Uint8Array[] = []

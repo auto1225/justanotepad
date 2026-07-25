@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { Editor } from '@tiptap/react'
 import { getSavableHtml } from '../extensions/PageDocument'
+import { errText } from '../lib/errText'
 
 interface LinkCheckModalProps {
   editor: Editor | null
@@ -20,30 +21,27 @@ interface LinkStatus {
  * 메모 안 모든 <a href> URL 추출 → HEAD/GET fetch (CORS no-cors 모드).
  * CORS 차단 사이트는 'cors' 상태 (실제 작동 여부는 알 수 없음).
  */
-export function LinkCheckModal({ editor, onClose }: LinkCheckModalProps) {
-  const [items, setItems] = useState<LinkStatus[]>([])
-  const [busy, setBusy] = useState(false)
+/** 본문에서 검사할 링크를 뽑아낸다 (같은 URL 은 한 번만) */
+function collectLinks(editor: Editor | null): LinkStatus[] {
+  if (!editor) return []
+  const div = document.createElement('div')
+  div.innerHTML = getSavableHtml(editor)
+  const links: LinkStatus[] = []
+  const seen = new Set<string>()
+  div.querySelectorAll('a[href]').forEach((a) => {
+    const href = (a as HTMLAnchorElement).href
+    if (!href || href.startsWith('javascript:')) return
+    if (seen.has(href)) return
+    seen.add(href)
+    links.push({ url: href, text: (a.textContent || '').slice(0, 50), status: 'pending' })
+  })
+  return links
+}
 
-  useEffect(() => {
-    if (!editor) return
-    const html = getSavableHtml(editor)
-    const div = document.createElement('div')
-    div.innerHTML = html
-    const links: LinkStatus[] = []
-    const seen = new Set<string>()
-    div.querySelectorAll('a[href]').forEach((a) => {
-      const href = (a as HTMLAnchorElement).href
-      if (!href || href.startsWith('javascript:')) return
-      if (seen.has(href)) return
-      seen.add(href)
-      links.push({
-        url: href,
-        text: (a.textContent || '').slice(0, 50),
-        status: 'pending',
-      })
-    })
-    setItems(links)
-  }, [editor])
+export function LinkCheckModal({ editor, onClose }: LinkCheckModalProps) {
+  // 모달은 열 때마다 새로 붙으므로 첫 렌더에 한 번 모아 두면 된다
+  const [items, setItems] = useState<LinkStatus[]>(() => collectLinks(editor))
+  const [busy, setBusy] = useState(false)
 
   async function check() {
     setBusy(true)
@@ -61,8 +59,8 @@ export function LinkCheckModal({ editor, onClose }: LinkCheckModalProps) {
         } else {
           updated[i] = { ...item, status: 'broken', code: r.status }
         }
-      } catch (e: any) {
-        updated[i] = { ...item, status: 'broken', error: e?.message || 'network' }
+      } catch (e) {
+        updated[i] = { ...item, status: 'broken', error: errText(e) || 'network' }
       }
       setItems([...updated])
     }

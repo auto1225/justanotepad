@@ -5,6 +5,20 @@ import { CITATION_STYLES, formatBibEntry, formatInline, type Citation, type Cita
 import { bibEntryToCitation, citationsToBibtex, parseBibtex } from '../lib/bibtex'
 import { flash } from '../lib/flash'
 
+/** CrossRef 검색 결과 — 쓰는 항목만 */
+interface CrossRefItem {
+  author?: Array<{ given?: string; family?: string; name?: string }>
+  title?: string[]
+  issued?: { 'date-parts'?: number[][] }
+  'container-title'?: string[]
+  publisher?: string
+  volume?: string
+  issue?: string
+  page?: string
+  DOI?: string
+}
+
+
 interface PaperPanelProps {
   editor: Editor | null
   onClose: () => void
@@ -23,7 +37,7 @@ function loadCitations(): Citation[] {
 function saveCitations(list: Citation[]) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(list))
-  } catch {}
+  } catch { /* 실패해도 진행 — 부가 기능이라 무시한다 */ }
 }
 
 /**
@@ -114,10 +128,10 @@ export function PaperPanel({ editor, onClose }: PaperPanelProps) {
     const res = await fetch(`https://api.crossref.org/works?query.bibliographic=${encodeURIComponent(q)}&rows=5&select=title,author,issued,container-title,volume,issue,page,DOI,publisher`)
     if (!res.ok) throw new Error(`CrossRef ${res.status}`)
     const j = await res.json()
-    const items = (j.message?.items || []) as Array<Record<string, any>>
+    const items = (j.message?.items || []) as CrossRefItem[]
     return items.map((m): Citation => ({
       id: '', type: 'article',
-      authors: (m.author || []).map((a: { given?: string; family?: string; name?: string }) => a.name || [a.given, a.family].filter(Boolean).join(' ')).filter(Boolean),
+      authors: (m.author || []).map((a) => a.name || [a.given, a.family].filter(Boolean).join(' ')).filter(Boolean),
       title: (m.title && m.title[0]) || '',
       year: String(m.issued?.['date-parts']?.[0]?.[0] || ''),
       venue: (m['container-title'] && m['container-title'][0]) || m.publisher || '',

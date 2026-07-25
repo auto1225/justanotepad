@@ -20,7 +20,7 @@ describe('Word keymap helpers', () => {
 
   it('routes Ctrl+N to the new document handler', () => {
     const onNew = vi.fn()
-    const detach = installWordKeymap({} as any, { onNew })
+    const detach = installWordKeymap({} as unknown as Parameters<typeof installWordKeymap>[0], { onNew })
     const event = new KeyboardEvent('keydown', { key: 'n', ctrlKey: true, bubbles: true, cancelable: true })
 
     document.dispatchEvent(event)

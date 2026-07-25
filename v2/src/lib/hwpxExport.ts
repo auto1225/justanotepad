@@ -182,7 +182,7 @@ async function imageXml(ctx: BuildContext, img: HTMLImageElement): Promise<strin
         if (m) ext = m[1] === 'jpeg' ? 'jpg' : m[1]
       }
     }
-  } catch {}
+  } catch { /* 실패해도 진행 — 부가 기능이라 무시한다 */ }
 
   if (!data) return emptyPara()
   ctx.images.push({ binItemId, href: `BIN${binItemId.toString().padStart(4, '0')}.${ext}`, ext, data })

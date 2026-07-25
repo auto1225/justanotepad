@@ -13,6 +13,8 @@ import { exportToPdf } from '../lib/pdfExport'
 import { fitPageZoom, setPageZoom } from '../lib/pageZoom'
 import { PAGE_BREAK_HTML } from '../lib/pageBreak'
 import { getSavableHtml } from '../extensions/PageDocument'
+import { errText } from '../lib/errText'
+import { createImageCapture, createSpeechRecognition, getDisplayMedia } from '../lib/browserApis'
 
 interface Command {
   id: string
@@ -50,7 +52,7 @@ export function CommandPalette(p: CommandPaletteProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState(0)
-  const { newMemo, duplicate, togglePin, list, setCurrent } = useMemosStore() as any
+  const { newMemo, duplicate, togglePin, list, setCurrent } = useMemosStore()
   const ui = useUIStore()
   const { toggleFocus, zoomIn, zoomOut, zoomReset, toggleSidebar, toggleHeadingNumbers, toggleReading, toggleSpellCheck, toggleRulers } = ui
   const { theme, setTheme } = useThemeStore()
@@ -73,7 +75,7 @@ export function CommandPalette(p: CommandPaletteProps) {
   const insertHTML = (html: string) => editor?.chain().focus().insertContent(html).run()
   const togglePilcrow = () => {
     document.body.classList.toggle('jan-show-pilcrow')
-    try { localStorage.setItem('jan-show-pilcrow', document.body.classList.contains('jan-show-pilcrow') ? '1' : '0') } catch {}
+    try { localStorage.setItem('jan-show-pilcrow', document.body.classList.contains('jan-show-pilcrow') ? '1' : '0') } catch { /* 실패해도 진행 — 부가 기능이라 무시한다 */ }
   }
   const cycleTheme = () => setTheme(theme === 'light' ? 'dark' : theme === 'dark' ? 'auto' : 'light')
   const insertDateTime = () => {
@@ -140,21 +142,21 @@ export function CommandPalette(p: CommandPaletteProps) {
   }
   const captureScreen = async () => {
     try {
-      const stream = await (navigator.mediaDevices as any).getDisplayMedia({ video: true })
+      const stream = await getDisplayMedia({ video: true })
       const track = stream.getVideoTracks()[0]
-      const cap = new (window as any).ImageCapture(track)
+      const cap = createImageCapture(track)
       const bm = await cap.grabFrame()
       const cv = document.createElement('canvas'); cv.width = bm.width; cv.height = bm.height
       cv.getContext('2d')!.drawImage(bm, 0, 0); track.stop()
       editor?.chain().focus().setImage({ src: cv.toDataURL('image/png') }).run()
-    } catch (e: any) { alert('취소 또는 실패: ' + (e.message||e)) }
+    } catch (e) { alert('취소 또는 실패: ' + errText(e)) }
   }
   const startVoice = () => {
-    const SR: any = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-    if (!SR) { alert('이 브라우저 지원 안 함'); return }
-    const r = new SR(); r.lang = 'ko-KR'; r.continuous = false
+    const r = createSpeechRecognition()
+    if (!r) { alert('이 브라우저 지원 안 함'); return }
+    r.lang = 'ko-KR'; r.continuous = false
     let final = ''
-    r.onresult = (e: any) => { for (let i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) final += e.results[i][0].transcript }
+    r.onresult = (e) => { for (let i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) final += e.results[i][0].transcript }
     r.onend = () => { if (final) editor?.chain().focus().insertContent(final).run() }
     r.start(); alert('말하세요...')
   }
@@ -171,7 +173,7 @@ export function CommandPalette(p: CommandPaletteProps) {
   const wordCloud = () => {
     const text = editor?.state.doc.textContent || ''
     const words: Record<string, number> = {}
-    text.split(/[\s,.\-—()\[\]{}!?;:'"]+/).forEach(w => { w = w.trim(); if (w.length < 2) return; words[w] = (words[w]||0)+1 })
+    text.split(/[\s,.—()[\]{}!?;:'"-]+/).forEach(w => { w = w.trim(); if (w.length < 2) return; words[w] = (words[w]||0)+1 })
     const sorted = Object.entries(words).sort((a,b) => b[1]-a[1]).slice(0, 60)
     if (!sorted.length) { alert('단어 없음'); return }
     const max = sorted[0][1]
@@ -205,9 +207,9 @@ export function CommandPalette(p: CommandPaletteProps) {
     w.document.write(`<!doctype html><html><head><title>플래시카드</title></head><body><div id="c" onclick="f=!f;s()"></div><script>const c=${JSON.stringify(cards)};let i=0,f=0;function s(){document.getElementById('c').innerHTML=f?c[i].a:c[i].q;}s();</script></body></html>`)
     w.document.close()
   }
-  const exportHwpx = async () => { if (!editor) return; try { await downloadHwpx(getSavableHtml(editor), '메모') } catch (e: any) { alert('실패: ' + e.message) } }
-  const exportMd = () => { if (!editor) return; try { downloadMd(getSavableHtml(editor), '메모') } catch (e: any) { alert('실패: ' + e.message) } }
-  const exportPdf = async () => { if (!editor) return; try { await exportToPdf(getSavableHtml(editor), '메모') } catch (e: any) { alert('실패: ' + e.message) } }
+  const exportHwpx = async () => { if (!editor) return; try { await downloadHwpx(getSavableHtml(editor), '메모') } catch (e) { alert('실패: ' + errText(e)) } }
+  const exportMd = () => { if (!editor) return; try { downloadMd(getSavableHtml(editor), '메모') } catch (e) { alert('실패: ' + errText(e)) } }
+  const exportPdf = async () => { if (!editor) return; try { await exportToPdf(getSavableHtml(editor), '메모') } catch (e) { alert('실패: ' + errText(e)) } }
   const exportHtml = () => {
     if (!editor) return
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>메모</title></head><body>${getSavableHtml(editor)}</body></html>`
@@ -290,10 +292,10 @@ export function CommandPalette(p: CommandPaletteProps) {
     if (!editor) return []
     const ed = editor
     const memos = (list?.() || [])
-    const memoCmds: Command[] = memos.slice(0, 20).map((m: any, i: number) => ({
+    const memoCmds: Command[] = memos.slice(0, 20).map((m, i) => ({
       id: 'memo-' + m.id, cat: '메모', icon: 'file-text' as IconName,
       label: '메모: ' + (m.title || '제목없음'),
-      desc: '최근 수정: ' + new Date(m.updatedAt || m.createdAt || Date.now()).toLocaleString('ko-KR'),
+      desc: '최근 수정: ' + (m.updatedAt ? new Date(m.updatedAt).toLocaleString('ko-KR') : '기록 없음'),
       hint: i < 9 ? `Ctrl+${i+1}` : undefined,
       run: () => setCurrent(m.id),
     }))
@@ -308,7 +310,7 @@ export function CommandPalette(p: CommandPaletteProps) {
       { id:'italic', cat:'서식', icon:'italic', label:'기울임', desc:'선택 텍스트를 이탤릭체로.', hint:'Ctrl+I', run: () => ed.chain().focus().toggleItalic().run() },
       { id:'underline', cat:'서식', icon:'underline', label:'밑줄', desc:'선택 텍스트에 밑줄.', hint:'Ctrl+U', run: () => ed.chain().focus().toggleUnderline().run() },
       { id:'strike', cat:'서식', icon:'strike', label:'취소선', desc:'가운데 줄을 긋습니다.', run: () => ed.chain().focus().toggleStrike().run() },
-      { id:'highlight', cat:'서식', icon:'highlight', label:'형광펜', desc:'노란색 형광펜 강조.', run: () => (ed.chain() as any).focus().toggleHighlight({ color: '#FFEB3B' }).run() },
+      { id:'highlight', cat:'서식', icon:'highlight', label:'형광펜', desc:'노란색 형광펜 강조.', run: () => ed.chain().focus().toggleHighlight({ color: '#FFEB3B' }).run() },
       { id:'clear-fmt', cat:'서식', icon:'wand', label:'서식 지우기', desc:'모든 마크와 노드 서식 초기화.', run: () => ed.chain().focus().unsetAllMarks().clearNodes().run() },
       /* 제목 */
       { id:'h1', cat:'제목', icon:'h1', label:'제목 1', desc:'큰 제목 (H1).', hint:'Ctrl+Alt+1', run: () => ed.chain().focus().toggleHeading({ level: 1 }).run() },
@@ -323,7 +325,7 @@ export function CommandPalette(p: CommandPaletteProps) {
       /* 리스트 */
       { id:'ul', cat:'리스트', icon:'list-bullet', label:'글머리 기호 목록', desc:'• 점 무순서 목록.', run: () => ed.chain().focus().toggleBulletList().run() },
       { id:'ol', cat:'리스트', icon:'list-numbered', label:'번호 매기기 목록', desc:'1. 2. 3. 순서 목록.', run: () => ed.chain().focus().toggleOrderedList().run() },
-      { id:'task', cat:'리스트', icon:'list-check', label:'체크리스트', desc:'☐ 체크박스 할 일 목록.', run: () => (ed.chain() as any).focus().toggleList('taskList', 'taskItem').run() },
+      { id:'task', cat:'리스트', icon:'list-check', label:'체크리스트', desc:'☐ 체크박스 할 일 목록.', run: () => ed.chain().focus().toggleList('taskList', 'taskItem').run() },
       { id:'quote', cat:'리스트', icon:'quote', label:'인용', desc:'왼쪽 줄 인용 블록.', run: () => ed.chain().focus().toggleBlockquote().run() },
       { id:'code', cat:'리스트', icon:'code', label:'코드 블록', desc:'고정폭 코드 블록.', run: () => ed.chain().focus().toggleCodeBlock().run() },
       /* 삽입 */
@@ -335,12 +337,12 @@ export function CommandPalette(p: CommandPaletteProps) {
       { id:'hr-style', cat:'삽입', icon:'minus', label:'구분선 스타일', desc:'실선/점선/이중선/별표.', run: insertHrStyle },
       { id:'date', cat:'삽입', icon:'clock', label:'날짜/시간', desc:'현재 날짜·시간 삽입.', run: insertDateTime },
       { id:'page-break', cat:'삽입', icon:'page-break', label:'페이지 구분', desc:'인쇄 시 다음 페이지로.', hint:'Ctrl+Enter', run: insertPageBreak },
-      { id:'callout-info', cat:'삽입', icon:'info', label:'콜아웃: 정보', desc:'파란 정보 알림 상자.', run: () => (ed.chain() as any).focus().setCallout('info').run() },
-      { id:'callout-warn', cat:'삽입', icon:'bell', label:'콜아웃: 경고', desc:'주황 경고 상자.', run: () => (ed.chain() as any).focus().setCallout('warn').run() },
-      { id:'callout-tip', cat:'삽입', icon:'sparkle', label:'콜아웃: 팁', desc:'초록 팁 상자.', run: () => (ed.chain() as any).focus().setCallout('tip').run() },
-      { id:'math', cat:'삽입', icon:'hash', label:'수식 (LaTeX)', desc:'KaTeX 수식 블록.', run: async () => { const t = await askText('LaTeX 수식:', '', { placeholder: 'E = mc^2' }); if (t) (ed.chain() as any).focus().setMath(t).run() } },
-      { id:'mermaid', cat:'삽입', icon:'hash', label:'다이어그램 (Mermaid)', desc:'Mermaid 다이어그램.', run: async () => { const c = await askText('Mermaid 다이어그램:', 'graph TD\n  A-->B', { multiline: true }); if (c) (ed.chain() as any).focus().setMermaid(c).run() } },
-      { id:'embed', cat:'삽입', icon:'globe', label:'임베드 (URL)', desc:'YouTube/Vimeo 등 임베드.', run: async () => { const u = await askText('임베드 URL:'); if (u) (ed.chain() as any).focus().setEmbed(u).run() } },
+      { id:'callout-info', cat:'삽입', icon:'info', label:'콜아웃: 정보', desc:'파란 정보 알림 상자.', run: () => ed.chain().focus().setCallout('info').run() },
+      { id:'callout-warn', cat:'삽입', icon:'bell', label:'콜아웃: 경고', desc:'주황 경고 상자.', run: () => ed.chain().focus().setCallout('warn').run() },
+      { id:'callout-tip', cat:'삽입', icon:'sparkle', label:'콜아웃: 팁', desc:'초록 팁 상자.', run: () => ed.chain().focus().setCallout('tip').run() },
+      { id:'math', cat:'삽입', icon:'hash', label:'수식 (LaTeX)', desc:'KaTeX 수식 블록.', run: async () => { const t = await askText('LaTeX 수식:', '', { placeholder: 'E = mc^2' }); if (t) ed.chain().focus().setMath(t).run() } },
+      { id:'mermaid', cat:'삽입', icon:'hash', label:'다이어그램 (Mermaid)', desc:'Mermaid 다이어그램.', run: async () => { const c = await askText('Mermaid 다이어그램:', 'graph TD\n  A-->B', { multiline: true }); if (c) ed.chain().focus().setMermaid(c).run() } },
+      { id:'embed', cat:'삽입', icon:'globe', label:'임베드 (URL)', desc:'YouTube/Vimeo 등 임베드.', run: async () => { const u = await askText('임베드 URL:'); if (u) ed.chain().focus().setEmbed(u).run() } },
       { id:'youtube', cat:'삽입', icon:'globe', label:'YouTube 영상', desc:'iframe 임베드.', run: insertYouTube },
       { id:'symbol', cat:'삽입', icon:'sparkle', label:'특수 문자', desc:'— … · ★ → 등.', run: insertSymbol },
       { id:'bookmark', cat:'삽입', icon:'pin', label:'책갈피', desc:'앵커 ID 책갈피.', run: insertBookmark },
@@ -446,7 +448,15 @@ export function CommandPalette(p: CommandPaletteProps) {
       /* 빠른 입력 */
       { id:'quick', cat:'빠른 입력', icon:'plus', label:'빠른 메모', desc:'팝오버 빠른 메모.', hint:'Ctrl+Shift+J', run: () => p.onQuick?.() },
     ]
-  }, [editor, list, newMemo, duplicate, togglePin, setCurrent, toggleFocus, zoomIn, zoomOut, zoomReset, toggleSidebar, toggleHeadingNumbers, toggleReading, toggleSpellCheck, toggleRulers, theme, p, ui.showRulers, ui.viewLayout, ui.setViewLayout])
+  // 명령 카탈로그는 여기서 만드는 모든 동작 함수를 붙잡는다 — 하나라도 빠지면 오래된 클로저를 실행하게 된다
+  }, [editor, list, newMemo, duplicate, togglePin, setCurrent, toggleFocus, zoomIn, zoomOut, zoomReset,
+      toggleSidebar, toggleHeadingNumbers, toggleReading, toggleSpellCheck, toggleRulers, theme, p, ui,
+      aiImage, captureScreen, currentOrientationLabel, currentPaperLabel, cycleTheme,
+      exportDocx, exportHtml, exportHwpx, exportMd, exportPdf,
+      insertAbstract, insertAck, insertAuthorBlock, insertBookmark, insertCitation, insertDateTime,
+      insertFootnote, insertHighlightBox, insertHrStyle, insertKeywords, insertMeetingTpl,
+      insertPageBreak, insertReference, insertSymbol, insertTextBox, insertYouTube,
+      openPageSettings, renumberFn, speakSel, startVoice, wordCloud])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -465,8 +475,6 @@ export function CommandPalette(p: CommandPaletteProps) {
     filtered.forEach(c => { (m[c.cat] = m[c.cat] || []).push(c) })
     return m
   }, [filtered])
-
-  useEffect(() => { setSelected(0) }, [query])
 
   if (!open) return null
 
@@ -492,7 +500,7 @@ export function CommandPalette(p: CommandPaletteProps) {
             autoFocus
             placeholder={`명령 검색... (예: 캘린더, 새 탭, 테마)`}
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => { setQuery(e.target.value); setSelected(0) }}
             onKeyDown={onKeyDown}
           />
           <button className="jan-cp-close" onClick={() => setOpen(false)} title="닫기 (Esc)" aria-label="닫기">×</button>

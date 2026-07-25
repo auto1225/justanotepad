@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Editor } from '@tiptap/react'
 import { runAi, aiConfigured } from '../lib/aiApi'
+import { errText } from '../lib/errText'
 
 interface TranslateModalProps {
   editor: Editor | null
@@ -49,8 +50,8 @@ export function TranslateModal({ editor, onClose }: TranslateModalProps) {
       const r = await runAi('raw', prompt)
       if (r.ok && r.text) setResult(r.text)
       else setError(r.error || 'AI 응답 없음')
-    } catch (e: any) {
-      setError(e?.message || String(e))
+    } catch (e) {
+      setError(errText(e))
     } finally {
       setBusy(false)
     }

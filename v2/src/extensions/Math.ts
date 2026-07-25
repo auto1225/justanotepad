@@ -10,7 +10,7 @@ import 'katex/dist/katex.min.css'
 import 'katex/contrib/mhchem'
 
 export interface MathOptions {
-  HTMLAttributes: Record<string, any>
+  HTMLAttributes: Record<string, string>
 }
 
 declare module '@tiptap/core' {
@@ -43,7 +43,7 @@ export const MathInline = Node.create<MathOptions>({
   },
 
   renderHTML({ node, HTMLAttributes }) {
-    let html = ''
+    let html: string
     try {
       html = katex.renderToString(node.attrs.latex || '', { throwOnError: false, output: 'html' })
     } catch {
@@ -56,7 +56,7 @@ export const MathInline = Node.create<MathOptions>({
         'data-latex': node.attrs.latex,
         class: 'jan-math-inline',
       }),
-      ['span', { class: 'jan-math-rendered', innerHTML: html } as any],
+      ['span', { class: 'jan-math-rendered', innerHTML: html } as unknown as Record<string, string>],
     ]
   },
 

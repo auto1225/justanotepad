@@ -58,7 +58,7 @@ export function BubbleToolbar({ editor }: BubbleToolbarProps) {
       <button onClick={() => editor.chain().focus().toggleItalic().run()} className={isI ? 'is-active' : ''} title="Ctrl+I"><i>I</i></button>
       <button onClick={() => editor.chain().focus().toggleUnderline().run()} className={isU ? 'is-active' : ''} title="Ctrl+U"><u>U</u></button>
       <button onClick={() => editor.chain().focus().toggleStrike().run()} className={isS ? 'is-active' : ''}><s>S</s></button>
-      <button onClick={() => (editor.chain() as any).focus().toggleHighlight({ color: '#FFEB3B' }).run()} className={isH ? 'is-active' : ''} title="형광펜"><mark style={{ background: '#FFEB3B', padding: 0 }}>H</mark></button>
+      <button onClick={() => editor.chain().focus().toggleHighlight({ color: '#FFEB3B' }).run()} className={isH ? 'is-active' : ''} title="형광펜"><mark style={{ background: '#FFEB3B', padding: 0 }}>H</mark></button>
       <span className="divider" />
       <button onClick={() => window.dispatchEvent(new CustomEvent('jan-open-link-editor'))} title="링크 (Ctrl+K)" aria-label="링크 편집"><Icon name="link" size={13} /></button>
     </div>

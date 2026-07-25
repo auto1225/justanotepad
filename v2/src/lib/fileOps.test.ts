@@ -1,15 +1,19 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { openFile } from './fileOps'
 
+/** 테스트에서 File System Access API 를 갈아끼우기 위한 창 타입 */
+const fsaTestWindow = () => window as unknown as { showOpenFilePicker?: unknown }
+
+
 describe('fileOps', () => {
   afterEach(() => {
     vi.restoreAllMocks()
-    delete (window as any).showOpenFilePicker
+    delete fsaTestWindow().showOpenFilePicker
     document.body.innerHTML = ''
   })
 
   it('opens HTML through an input fallback when File System Access is unavailable', async () => {
-    delete (window as any).showOpenFilePicker
+    delete fsaTestWindow().showOpenFilePicker
     const click = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(function (this: HTMLInputElement) {
       const file = new File(['<!doctype html><html><body><h1>Fallback Open</h1><p>Loaded.</p></body></html>'], 'fallback.html', { type: 'text/html' })
       Object.defineProperty(this, 'files', { configurable: true, value: [file] })
@@ -27,7 +31,7 @@ describe('fileOps', () => {
   })
 
   it('falls back to input when File System Access open fails for a non-cancel error', async () => {
-    ;(window as any).showOpenFilePicker = vi.fn(async () => {
+    ;fsaTestWindow().showOpenFilePicker = vi.fn(async () => {
       throw new Error('blocked')
     })
     vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -45,7 +49,7 @@ describe('fileOps', () => {
   })
 
   it('does not show the fallback picker when File System Access is canceled', async () => {
-    ;(window as any).showOpenFilePicker = vi.fn(async () => {
+    ;fsaTestWindow().showOpenFilePicker = vi.fn(async () => {
       throw new DOMException('Canceled', 'AbortError')
     })
     const click = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {})

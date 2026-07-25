@@ -3,6 +3,7 @@ import { useTagsStore } from '../store/tagsStore'
 import { useMemosStore } from '../store/memosStore'
 import { suggestTags } from '../lib/aiTagSuggest'
 import { aiConfigured } from '../lib/aiApi'
+import { errText } from '../lib/errText'
 
 /**
  * Phase 6 — 현재 메모의 태그 표시·편집 + 태그 클릭 시 필터.
@@ -42,8 +43,8 @@ export function TagsBar() {
       const tags = await suggestTags(memo.content)
       tags.forEach((t) => addTag(currentId, t))
       if (tags.length === 0) alert('추천 태그가 없습니다.')
-    } catch (e: any) {
-      alert('AI 호출 실패: ' + (e?.message || e))
+    } catch (e) {
+      alert('AI 호출 실패: ' + errText(e))
     }
   }
 

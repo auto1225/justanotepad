@@ -18,11 +18,12 @@ export function ShareModal({ onClose }: ShareModalProps) {
 
   useEffect(() => {
     if (!memo) return
-    setError('')
+    let alive = true // 메모를 바꾸면 이전 요청의 결과는 버린다
     makeShareUrl({ v: 1, title: memo.title, content: memo.content, createdAt: memo.createdAt }).then(
-      (u) => setUrl(u),
-      (e) => setError(e.message || String(e))
+      (u) => { if (alive) { setUrl(u); setError('') } },
+      (e) => { if (alive) { setError(e instanceof Error ? e.message : String(e)); setUrl('') } }
     )
+    return () => { alive = false }
   }, [memo])
 
   function copy() {

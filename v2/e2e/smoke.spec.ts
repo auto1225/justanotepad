@@ -123,7 +123,7 @@ test.describe('v2 smoke', () => {
   test('file menu open uses the HTML input fallback without File System Access', async ({ page }) => {
     await page.addInitScript(() => {
       localStorage.setItem('jan-v2-role-onboarded', '1')
-      ;(window as any).showOpenFilePicker = undefined
+      ;(window as unknown as { showOpenFilePicker?: unknown }).showOpenFilePicker = undefined
     })
     await page.goto('./')
     const editor = page.locator('.ProseMirror').first()

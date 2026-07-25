@@ -1,3 +1,21 @@
+import { errText } from './errText'
+
+
+/** File System Access API — lib.dom 에 아직 없어 쓰는 만큼만 타입을 둔다 */
+interface FsaPickerOptions {
+  suggestedName?: string
+  types?: Array<{ description?: string; accept: Record<string, string[]> }>
+  multiple?: boolean
+}
+interface FsaWindow {
+  showSaveFilePicker?: (o?: FsaPickerOptions) => Promise<FileSystemFileHandle>
+  showOpenFilePicker?: (o?: FsaPickerOptions) => Promise<FileSystemFileHandle[]>
+}
+const fsaWindow = (): FsaWindow => window as unknown as FsaWindow
+
+/** 사용자가 파일 선택창을 닫은 경우 — 오류가 아니라 취소다 */
+const isAbort = (e: unknown) => e instanceof DOMException && e.name === 'AbortError'
+
 export interface SaveOptions {
   title?: string
   content: string
@@ -19,11 +37,11 @@ export interface OpenFileResult {
 export async function saveToFile(opts: SaveOptions): Promise<SaveResult> {
   const { title = '새 메모', content, handle } = opts
 
-  if (typeof (window as any).showSaveFilePicker === 'function') {
+  if (typeof fsaWindow().showSaveFilePicker === 'function') {
     try {
       let targetHandle = handle
       if (!targetHandle) {
-        targetHandle = await (window as any).showSaveFilePicker({
+        targetHandle = await fsaWindow().showSaveFilePicker!({
           suggestedName: `${title}.html`,
           types: [{
             description: 'HTML 문서',
@@ -35,8 +53,8 @@ export async function saveToFile(opts: SaveOptions): Promise<SaveResult> {
       await writable.write(wrapHtml(title, content))
       await writable.close()
       return { ok: true, handle: targetHandle! }
-    } catch (err: any) {
-      if (err.name === 'AbortError') return { ok: false, error: '취소됨' }
+    } catch (err) {
+      if (isAbort(err)) return { ok: false, error: '취소됨' }
       console.warn('[fileOps] FSA save failed, fallback:', err)
     }
   }
@@ -52,15 +70,15 @@ export async function saveToFile(opts: SaveOptions): Promise<SaveResult> {
     document.body.removeChild(a)
     setTimeout(() => URL.revokeObjectURL(url), 1000)
     return { ok: true }
-  } catch (err: any) {
-    return { ok: false, error: String(err?.message || err) }
+  } catch (err) {
+    return { ok: false, error: errText(err) }
   }
 }
 
 export async function openFile(): Promise<OpenFileResult | null> {
-  if (typeof (window as any).showOpenFilePicker === 'function') {
+  if (typeof fsaWindow().showOpenFilePicker === 'function') {
     try {
-      const [handle] = await (window as any).showOpenFilePicker({
+      const [handle] = await fsaWindow().showOpenFilePicker!({
         types: [{
           description: 'HTML 문서',
           accept: { 'text/html': ['.html', '.htm'] },
@@ -69,8 +87,8 @@ export async function openFile(): Promise<OpenFileResult | null> {
       })
       const file = await handle.getFile()
       return readOpenedFile(file, handle)
-    } catch (err: any) {
-      if (err.name === 'AbortError') return null
+    } catch (err) {
+      if (isAbort(err)) return null
       console.warn('[fileOps] FSA open failed, fallback:', err)
     }
   }
@@ -164,5 +182,5 @@ function extractBody(html: string): string {
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-  } as any)[c])
+  } as Record<string, string>)[c])
 }

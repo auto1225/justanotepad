@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { Editor } from '@tiptap/react'
 import { runAi, aiConfigured } from '../lib/aiApi'
 import { useMemosStore } from '../store/memosStore'
+import { errText } from '../lib/errText'
 
 interface AiChatPanelProps {
   editor: Editor | null
@@ -60,8 +61,8 @@ ${context ? '현재 메모 컨텍스트:\n' + context + '\n\n' : ''}${history ? 
       } else {
         setMessages((m) => [...m, { role: 'assistant', content: '[오류] ' + (r.error || '응답 없음'), ts: Date.now() }])
       }
-    } catch (e: any) {
-      setMessages((m) => [...m, { role: 'assistant', content: '[오류] ' + (e?.message || e), ts: Date.now() }])
+    } catch (e) {
+      setMessages((m) => [...m, { role: 'assistant', content: '[오류] ' + errText(e), ts: Date.now() }])
     } finally {
       setBusy(false)
     }
@@ -111,7 +112,7 @@ ${context ? '현재 메모 컨텍스트:\n' + context + '\n\n' : ''}${history ? 
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey && !(e.nativeEvent as any).isComposing) {
+            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault()
               send()
             }

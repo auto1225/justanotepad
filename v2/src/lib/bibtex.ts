@@ -47,7 +47,7 @@ export function parseBibtex(src: string): BibEntry[] {
       if (src[f] !== '=') { j = f + 1; continue }
       f++
       while (f < n && /\s/.test(src[f])) f++
-      let value = ''
+      let value: string
       if (src[f] === '{') {
         let depth = 1; f++
         const start = f

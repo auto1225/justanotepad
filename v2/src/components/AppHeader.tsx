@@ -65,7 +65,7 @@ export function AppHeader(p: AppHeaderProps) {
       if (pomoLeft <= 1000) {
         setPomoLeft(null)
         flash('포모도로 완료! 5분 휴식하세요', 4000)
-        try { if ('Notification' in window && Notification.permission === 'granted') new Notification('포모도로 완료', { body: '5분 휴식하세요' }) } catch {}
+        try { if ('Notification' in window && Notification.permission === 'granted') new Notification('포모도로 완료', { body: '5분 휴식하세요' }) } catch { /* 실패해도 진행 — 부가 기능이라 무시한다 */ }
         return
       }
       setPomoLeft(pomoLeft - 1000)
@@ -77,7 +77,7 @@ export function AppHeader(p: AppHeaderProps) {
     const v = await askText('포모도로 시간 (분):', '25', { placeholder: '예: 25' })
     if (v === null) return
     const min = Number(v) || 25
-    try { if ('Notification' in window && Notification.permission === 'default') void Notification.requestPermission() } catch {}
+    try { if ('Notification' in window && Notification.permission === 'default') void Notification.requestPermission() } catch { /* 실패해도 진행 — 부가 기능이라 무시한다 */ }
     setPomoLeft(min * 60 * 1000)
   }
   const isTauri = typeof window !== 'undefined' && '__TAURI__' in window

@@ -33,14 +33,21 @@ function getItems(query: string): MentionItem[] {
   return [...memoItems, ...tagItems]
 }
 
+/** tiptap suggestion 이 넘겨주는 렌더 props 중 목록이 쓰는 것만 */
+type MentionRenderProps = {
+  items: MentionItem[]
+  command: (item: { id: string; label: string }) => void
+  clientRect?: (() => DOMRect | null) | null
+}
+
 interface MentionListAPI {
   el: HTMLElement
-  update: (props: any) => void
+  update: (props: MentionRenderProps) => void
   destroy: () => void
   onKeyDown: (e: KeyboardEvent) => boolean
 }
 
-function renderList(): (props: any) => MentionListAPI {
+function renderList(): (props: MentionRenderProps) => MentionListAPI {
   return (props) => {
     let selected = 0
     const el = document.createElement('div')
@@ -102,6 +109,11 @@ function renderList(): (props: any) => MentionListAPI {
   }
 }
 
+/** tippy 는 null 을 돌려주지 않는 함수를 원한다 — 없으면 빈 사각형 */
+function asRectFn(fn: (() => DOMRect | null) | null | undefined): () => DOMRect {
+  return () => fn?.() ?? new DOMRect(0, 0, 0, 0)
+}
+
 const suggestion: Omit<SuggestionOptions<MentionItem>, 'editor'> = {
   items: ({ query }) => getItems(query),
   render: () => {
@@ -111,7 +123,7 @@ const suggestion: Omit<SuggestionOptions<MentionItem>, 'editor'> = {
       onStart: (props) => {
         listApi = renderList()(props)
         popup = tippy(document.body, {
-          getReferenceClientRect: props.clientRect as any,
+          getReferenceClientRect: asRectFn(props.clientRect),
           appendTo: () => document.body,
           content: listApi.el,
           showOnCreate: true,
@@ -122,7 +134,7 @@ const suggestion: Omit<SuggestionOptions<MentionItem>, 'editor'> = {
       },
       onUpdate: (props) => {
         listApi?.update(props)
-        popup?.setProps({ getReferenceClientRect: props.clientRect as any })
+        popup?.setProps({ getReferenceClientRect: asRectFn(props.clientRect) })
       },
       onKeyDown: (props) => {
         if (props.event.key === 'Escape') {

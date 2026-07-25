@@ -12,7 +12,8 @@ interface BeforeInstallPromptEvent extends Event {
 
 export function useInstallPrompt() {
   const [event, setEvent] = useState<BeforeInstallPromptEvent | null>(null)
-  const [installed, setInstalled] = useState(false)
+  // 이미 홈 화면(standalone)에서 열렸다면 설치된 상태로 시작한다
+  const [installed, setInstalled] = useState(() => !!window.matchMedia?.('(display-mode: standalone)').matches)
 
   useEffect(() => {
     function onBeforeInstall(e: Event) {
@@ -25,10 +26,6 @@ export function useInstallPrompt() {
     }
     window.addEventListener('beforeinstallprompt', onBeforeInstall)
     window.addEventListener('appinstalled', onInstalled)
-    // 이미 standalone 모드면 설치된 상태
-    if (window.matchMedia?.('(display-mode: standalone)').matches) {
-      setInstalled(true)
-    }
     return () => {
       window.removeEventListener('beforeinstallprompt', onBeforeInstall)
       window.removeEventListener('appinstalled', onInstalled)

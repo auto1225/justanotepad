@@ -70,8 +70,9 @@ export function PageSpreadCell(props: PageSpreadCellProps) {
 
   useEffect(() => {
     onReady(editor ?? null)
-    if (editor) setReady(true)
-    return () => onReady(null)
+    // 편집기 DOM 이 배치를 끝낸 다음 프레임에 준비 완료로 표시한다 — 아래 스크롤 고정이 이 값을 기다린다
+    const raf = editor ? requestAnimationFrame(() => setReady(true)) : 0
+    return () => { if (raf) cancelAnimationFrame(raf); onReady(null) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor])
 

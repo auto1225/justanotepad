@@ -18,10 +18,8 @@ export function useAiAutocomplete(editor: Editor | null, enabled: boolean) {
   const ghostRef = useRef('')
 
   useEffect(() => {
-    if (!editor || !enabled) {
-      setGhost('')
-      return
-    }
+    // 꺼져 있으면 아무것도 걸지 않는다 — 켜져 있던 유령 글자는 이전 effect 의 정리 단계에서 지워진다
+    if (!editor || !enabled) return
 
     function clearTimer() {
       if (timerRef.current) { window.clearTimeout(timerRef.current); timerRef.current = null }
@@ -47,7 +45,7 @@ export function useAiAutocomplete(editor: Editor | null, enabled: boolean) {
               showGhostInDom(editor, suggestion)
             }
           }
-        } catch {}
+        } catch { /* 실패해도 진행 — 부가 기능이라 무시한다 */ }
       }, TRIGGER_DELAY_MS)
     }
 
@@ -83,6 +81,7 @@ export function useAiAutocomplete(editor: Editor | null, enabled: boolean) {
       editor.off('selectionUpdate', onUpdate)
       document.removeEventListener('keydown', onKey, true)
       removeGhostFromDom()
+      setGhost('')
     }
   }, [editor, enabled])
 
@@ -99,7 +98,7 @@ function showGhostInDom(editor: Editor, text: string) {
     span.textContent = text
     span.style.cssText = `position:fixed;left:${coords.left}px;top:${coords.top}px;color:#999;font-style:italic;pointer-events:none;z-index:100;background:rgba(255,255,255,0.6);padding:0 4px;border-radius:2px;font-size:12px;max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;`
     document.body.appendChild(span)
-  } catch {}
+  } catch { /* 실패해도 진행 — 부가 기능이라 무시한다 */ }
 }
 
 function removeGhostFromDom() {

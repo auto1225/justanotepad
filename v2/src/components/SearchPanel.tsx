@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react'
+﻿import { useMemo, useState } from 'react'
 import { useMemosStore } from '../store/memosStore'
 import { useTagsStore } from '../store/tagsStore'
 
@@ -47,7 +47,7 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
 
       // 스니펫 — 본문에서 첫 매치 ±60자
       const idx = body.indexOf(words[0])
-      let snippet = ''
+      let snippet: string
       if (idx >= 0) {
         const start = Math.max(0, idx - 60)
         const end = Math.min(body.length, idx + words[0].length + 60)
@@ -60,10 +60,6 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
     }
     return results.sort((a, b) => b.matchCount - a.matchCount).slice(0, 50)
   }, [q, memos, tagsByMemo])
-
-  useEffect(() => {
-    setSelected(0)
-  }, [q])
 
   function open(id: string) {
     setCurrent(id)
@@ -100,7 +96,7 @@ export function SearchPanel({ onClose }: SearchPanelProps) {
             className="jan-search-input"
             placeholder="제목 / 본문 / 태그 — 띄어쓰기로 AND 검색"
             value={q}
-            onChange={(e) => setQ(e.target.value)}
+            onChange={(e) => { setQ(e.target.value); setSelected(0) }}
             onKeyDown={onKey}
           />
           <div className="jan-search-stats">

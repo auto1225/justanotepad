@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useMemosStore } from '../store/memosStore'
 import { purgeMemoArtifacts } from '../lib/memoCleanup'
 import { askConfirm } from '../lib/promptModal'
@@ -17,7 +17,8 @@ const TTL_MS = 30 * 24 * 60 * 60 * 1000
 export function TrashModal({ onClose }: TrashModalProps) {
   const { trashedList, restore, permaDelete, emptyTrash } = useMemosStore()
   const items = trashedList()
-  const now = Date.now()
+  // 남은 보관일 계산 기준 시각 — 모달이 열린 순간으로 고정 (렌더 중 Date.now() 를 부르지 않는다)
+  const [now] = useState(() => Date.now())
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }

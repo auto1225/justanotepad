@@ -25,10 +25,8 @@ export function useCollab(): CollabState {
   })
 
   useEffect(() => {
-    if (!collabEnabled || !collabWsUrl || !collabRoom) {
-      setState({ ydoc: null, provider: null, status: 'disconnected', peers: 0 })
-      return
-    }
+    // 협업이 꺼져 있으면 아무것도 열지 않는다 — 열려 있던 연결은 이전 effect 의 정리 단계에서 닫힌다
+    if (!collabEnabled || !collabWsUrl || !collabRoom) return
     const ydoc = new Y.Doc()
     const provider = new WebsocketProvider(collabWsUrl, collabRoom, ydoc)
     provider.awareness.setLocalStateField('user', {

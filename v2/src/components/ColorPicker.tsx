@@ -17,18 +17,18 @@ export function ColorPicker({ editor }: ColorPickerProps) {
   if (!editor) return null
 
   function setText(c: string) {
-    ;(editor!.chain() as any).focus().setColor(c).run()
+    ;editor!.chain().focus().setColor(c).run()
     setOpen(null)
   }
   function unsetText() {
-    ;(editor!.chain() as any).focus().unsetColor().run()
+    ;editor!.chain().focus().unsetColor().run()
     setOpen(null)
   }
   function setBg(c: string) {
     if (c === 'transparent') {
-      ;(editor!.chain() as any).focus().unsetHighlight().run()
+      ;editor!.chain().focus().unsetHighlight().run()
     } else {
-      ;(editor!.chain() as any).focus().toggleHighlight({ color: c }).run()
+      ;editor!.chain().focus().toggleHighlight({ color: c }).run()
     }
     setOpen(null)
   }
