@@ -5578,3 +5578,31 @@ body.jan-typewriter .jan-editor-main { scroll-behavior: auto; }
 /* 현재 문단 하이라이트 — 커서 문단 외에는 흐리게 (읽기 흐름 유지 위해 완전히 숨기지 않음) */
 body.jan-para-focus .ProseMirror > *:not(.jan-current-para) { opacity: 0.35; transition: opacity 0.25s ease; }
 body.jan-para-focus .ProseMirror > .jan-current-para { opacity: 1; transition: opacity 0.15s ease; }
+
+/* 분할 편집 — 같은 문서를 좌우 두 창에서 동시 편집 (Word 창 분할) */
+.jan-split-secondary {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column;
+  border-left: 2px solid var(--accent, #D97757);
+  background: var(--jan-bg, #f7f7f7);
+}
+.jan-split-bar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 10px; font-size: 12px;
+  background: var(--jan-bg-alt, #ececec);
+  border-bottom: 1px solid var(--jan-border, rgba(0, 0, 0, 0.1));
+}
+.jan-split-bar span { opacity: 0.6; flex: 1; }
+.jan-split-bar button {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; padding: 0;
+  background: transparent; border: 0; border-radius: 4px; cursor: pointer; color: inherit;
+}
+.jan-split-bar button:hover { background: rgba(0, 0, 0, 0.08); }
+.jan-split-scroll { flex: 1; overflow: auto; padding: 20px 0; }
+/* 분할이 열리면 메인 창도 절반 폭 */
+.jan-app-body:has(.jan-split-secondary) .jan-editor-main { flex: 1; min-width: 0; }
+.jan-theme-dark .jan-split-secondary { background: #232323; }
+.jan-theme-dark .jan-split-bar { background: #1e1e1e; border-color: rgba(255, 255, 255, 0.1); }
+.jan-theme-dark .jan-split-bar button:hover { background: rgba(255, 255, 255, 0.12); }
+@media (max-width: 900px) { .jan-split-secondary { display: none; } }

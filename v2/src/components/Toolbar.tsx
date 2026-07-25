@@ -924,6 +924,10 @@ export function Toolbar(p: ToolbarProps) {
           if (ui.viewLayout !== 'print' && !ui.pageThumbs) { flash('쪽모음은 인쇄 레이아웃에서 사용할 수 있습니다 — 보기 → 인쇄 레이아웃'); return }
           ui.togglePageThumbs()
         }) },
+        { label: `분할 편집 ${ui.splitView ? '닫기' : '열기'} (같은 문서 두 창)`, icon: 'columns', onClick: () => run(() => {
+          ui.toggleSplitView()
+          flash(ui.splitView ? '분할 편집을 닫았습니다' : '분할 편집 — 오른쪽 창에서도 같은 문서를 바로 편집할 수 있습니다', 2600)
+        }) },
         { divider: '줌', label: '' },
         { label: '줌 인', hint: 'Ctrl+=', icon: 'plus', onClick: () => run(() => ui.zoomIn()) },
         { label: '줌 아웃', hint: 'Ctrl+-', icon: 'minus', onClick: () => run(() => ui.zoomOut()) },

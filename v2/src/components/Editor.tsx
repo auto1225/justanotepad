@@ -80,6 +80,7 @@ import { PageBreak } from '../extensions/PageBreak'
 import { PaperTag, PaperBlockAttrs } from '../extensions/PaperTag'
 import { CurrentParaHighlight } from '../extensions/CurrentParaHighlight'
 import { PageThumbnailPanel } from './PageThumbnailPanel'
+import { SplitEditorPane } from './SplitEditorPane'
 import { NormalHorizontalRule } from '../extensions/HorizontalRule'
 import Highlight from '@tiptap/extension-highlight'
 import { Lightbox } from './Lightbox'
@@ -290,6 +291,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   const editorZoom = useUIStore((s) => s.zoom)
   const pageThumbs = useUIStore((s) => s.pageThumbs)
   const showPageThumbs = paginationEnabled && pageThumbs
+  const splitView = useUIStore((s) => s.splitView)
   // 줌을 50% 이하로 "내리는 순간" 자동으로 쪽모음을 연다 (수동으로 닫으면 존중)
   const prevZoomRef = useRef(editorZoom)
   useEffect(() => {
@@ -352,11 +354,13 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
     pendingContentTimerRef.current = window.setTimeout(flushPendingEditorContent, CONTENT_COMMIT_DELAY_MS)
   }, [flushPendingEditorContent])
 
-  const editorExtensions = useMemo(() => {
+  // history:false 는 분할 편집 보조 창용 — 실행취소를 메인 히스토리로 일원화하기 위해
+  // 보조에는 undoRedo 를 아예 빼고, CollaborationCursor(원격 커서 브로드캐스트)도 메인만 단다.
+  const buildExtensions = useCallback((opts: { history: boolean }) => {
     const base: AnyExtension[] = [
       StarterKit.configure({
         heading: { levels: [1, 2, 3, 4, 5, 6] },
-        undoRedo: collab.ydoc ? false : undefined,
+        undoRedo: !opts.history || collab.ydoc ? false : undefined,
         link: false,
         horizontalRule: false,
         underline: false,
@@ -427,13 +431,15 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       )
     }
     if (collab.ydoc && collab.provider) {
-      base.push(
-        Collaboration.configure({ document: collab.ydoc }),
-        CollaborationCursor.configure({ provider: collab.provider }),
-      )
+      base.push(Collaboration.configure({ document: collab.ydoc }))
+      if (opts.history) base.push(CollaborationCursor.configure({ provider: collab.provider }))
     }
     return base
   }, [collab.ydoc, collab.provider, pagePx, pageMarginPx, paginationHeader, paginationFooter, paginationEnabled])
+
+  const editorExtensions = useMemo(() => buildExtensions({ history: true }), [buildExtensions])
+  // 분할 편집이 켜졌을 때만 보조용 확장을 생성 (히스토리 없음)
+  const splitExtensions = useMemo(() => (splitView ? buildExtensions({ history: false }) : null), [buildExtensions, splitView])
 
   const editor = useEditor(
     {
@@ -938,6 +944,23 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
           {typewriterMode && <div className="jan-typewriter-spacer" aria-hidden="true" />}
         </div>
       </div>
+      {splitView && editor && splitExtensions && (
+        <SplitEditorPane
+          mainEditor={editor}
+          extensions={splitExtensions}
+          hasYdoc={!!collab.ydoc}
+          paginationEnabled={paginationEnabled}
+          pagePx={pagePx}
+          pageMarginPx={pageMarginPx}
+          pageStyle={pageStyle}
+          paperStyle={paperStyle}
+          pageSize={pageSize}
+          pageOrientation={pageOrientation}
+          pageColumnCount={pageColumnCount}
+          viewLayout={viewLayout}
+          spellCheck={spellCheck}
+        />
+      )}
       {showPageThumbs && editor && (
         <PageThumbnailPanel
           editor={editor}

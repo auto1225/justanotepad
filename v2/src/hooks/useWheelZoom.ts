@@ -16,9 +16,13 @@ import { setPageZoom } from '../lib/pageZoom'
  */
 function applyZoom(zoom: number) {
   document.documentElement.style.setProperty('--jan-zoom', String(zoom))
-  document.querySelectorAll<HTMLElement>('.jan-editor-pages').forEach((el) => {
-    el.style.zoom = String(zoom)
-  })
+  // 편집 창(메인·분할 보조)에만 적용 — 쪽모음 축소판(.jan-pagethumb-inner)도
+  // .jan-editor-pages 클래스를 쓰므로 전역 셀렉터면 축소판 배율이 오염된다
+  document
+    .querySelectorAll<HTMLElement>('.jan-editor-main .jan-editor-pages, .jan-split-scroll > .jan-editor-pages')
+    .forEach((el) => {
+      el.style.zoom = String(zoom)
+    })
 }
 
 export function useWheelZoom() {

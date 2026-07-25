@@ -312,6 +312,8 @@ interface UIState {
   paragraphFocus: boolean
   /** 쪽모음 패널 — 페이지 축소판을 편집기 옆에 나열 (HWP 쪽모음, 편집과 공존) */
   pageThumbs: boolean
+  /** 분할 편집 — 같은 문서를 좌우 두 창에서 동시 편집 (Word 창 분할) */
+  splitView: boolean
   spellCheck: boolean
   sidebarCollapsed: boolean
   headingNumbers: boolean
@@ -341,6 +343,7 @@ interface UIState {
   toggleParagraphFocus: () => void
   togglePageThumbs: () => void
   setPageThumbs: (v: boolean) => void
+  toggleSplitView: () => void
   toggleSpellCheck: () => void
   toggleSidebar: () => void
   toggleHeadingNumbers: () => void
@@ -370,6 +373,7 @@ export const useUIStore = create<UIState>()(
       typewriterMode: false,
       paragraphFocus: false,
       pageThumbs: false,
+      splitView: false,
       spellCheck: false,
       sidebarCollapsed: false,
       headingNumbers: false,
@@ -398,6 +402,7 @@ export const useUIStore = create<UIState>()(
       toggleParagraphFocus: () => set({ paragraphFocus: !get().paragraphFocus }),
       togglePageThumbs: () => set({ pageThumbs: !get().pageThumbs }),
       setPageThumbs: (v) => set({ pageThumbs: v }),
+      toggleSplitView: () => set({ splitView: !get().splitView }),
       toggleSpellCheck: () => set({ spellCheck: !get().spellCheck }),
       setFocus: (v) => set({ focusMode: v }),
       toggleSidebar: () => set({ sidebarCollapsed: !get().sidebarCollapsed }),
