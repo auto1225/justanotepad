@@ -1,4 +1,5 @@
 import { errText } from './errText'
+import { DOC_EXPORT_CSS } from './docCss'
 
 
 /** File System Access API — lib.dom 에 아직 없어 쓰는 만큼만 타입을 둔다 */
@@ -156,17 +157,7 @@ function wrapHtml(title: string, content: string): string {
 <head>
 <meta charset="UTF-8">
 <title>${escapeHtml(title)}</title>
-<style>
-  body { font-family: 'Noto Sans KR', 'Malgun Gothic', sans-serif; font-size: 11pt; line-height: 1.65; max-width: 210mm; margin: 20mm auto; padding: 0 22mm; }
-  p { margin: 0.5em 0; }
-  h1, h2, h3, h4, h5, h6 { font-weight: 600; margin: 1em 0 0.3em; }
-  table { border-collapse: collapse; }
-  table td, table th { border: 1px solid #999; padding: 4px 8px; }
-  img { max-width: 100%; }
-  blockquote { border-left: 3px solid #d97757; padding: 4px 12px; margin: 0.6em 0; background: rgba(217,119,87,0.05); }
-  pre { background: #f5f5f5; padding: 8px 12px; border-radius: 4px; overflow-x: auto; }
-  code { background: #f5f5f5; padding: 0 4px; border-radius: 3px; }
-</style>
+<style>${DOC_EXPORT_CSS}</style>
 </head>
 <body>
 ${content}

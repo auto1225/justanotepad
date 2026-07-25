@@ -9,6 +9,7 @@ import { Icon } from './Icons'
 import type { IconName } from './Icons'
 import { downloadHwpx } from '../lib/hwpxExport'
 import { downloadMd } from '../lib/markdownIO'
+import { downloadHtmlFile, downloadDocFile } from '../lib/htmlDocExport'
 import { exportToPdf } from '../lib/pdfExport'
 import { fitPageZoom, setPageZoom } from '../lib/pageZoom'
 import { PAGE_BREAK_HTML } from '../lib/pageBreak'
@@ -211,20 +212,10 @@ export function CommandPalette(p: CommandPaletteProps) {
     const exportHwpx = async () => { if (!editor) return; try { await downloadHwpx(getSavableHtml(editor), '메모') } catch (e) { alert('실패: ' + errText(e)) } }
     const exportMd = () => { if (!editor) return; try { downloadMd(getSavableHtml(editor), '메모') } catch (e) { alert('실패: ' + errText(e)) } }
     const exportPdf = async () => { if (!editor) return; try { await exportToPdf(getSavableHtml(editor), '메모') } catch (e) { alert('실패: ' + errText(e)) } }
-    const exportHtml = () => {
-      if (!editor) return
-      const html = `<!doctype html><html><head><meta charset="utf-8"><title>메모</title></head><body>${getSavableHtml(editor)}</body></html>`
-      const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
-      const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = '메모.html'
-      document.body.appendChild(a); a.click(); document.body.removeChild(a); setTimeout(() => URL.revokeObjectURL(url), 800)
-    }
-    const exportDocx = () => {
-      if (!editor) return
-      const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"></head><body>${getSavableHtml(editor)}</body></html>`
-      const blob = new Blob(['\ufeff', html], { type: 'application/msword' })
-      const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = '메모.doc'
-      document.body.appendChild(a); a.click(); document.body.removeChild(a); setTimeout(() => URL.revokeObjectURL(url), 800)
-    }
+    // 내보내기는 리본과 같은 함수를 쓴다 — 여기서 따로 만들면 서식(제목 크기·표 격자)이 빠지고 파일 이름도 '메모'로 굳는다
+    const docTitle = () => useMemosStore.getState().current()?.title || '메모'
+    const exportHtml = () => { if (!editor) return; downloadHtmlFile(getSavableHtml(editor), docTitle()) }
+    const exportDocx = () => { if (!editor) return; downloadDocFile(getSavableHtml(editor), docTitle()) }
     const jsonBackup = () => {
       const all = useMemosStore.getState().list()
       const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), version: 'v2', memos: all }, null, 2)], { type: 'application/json' })

@@ -1075,20 +1075,33 @@ mark{padding:1px 2px;border-radius:2px;}
 .ProseMirror{font-family:var(--jan-editor-font);line-height:var(--jan-editor-line);font-size:var(--jan-editor-size);}
 .ProseMirror p{margin-bottom:var(--jan-editor-para);}
 
-/* 문서 본문의 제목·인용·코드 —
-   Tailwind preflight 이 h1~h6 의 크기·굵기를 본문과 같게 되돌려 놓기 때문에(base 레이어),
-   문서 편집기에서는 제목이 본문과 구별되지 않는다. 여기서 다시 세운다.
-   크기는 em 이라 문서 스타일(--jan-editor-size)을 바꾸면 함께 따라간다. */
-.ProseMirror h1{font-size:1.9em;font-weight:700;line-height:1.32;margin:0.75em 0 0.35em;}
-.ProseMirror h2{font-size:1.5em;font-weight:700;line-height:1.35;margin:0.7em 0 0.3em;}
-.ProseMirror h3{font-size:1.25em;font-weight:700;line-height:1.4;margin:0.65em 0 0.25em;}
-.ProseMirror h4{font-size:1.1em;font-weight:700;margin:0.6em 0 0.2em;}
-.ProseMirror h5,.ProseMirror h6{font-size:1em;font-weight:700;margin:0.55em 0 0.2em;}
+/* ============================================================
+   문서 본문 서식 — 편집기 / 마크다운 미리보기 / 공유 보기가 같은 모습이어야 한다.
+   Tailwind preflight(base 레이어)가 h1~h6 의 크기·굵기와 a 의 색·밑줄을 지워 버려서
+   손대지 않으면 제목도 링크도 본문과 똑같이 보인다. 여기서 다시 세운다.
+   크기는 em 이라 문서 스타일(--jan-editor-size)을 바꾸면 함께 따라간다.
+   ============================================================ */
+.ProseMirror h1,.jan-mdpreview-html h1,.jan-share-content h1{font-size:1.9em;font-weight:700;line-height:1.32;margin:0.75em 0 0.35em;}
+.ProseMirror h2,.jan-mdpreview-html h2,.jan-share-content h2{font-size:1.5em;font-weight:700;line-height:1.35;margin:0.7em 0 0.3em;}
+.ProseMirror h3,.jan-mdpreview-html h3,.jan-share-content h3{font-size:1.25em;font-weight:700;line-height:1.4;margin:0.65em 0 0.25em;}
+.ProseMirror h4,.jan-mdpreview-html h4,.jan-share-content h4{font-size:1.1em;font-weight:700;margin:0.6em 0 0.2em;}
+.ProseMirror h5,.ProseMirror h6,.jan-mdpreview-html h5,.jan-mdpreview-html h6,.jan-share-content h5,.jan-share-content h6{font-size:1em;font-weight:700;margin:0.55em 0 0.2em;}
 .ProseMirror h1:first-child,.ProseMirror h2:first-child,.ProseMirror h3:first-child{margin-top:0;}
-.ProseMirror blockquote{margin:0.7em 0;padding:2px 0 2px 14px;border-left:3px solid color-mix(in srgb,var(--accent,#D97757) 55%,transparent);color:#555;}
-.ProseMirror pre{margin:0.7em 0;padding:10px 12px;background:rgba(0,0,0,0.045);border:1px solid rgba(0,0,0,0.08);border-radius:6px;font-family:Consolas,"D2Coding","Courier New",monospace;font-size:0.92em;line-height:1.55;overflow-x:auto;white-space:pre;}
-.ProseMirror pre code{background:none;padding:0;font-family:inherit;font-size:inherit;}
-.ProseMirror :not(pre) > code{padding:1px 4px;background:rgba(0,0,0,0.06);border-radius:3px;font-family:Consolas,"D2Coding","Courier New",monospace;font-size:0.92em;}
+
+.ProseMirror blockquote,.jan-mdpreview-html blockquote,.jan-share-content blockquote{margin:0.7em 0;padding:2px 0 2px 14px;border-left:3px solid color-mix(in srgb,var(--accent,#D97757) 55%,transparent);color:#555;}
+.ProseMirror pre,.jan-mdpreview-html pre,.jan-share-content pre{margin:0.7em 0;padding:10px 12px;background:rgba(0,0,0,0.045);border:1px solid rgba(0,0,0,0.08);border-radius:6px;font-family:Consolas,"D2Coding","Courier New",monospace;font-size:0.92em;line-height:1.55;overflow-x:auto;white-space:pre;}
+.ProseMirror pre code,.jan-mdpreview-html pre code,.jan-share-content pre code{background:none;padding:0;font-family:inherit;font-size:inherit;}
+.ProseMirror :not(pre) > code,.jan-mdpreview-html :not(pre) > code,.jan-share-content :not(pre) > code{padding:1px 4px;background:rgba(0,0,0,0.06);border-radius:3px;font-family:Consolas,"D2Coding","Courier New",monospace;font-size:0.92em;}
+
+.jan-mdpreview-html a[href],.jan-share-content a[href]{color:var(--jan-link,#1565C0);text-decoration:underline;text-underline-offset:2px;}
+
+/* 표 — 미리보기·공유 보기에도 격자와 머리행 음영을 준다 (편집기 쪽은 아래 용지 규칙에서 다룬다) */
+.jan-mdpreview-html table,.jan-share-content table{border-collapse:collapse;}
+.jan-mdpreview-html th,.jan-mdpreview-html td,.jan-share-content th,.jan-share-content td{border:1px solid #9aa1ab;padding:5px 8px;vertical-align:top;}
+.jan-mdpreview-html th,.jan-share-content th{background:#f0f2f5;font-weight:600;text-align:center;}
+.jan-mdpreview-html img,.jan-share-content img{max-width:100%;height:auto;}
+.jan-mdpreview-html ul,.jan-share-content ul{list-style:disc;padding-left:24px;}
+.jan-mdpreview-html ol,.jan-share-content ol{list-style:decimal;padding-left:24px;}
 
 /* ==================== Phase 15 — Find & Replace ==================== */
 .jan-findbar{position:fixed;top:60px;right:16px;z-index:1000;display:flex;gap:4px;align-items:center;flex-wrap:wrap;max-width:min(760px,calc(100vw - 32px));padding:6px 8px;background:#fff;border:1px solid #ccc;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.15);font-size:12px;}
@@ -3975,13 +3988,29 @@ html, body, #root {
   --jan-table-head: #33373d;
 }
 
+/* 줄노트 같은 무늬 종이에서 블록 안쪽으로 무늬가 비치지 않도록 종이색을 깐다.
+   단, 표 머리행과 코드 블록은 구분되는 음영이 있어야 하므로 잉크색을 살짝 섞는다
+   (종이색이 무엇이든 따라가도록 color-mix 로 만든다). */
 .jan-editor-pages .ProseMirror blockquote,
-.jan-editor-pages .ProseMirror pre,
 .jan-editor-pages .ProseMirror table,
-.jan-editor-pages .ProseMirror th,
 .jan-editor-pages .ProseMirror td {
   background-color: var(--paper, var(--jan-paper, #ffffff));
 }
+.jan-editor-pages .ProseMirror th {
+  background-color: color-mix(in srgb, var(--ink, #191919) 8%, var(--paper, var(--jan-paper, #ffffff)));
+}
+.jan-editor-pages .ProseMirror pre {
+  background-color: color-mix(in srgb, var(--ink, #191919) 5%, var(--paper, var(--jan-paper, #ffffff)));
+}
+/* 문서 안의 링크 — Tailwind preflight 이 색·밑줄을 지워 본문 글자와 구별되지 않는다 */
+.jan-editor-pages .ProseMirror a[href],
+.ProseMirror a[href] {
+  color: var(--jan-link, #1565C0);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.jan-theme-dark .ProseMirror a[href] { color: #7FB3F0; }
 
 .jan-editor-pages .rm-pagination-gap,
 .jan-editor-pages .tiptap-pagination-page-break {
