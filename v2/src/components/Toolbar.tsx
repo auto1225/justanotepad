@@ -112,7 +112,7 @@ const SYMBOL_GROUPS: Array<{ label: string; chars: string[] }> = [
 ]
 
 interface MenuItem { label: string; short?: string; hint?: string; icon?: IconName; divider?: string; onClick?: () => void }
-interface MenuGroup { label: string; items: MenuItem[]; context?: boolean }
+interface MenuGroup { label: string; items: MenuItem[]; context?: boolean; /** 문서 작업이 아닌 부가 묶음 (AI·논문) — 탭 줄에서 구분해 보여 준다 */ extra?: boolean }
 
 /**
  * Phase 24 — v1 8개 카테고리 메뉴 모든 기능 실제 구현 (stub 제거).
@@ -1056,6 +1056,15 @@ export function Toolbar(p: ToolbarProps) {
   /* 한글·워드와 같은 탭 구성으로 재배치 — 명령은 그대로 두고 묶음만 옮긴다.
      삽입+미디어 → 입력, 페이지 → 쪽, 편집 탭은 자주 쓰는 편집 명령을 모아 새로 만든다. */
   const pick = (label: string) => rawGroups.find((g) => g.label === label)?.items ?? []
+  /* ── 탭 재편 도우미 ──
+     같은 기능이 여러 탭에 흩어져 있으면 "어디서 하는 일인지" 감이 안 잡힌다.
+     아래 두 도우미로 각 기능의 자리를 한 곳으로 정한다. */
+  const drop = (items: MenuItem[], labels: string[]) =>
+    items.filter((it) => it.divider || !labels.some((l) => it.label.startsWith(l)))
+  const take = (items: MenuItem[], labels: string[]) =>
+    items.filter((it) => !it.divider && labels.some((l) => it.label.startsWith(l)))
+
+
   const editItems: MenuItem[] = [
     { divider: '되돌리기', label: '' },
     { label: '실행 취소', short: '되돌리기', hint: 'Ctrl+Z', icon: 'undo', onClick: () => run(() => editor.chain().focus().undo().run()) },
@@ -1076,15 +1085,14 @@ export function Toolbar(p: ToolbarProps) {
   const notAi = (items: MenuItem[]) => items.filter((it) => it.divider || !isAi(it))
   const aiFrom = (items: MenuItem[]) => items.filter(isAi)
   const aiTools = aiFrom(pick('도구'))
+  /* AI 탭 = 사람 대신 글·그림을 만들어 주는 것만. 번역·문서 건강처럼 '검사'에 가까운 것은 검토 탭,
+     마인드맵·워드 클라우드처럼 '다르게 보기'는 보기 탭으로 보냈다 (한 기능은 한 자리에). */
   const aiItems: MenuItem[] = [
     { divider: '쓰기 도우미', label: '' },
     ...aiTools.filter((it) => it.label.startsWith('AI ')),
-    ...aiTools.filter((it) => it.label.startsWith('번역')),
     { divider: '이미지 · 인식', label: '' },
     ...aiFrom(pick('미디어')),
     ...aiTools.filter((it) => it.label.startsWith('OCR')),
-    { divider: '문서 분석', label: '' },
-    ...aiTools.filter((it) => !it.label.startsWith('AI ') && !it.label.startsWith('OCR') && !it.label.startsWith('번역')),
   ]
 
   /* 표·그림을 고르면 나타나는 개체 탭 (한글의 맥락 탭) */
@@ -1132,16 +1140,58 @@ export function Toolbar(p: ToolbarProps) {
     { label: '그림 삭제', short: '삭제', icon: 'trash', onClick: () => run(() => editor.chain().focus().deleteSelection().run()) },
   ]
 
+  /* ============================================================
+     리본 = 지금 이 문서를 만드는 일 (파일·편집·보기·입력·서식·쪽·검토)
+     그 뒤 구분선 다음은 부가 묶음 (AI·논문) — 성격이 달라 눈에도 다르게 보이게 한다.
+     문서와 상관없는 앱 유틸(그림판·OCR·마인드맵·포모도로…)은 리본에서 빼고
+     오른쪽 유틸 아이콘과 더보기(⋯) 메뉴로 모았다.
+     ============================================================ */
+  /* 리본에서 빼 유틸 메뉴(⋯)로 보낼 것 — 문서 만들기와 직접 상관없는 앱 도구 */
+  const UTIL_KEYS = ['그림판', '포스트잇']
+  /* 보기 탭의 '시각화'로 보낼 것 — 문서를 다른 눈으로 보는 기능 */
+  const VIEW_KEYS = ['마인드맵', '플래시카드', '워드 클라우드', '포모도로']
+  const AUTOTEXT_KEYS = ['템플릿', '스니펫', '매크로']
+
+  const toolsRest = notAi(pick('도구'))
+  const reviewItems: MenuItem[] = [
+    { divider: '교정 · 언어', label: '' },
+    ...take(toolsRest, ['맞춤법']),
+    ...take(aiFrom(pick('도구')), ['번역']),
+    { divider: '문서 점검', label: '' },
+    ...take(toolsRest, ['깨진 링크', '메모 비교']),
+    ...take(aiFrom(pick('도구')), ['문서 건강']),
+    { divider: '통계 · 기록', label: '' },
+    ...take(toolsRest, ['통계', '활동 히트맵', '메모 정보']),
+  ]
+
   const groups: MenuGroup[] = [
-    { label: '파일', items: pick('파일') },
+    { label: '파일', items: drop(pick('파일'), ['실행 취소', '다시 실행', '모두 선택', '찾기 · 바꾸기', '전체 문서 검색', '글자 서식 지우기', '문단 서식 지우기', '명령 팔레트', '인쇄']) },
     { label: '편집', items: editItems },
-    { label: '보기', items: pick('보기') },
-    { label: '입력', items: [...pick('삽입'), { divider: '미디어', label: '' }, ...notAi(pick('미디어'))] },
-    { label: '서식', items: pick('서식') },
-    { label: '쪽', items: pick('페이지') },
-    { label: 'AI', items: aiItems },
-    { label: '도구', items: notAi(pick('도구')) },
-    { label: '논문', items: pick('논문') },
+    {
+      label: '보기',
+      items: [
+        ...pick('보기'),
+        { divider: '시각화 · 집중', label: '' },
+        ...take(toolsRest, VIEW_KEYS),
+        ...take(aiFrom(pick('도구')), ['마인드맵', '워드 클라우드']),
+      ],
+    },
+    {
+      label: '입력',
+      items: [
+        ...drop(pick('삽입'), ['빠른 메모']),
+        { divider: '미디어', label: '' },
+        ...drop(notAi(pick('미디어')), UTIL_KEYS),
+        { divider: '자동 입력', label: '' },
+        ...take(toolsRest, AUTOTEXT_KEYS),
+      ],
+    },
+    { label: '서식', items: drop(pick('서식'), ['엔터 표시']) },
+    { label: '쪽', items: drop(pick('페이지'), ['엔터 표시']) },
+    { label: '검토', items: reviewItems },
+    { label: 'AI', items: aiItems, extra: true },
+    /* 논문 탭은 학술 문서 전용만 남긴다 — 개요·각주·쪽 나눔·단 같은 일반 기능은 코어 탭이 담당한다 */
+    { label: '논문', items: drop(pick('논문'), ['문서 개요 패널', '각주 삽입', '페이지 구분 삽입', '다단 레이아웃']), extra: true },
     ...(inTable ? [{ label: '표', items: tableItems, context: true }] : []),
     ...(onImage ? [{ label: '그림', items: imageItems, context: true }] : []),
   ]

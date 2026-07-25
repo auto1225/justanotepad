@@ -87,7 +87,8 @@ test.describe('v2 smoke', () => {
   test('toolbar buttons present', async ({ page }) => {
     await page.goto('./')
     await page.locator('.ProseMirror').first().waitFor()
-    for (const label of ['파일', '편집', '보기', '입력', '서식', '쪽', 'AI', '도구', '논문']) {
+    // 코어(문서 작업) 7 + 부가 2 — '도구' 는 없애고 검토/보기/입력·유틸 메뉴로 나눠 담았다
+    for (const label of ['파일', '편집', '보기', '입력', '서식', '쪽', '검토', 'AI', '논문']) {
       await expect(page.getByRole('tab', { name: label, exact: true })).toBeVisible({ timeout: 5000 })
     }
     await page.getByRole('tab', { name: '파일', exact: true }).click()
@@ -706,7 +707,8 @@ test.describe('v2 smoke', () => {
     await page.keyboard.press('Control+A')
     await page.keyboard.type(marker)
 
-    await page.getByRole('tab', { name: '도구', exact: true }).click()
+    // 템플릿·스니펫·매크로는 '입력 > 자동 입력' 으로 옮겼다
+    await page.getByRole('tab', { name: '입력', exact: true }).click()
     await page.getByRole('button', { name: '템플릿', exact: true }).click()
     const modal = page.locator('.jan-templates-modal')
     await expect(modal).toBeVisible()

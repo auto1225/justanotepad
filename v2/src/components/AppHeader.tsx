@@ -244,29 +244,55 @@ export function AppHeader(p: AppHeaderProps) {
     setShowMobileMore(false)
     void action()
   }
-  const mobileMoreActions: Array<{ label: string; icon: Parameters<typeof Icon>[0]['name']; help?: string; onClick: () => void | Promise<void> }> = [
-    { label: '그림판', icon: 'paint', help: 'paint', onClick: () => p.onPaint?.() },
-    { label: '글자 인식 (OCR)', icon: 'image-text', help: 'ocr', onClick: p.onOcr },
-    { label: 'JustPin 포스트잇', icon: 'pin', help: 'postit', onClick: openJustPin },
-    { label: '웹 검색', icon: 'globe', help: 'web-search', onClick: openWebSearch },
-    { label: '강의 노트', icon: 'mic', help: 'lecture', onClick: insertLectureTemplate },
-    { label: '회의 노트', icon: 'users', help: 'meeting', onClick: insertMeetingTemplate },
-    { label: '명함 · 카드', icon: 'cards', help: 'cards', onClick: () => p.onCards?.() },
-    { label: '이미지 변환', icon: 'image', help: 'image-convert', onClick: openImageConverter },
-    { label: '홈 허브', icon: 'home', help: 'home', onClick: openHomeHub },
-    { label: '공유', icon: 'users', help: 'share', onClick: p.onShare },
-    { label: '동기화', icon: 'sync', help: 'sync', onClick: openSync },
-    { label: '도움말', icon: 'help', help: 'help', onClick: p.onHelp },
-    { label: '버전 · 변경 내역', icon: 'info', help: 'about', onClick: p.onAbout },
-    { label: 'CMS 관리자', icon: 'shield', help: 'cms', onClick: openCms },
-    /* 좁은 화면에서 헤더에 안 보이는 것들 — 여기서도 닿을 수 있어야 한다 */
-    { label: '전체 검색', icon: 'search', help: 'global-search', onClick: () => (p.onGlobalSearch || p.onSearch)() },
-    { label: 'AI 도우미', icon: 'ai', help: 'ai', onClick: () => (p.onAi || p.onChat)() },
-    { label: '테마 바꾸기', icon: 'sun', help: 'theme', onClick: cycleTheme },
-    { label: '설정', icon: 'settings', help: 'settings', onClick: p.onSettings },
-    { label: '빠른 메모', icon: 'page', help: 'quick-memo', onClick: p.onCalendar },
-    { label: '집중 모드', icon: 'eye', help: 'focus', onClick: () => toggleFocus() },
-    { label: '내 도구 · 역할 팩', icon: 'briefcase', help: 'roles', onClick: openRoleDash },
+  /* 유틸 메뉴 — 문서 작업(리본)이 아닌 것들만 모아 갈래로 나눠 둔다.
+     "유틸끼리" 묶여 있어야 무엇을 찾을지 감이 잡힌다. */
+  type MoreItem = { label: string; icon: Parameters<typeof Icon>[0]['name']; help?: string; onClick: () => void | Promise<void> }
+  const moreSections: Array<{ title: string; items: MoreItem[] }> = [
+    {
+      title: '만들기 도구',
+      items: [
+        { label: '그림판', icon: 'paint', help: 'paint', onClick: () => p.onPaint?.() },
+        { label: '글자 인식 (OCR)', icon: 'image-text', help: 'ocr', onClick: p.onOcr },
+        { label: '이미지 변환', icon: 'image', help: 'image-convert', onClick: openImageConverter },
+        { label: '명함 · 카드', icon: 'cards', help: 'cards', onClick: () => p.onCards?.() },
+      ],
+    },
+    {
+      title: '기록',
+      items: [
+        { label: '회의 노트', icon: 'users', help: 'meeting', onClick: insertMeetingTemplate },
+        { label: '강의 노트', icon: 'mic', help: 'lecture', onClick: insertLectureTemplate },
+        { label: '빠른 메모', icon: 'page', help: 'quick-memo', onClick: p.onCalendar },
+        { label: 'JustPin 포스트잇', icon: 'pin', help: 'postit', onClick: openJustPin },
+      ],
+    },
+    {
+      title: '찾기 · 집중',
+      items: [
+        { label: '전체 검색', icon: 'search', help: 'global-search', onClick: () => (p.onGlobalSearch || p.onSearch)() },
+        { label: '웹 검색', icon: 'globe', help: 'web-search', onClick: openWebSearch },
+        { label: '집중 모드', icon: 'eye', help: 'focus', onClick: () => toggleFocus() },
+        { label: '홈 허브', icon: 'home', help: 'home', onClick: openHomeHub },
+      ],
+    },
+    {
+      title: '내보내기 · 계정',
+      items: [
+        { label: '공유', icon: 'users', help: 'share', onClick: p.onShare },
+        { label: '동기화', icon: 'sync', help: 'sync', onClick: openSync },
+        { label: '내 도구 · 역할 팩', icon: 'briefcase', help: 'roles', onClick: openRoleDash },
+        { label: '설정', icon: 'settings', help: 'settings', onClick: p.onSettings },
+      ],
+    },
+    {
+      title: '앱',
+      items: [
+        { label: '테마 바꾸기', icon: themeIcon, help: 'theme', onClick: cycleTheme },
+        { label: '도움말', icon: 'help', help: 'help', onClick: p.onHelp },
+        { label: '버전 · 변경 내역', icon: 'info', help: 'about', onClick: p.onAbout },
+        { label: 'CMS 관리자', icon: 'shield', help: 'cms', onClick: openCms },
+      ],
+    },
   ]
   return (
     <>
@@ -317,11 +343,16 @@ export function AppHeader(p: AppHeaderProps) {
           </button>
           {showMobileMore && (
             <div className="jan-header-more-menu" role="menu">
-              {mobileMoreActions.map((action) => (
-                <button key={action.label} data-help={action.help} onClick={() => runMobileMore(action.onClick)} role="menuitem">
-                  <Icon name={action.icon} size={14} />
-                  <span>{action.label}</span>
-                </button>
+              {moreSections.map((sec) => (
+                <div key={sec.title} className="jan-more-sec">
+                  <div className="jan-more-sec-title">{sec.title}</div>
+                  {sec.items.map((action) => (
+                    <button key={action.label} data-help={action.help} onClick={() => runMobileMore(action.onClick)} role="menuitem">
+                      <Icon name={action.icon} size={14} />
+                      <span>{action.label}</span>
+                    </button>
+                  ))}
+                </div>
               ))}
             </div>
           )}

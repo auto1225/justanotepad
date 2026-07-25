@@ -264,4 +264,45 @@ test.describe('글자 모양 도구 상자', () => {
     expect(bar.contrast).toBeGreaterThan(4.5)   // 본문 기준 WCAG AA
     expect(bar.buttons).toBeLessThanOrEqual(12) // 아이콘 과밀 방지 (예전 23개)
   })
+
+  test('리본은 문서 작업 탭과 부가 탭이 구분되고, 같은 기능이 두 탭에 겹치지 않는다', async ({ page }) => {
+    await page.goto('./')
+    await page.locator('.ProseMirror').first().waitFor({ state: 'visible', timeout: 15000 })
+
+    const tabs = await page.evaluate(() => [...document.querySelectorAll('[role="tab"]')].map((t) => ({
+      label: (t.textContent || '').trim(),
+      extra: t.classList.contains('is-extra'),
+    })))
+    expect(tabs.filter((t) => !t.extra).map((t) => t.label)).toEqual(['파일', '편집', '보기', '입력', '서식', '쪽', '검토'])
+    expect(tabs.filter((t) => t.extra).map((t) => t.label)).toEqual(['AI', '논문'])
+    await expect(page.locator('.jan-ribbon-tab-split')).toHaveCount(1) // 코어와 부가 사이 경계선
+
+    // 같은 기능이 두 탭에 있으면 어디서 하는 일인지 헷갈린다 — 겹침 0 을 지킨다
+    const seen = new Map<string, string[]>()
+    for (const t of ['파일', '편집', '보기', '입력', '서식', '쪽', '검토', 'AI', '논문']) {
+      await page.getByRole('tab', { name: t, exact: true }).click()
+      await page.waitForTimeout(120)
+      const labels = await page.evaluate(() =>
+        [...document.querySelectorAll('.jan-ribbon-body .jan-ribbon-btn')]
+          .map((b) => b.getAttribute('aria-label') || '')
+          .filter((l) => l && !l.endsWith('더보기'))
+      )
+      for (const l of new Set(labels)) seen.set(l, [...(seen.get(l) || []), t])
+    }
+    const dupes = [...seen.entries()].filter(([, ts]) => ts.length > 1)
+    expect(dupes).toEqual([])
+  })
+
+  test('유틸은 유틸끼리 — 더보기 메뉴가 갈래로 나뉘어 있다', async ({ page }) => {
+    await page.goto('./')
+    await page.locator('.ProseMirror').first().waitFor({ state: 'visible', timeout: 15000 })
+    await page.locator('.jan-header-more-btn').click()
+
+    const menu = page.locator('.jan-header-more-menu')
+    await expect(menu).toBeVisible()
+    const sections = await menu.locator('.jan-more-sec-title').allInnerTexts()
+    expect(sections.length).toBeGreaterThanOrEqual(4)
+    expect(sections).toContain('만들기 도구')
+    expect(await menu.getByRole('menuitem').count()).toBeGreaterThanOrEqual(16)
+  })
 })

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { Icon } from './Icons'
 import type { IconName } from './Icons'
 import { shortLabel } from '../lib/ribbonLabel'
@@ -29,6 +29,8 @@ export interface RibbonTab {
   items: RibbonItem[]
   /** 표·그림처럼 대상을 골랐을 때만 나타나는 맥락 탭 (한글의 개체 탭) */
   context?: boolean
+  /** 부가 묶음(AI·논문) — 코어 탭과 구분해 보여 준다 */
+  extra?: boolean
 }
 
 /** 묶음 오른쪽 아래 화살표 — 그 묶음의 전체 설정 창을 연다 (한글·워드의 대화상자 연결) */
@@ -147,16 +149,19 @@ export function Ribbon({
       <div className="jan-ribbon-bar">
         {leading}
         <div className="jan-ribbon-tabs" role="tablist" aria-label="리본 메뉴">
-        {tabs.map((t) => (
+        {tabs.map((t, i) => (
+          <Fragment key={t.label}>
+          {/* 코어(문서 작업) 탭과 부가 탭 사이에 선을 하나 둔다 — 성격이 다르다는 신호 */}
+          {t.extra && !tabs[i - 1]?.extra && <span className="jan-ribbon-tab-split" aria-hidden="true" />}
           <button
-            key={t.label}
             type="button"
             role="tab"
             aria-selected={t.label === active?.label}
             className={
               'jan-ribbon-tab' +
               (t.label === active?.label ? ' is-active' : '') +
-              (t.context ? ' is-context' : '')
+              (t.context ? ' is-context' : '') +
+              (t.extra ? ' is-extra' : '')
             }
             onClick={() => {
               onTabChange(t.label)
@@ -166,6 +171,7 @@ export function Ribbon({
           >
             {t.label}
           </button>
+          </Fragment>
         ))}
         </div>
         {trailing}
