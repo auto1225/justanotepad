@@ -79,7 +79,7 @@ import { AudioNode, VideoNode } from '../extensions/Media'
 import { PageBreak } from '../extensions/PageBreak'
 import { PaperTag, PaperBlockAttrs } from '../extensions/PaperTag'
 import { CurrentParaHighlight } from '../extensions/CurrentParaHighlight'
-import { MultiPageView } from './MultiPageView'
+import { PageThumbnailPanel } from './PageThumbnailPanel'
 import { NormalHorizontalRule } from '../extensions/HorizontalRule'
 import Highlight from '@tiptap/extension-highlight'
 import { Lightbox } from './Lightbox'
@@ -286,9 +286,17 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   const paginationEnabled = viewLayout === 'print' && pageColumnCount === 1
   // 화면상 페이지 반복 주기 (페이지 높이 + 갭 32 + 머리/꼬리글 렌더 오차) — 워터마크 반복 배경용
   const pageRhythmPx = pagePx.pageHeight + 32 + 6
-  // 줌 50% 이하로 내리면 HWP 처럼 자동으로 여러 쪽 보기
+  // 쪽모음 패널 — 편집과 공존하는 페이지 축소판 (여러쪽보기 재설계: 오버레이 → 사이드 패널)
   const editorZoom = useUIStore((s) => s.zoom)
-  const multiPageAuto = paginationEnabled && editorZoom <= 0.5
+  const pageThumbs = useUIStore((s) => s.pageThumbs)
+  const showPageThumbs = paginationEnabled && pageThumbs
+  // 줌을 50% 이하로 "내리는 순간" 자동으로 쪽모음을 연다 (수동으로 닫으면 존중)
+  const prevZoomRef = useRef(editorZoom)
+  useEffect(() => {
+    const prev = prevZoomRef.current
+    prevZoomRef.current = editorZoom
+    if (editorZoom <= 0.5 && prev > 0.5) useUIStore.getState().setPageThumbs(true)
+  }, [editorZoom])
 
   const commitEditorContent = useCallback((targetEditor: TiptapEditor, memoId: string | null, seq: number) => {
     if (!memoId || targetEditor.isDestroyed) return
@@ -831,19 +839,10 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       <TagsBar />
       <div className="jan-app-body">
         {sidebar}
+        {/* 쪽모음은 시각적으로 왼쪽(order:-1)이지만 DOM 은 편집기 뒤에 둔다 —
+            스냅샷 내부의 .ProseMirror 복제본이 querySelector 첫 매치를 가로채지 않도록 */}
         <div className={'jan-editor-main' + (showOutline ? ' has-outline' : '')}>
         {showOutline && <OutlinePanel editor={editor} />}
-        {multiPageAuto && editor && (
-          <MultiPageView
-            editor={editor}
-            pageW={pagePx.pageWidth}
-            pageH={pagePx.pageHeight}
-            rhythmFallback={pageRhythmPx}
-            zoom={editorZoom}
-            pageStyle={pageStyle}
-            paperStyle={paperStyle}
-          />
-        )}
         <div
           className="jan-editor-pages"
           data-paper={paperStyle}
@@ -939,6 +938,16 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
           {typewriterMode && <div className="jan-typewriter-spacer" aria-hidden="true" />}
         </div>
       </div>
+      {showPageThumbs && editor && (
+        <PageThumbnailPanel
+          editor={editor}
+          pageW={pagePx.pageWidth}
+          pageH={pagePx.pageHeight}
+          rhythmFallback={pageRhythmPx}
+          pageStyle={pageStyle}
+          paperStyle={paperStyle}
+        />
+      )}
       </div>
       <StatusBar editor={editor} onPageSettings={() => setShowPageSettings(true)} onSettings={() => setShowSettings(true)} />
       <CommandPalette editor={editor} onAi={() => setShowAi(true)} onChat={() => setShowChat(true)} onSearch={() => setShowSearch(true)} onFind={() => setShowFind(true)} onOcr={() => setShowOcr(true)} onPaint={() => setShowPaint(true)} onPostit={() => setShowPostit(true)} onPaper={() => setShowPaper(true)} onRoles={() => { setInitialRoleTool(null); setShowRoles(true) }} onTemplates={() => setShowTemplates(true)} onSnippets={() => setShowSnippets(true)} onMacros={() => setShowMacros(true)} onTypo={() => setShowTypo(true)} onCalendar={() => setShowQuick(true)} onQuick={() => setShowQuick(true)} onMd={() => setShowMd(true)} onPrintPreview={() => setShowPrint(true)} onShare={() => setShowShare(true)} onGist={() => setShowGist(true)} onAtt={() => setShowAtt(true)} onLock={() => setShowLock(true)} onSettings={() => setShowSettings(true)} onHelp={() => setShowHelp(true)} onAbout={() => setShowAbout(true)} onStats={() => setShowStats(true)} onMindMap={() => setShowMindMap(true)} onHeatmap={() => setShowHeatmap(true)} onInfo={() => setShowInfo(true)} onDiff={() => setShowDiff(true)} onLinkCheck={() => setShowLinkCheck(true)} onTranslate={() => setShowTranslate(true)} onVersions={() => setShowVersions(true)} onCards={() => setShowCards(true)} onPageSettings={() => setShowPageSettings(true)} onToggleOutline={() => setShowOutline((v) => !v)} onSave={handleSave} onOpen={handleOpen} />

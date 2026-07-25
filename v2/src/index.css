@@ -5474,49 +5474,55 @@ html, body, #root {
 
 /* ── 여러 쪽 보기 (줌 50% 이하 자동) ── */
 .jan-editor-main { position: relative; }
-.jan-multipage-overlay {
-  position: absolute; inset: 0; z-index: 30;
-  background: var(--jan-bg, #f2f2f2);
-  overflow: auto;
+/* 쪽모음 패널 — 페이지 축소판을 편집기 옆에 고정 배치 (여러쪽보기 재설계: 편집과 공존) */
+.jan-pagethumbs {
+  order: -1; /* DOM 은 편집기 뒤(querySelector 가로채기 방지), 시각적으로는 왼쪽 */
+  width: 168px; flex-shrink: 0;
+  display: flex; flex-direction: column;
+  background: var(--jan-bg-alt, #ececec);
+  border-right: 1px solid var(--jan-border, rgba(0, 0, 0, 0.12));
 }
-.jan-multipage-bar {
-  position: sticky; top: 0; z-index: 2;
-  display: flex; align-items: center; gap: 10px;
-  padding: 8px 16px; font-size: 12.5px;
-  background: var(--jan-bg, #f2f2f2);
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+.jan-pagethumbs-head {
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 10px; font-size: 12px;
+  border-bottom: 1px solid var(--jan-border, rgba(0, 0, 0, 0.1));
 }
-.jan-multipage-bar span { opacity: 0.65; }
-.jan-multipage-bar button {
-  padding: 5px 12px; border: 1px solid var(--accent, #D97757);
-  background: var(--accent, #D97757); color: #fff;
-  border-radius: 6px; font-size: 12px; cursor: pointer; font-family: inherit;
+.jan-pagethumbs-head span { opacity: 0.6; flex: 1; }
+.jan-pagethumbs-head button {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; padding: 0;
+  background: transparent; border: 0; border-radius: 4px; cursor: pointer; color: inherit;
 }
-.jan-multipage-grid {
-  display: flex; flex-wrap: wrap; gap: 22px;
-  padding: 22px; justify-content: center; align-content: flex-start;
+.jan-pagethumbs-head button:hover { background: rgba(0, 0, 0, 0.08); }
+.jan-pagethumbs-list {
+  flex: 1; overflow-y: auto;
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  padding: 12px 0 20px;
 }
-.jan-mp-page {
+.jan-pagethumb {
   position: relative; overflow: hidden; padding: 0;
   background: #fff; border: 1px solid rgba(0, 0, 0, 0.18);
-  border-radius: 2px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.16);
+  border-radius: 2px; box-shadow: 0 1px 5px rgba(0, 0, 0, 0.14);
   cursor: pointer; flex-shrink: 0;
 }
-.jan-mp-page:hover { outline: 2px solid var(--accent, #D97757); outline-offset: 1px; }
-.jan-mp-inner {
+.jan-pagethumb:hover { outline: 2px solid var(--accent, #D97757); outline-offset: 1px; }
+.jan-pagethumb.is-current { outline: 2px solid var(--accent, #D97757); outline-offset: 1px; }
+.jan-pagethumb.is-current .jan-pagethumb-num { background: var(--accent, #D97757); }
+.jan-pagethumb-inner {
   position: absolute; left: 0; top: 0; display: block;
   transform-origin: 0 0; pointer-events: none; text-align: left;
 }
-/* 스냅샷 안 ProseMirror 의 그림자·테두리는 카드가 대신하므로 제거 */
-.jan-mp-inner .ProseMirror { box-shadow: none !important; border: 0 !important; border-radius: 0 !important; }
-.jan-mp-num {
-  position: absolute; right: 8px; bottom: 6px; z-index: 2;
+/* 축소판 안 ProseMirror 의 그림자·테두리는 카드가 대신하므로 제거 */
+.jan-pagethumb-inner .ProseMirror { box-shadow: none !important; border: 0 !important; border-radius: 0 !important; }
+.jan-pagethumb-num {
+  position: absolute; right: 5px; bottom: 4px; z-index: 2;
   background: rgba(0, 0, 0, 0.55); color: #fff;
-  font-size: 11px; padding: 1px 8px; border-radius: 9px;
+  font-size: 10px; padding: 0 6px; border-radius: 8px;
 }
-.jan-theme-dark .jan-multipage-overlay,
-.jan-theme-dark .jan-multipage-bar { background: #1e1e1e; }
-.jan-theme-dark .jan-multipage-bar { border-color: rgba(255, 255, 255, 0.1); }
+.jan-theme-dark .jan-pagethumbs { background: #1e1e1e; border-color: rgba(255, 255, 255, 0.1); }
+.jan-theme-dark .jan-pagethumbs-head { border-color: rgba(255, 255, 255, 0.1); }
+.jan-theme-dark .jan-pagethumbs-head button:hover { background: rgba(255, 255, 255, 0.12); }
+@media (max-width: 700px) { .jan-pagethumbs { display: none; } }
 
 /* ── 내 스타일 오버레이 ── */
 .jan-mystyles-modal { max-width: 460px; }

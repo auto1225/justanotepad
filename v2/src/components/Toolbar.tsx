@@ -920,6 +920,10 @@ export function Toolbar(p: ToolbarProps) {
         { label: `현재 문단 하이라이트 ${ui.paragraphFocus ? '끄기' : '켜기'}`, icon: 'focus', onClick: () => run(() => { ui.toggleParagraphFocus(); flash(ui.paragraphFocus ? '문단 하이라이트 끔' : '문단 하이라이트 켬 — 커서 문단 외에는 흐려집니다') }) },
         { label: '사이드바 토글', icon: 'list-bullet', onClick: () => run(() => ui.toggleSidebar()) },
         { label: `눈금자 ${ui.showRulers ? '숨기기' : '표시'}`, icon: 'columns', onClick: () => run(() => ui.toggleRulers()) },
+        { label: `쪽모음 ${ui.pageThumbs ? '닫기' : '열기'} (여러 쪽 보기)`, icon: 'page', onClick: () => run(() => {
+          if (ui.viewLayout !== 'print' && !ui.pageThumbs) { flash('쪽모음은 인쇄 레이아웃에서 사용할 수 있습니다 — 보기 → 인쇄 레이아웃'); return }
+          ui.togglePageThumbs()
+        }) },
         { divider: '줌', label: '' },
         { label: '줌 인', hint: 'Ctrl+=', icon: 'plus', onClick: () => run(() => ui.zoomIn()) },
         { label: '줌 아웃', hint: 'Ctrl+-', icon: 'minus', onClick: () => run(() => ui.zoomOut()) },

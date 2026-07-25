@@ -310,6 +310,8 @@ interface UIState {
   typewriterMode: boolean
   /** 현재 문단 하이라이트 — 커서가 있는 문단 외에는 흐리게 (포커스 라이팅) */
   paragraphFocus: boolean
+  /** 쪽모음 패널 — 페이지 축소판을 편집기 옆에 나열 (HWP 쪽모음, 편집과 공존) */
+  pageThumbs: boolean
   spellCheck: boolean
   sidebarCollapsed: boolean
   headingNumbers: boolean
@@ -337,6 +339,8 @@ interface UIState {
   toggleReading: () => void
   toggleTypewriter: () => void
   toggleParagraphFocus: () => void
+  togglePageThumbs: () => void
+  setPageThumbs: (v: boolean) => void
   toggleSpellCheck: () => void
   toggleSidebar: () => void
   toggleHeadingNumbers: () => void
@@ -365,6 +369,7 @@ export const useUIStore = create<UIState>()(
       readingMode: false,
       typewriterMode: false,
       paragraphFocus: false,
+      pageThumbs: false,
       spellCheck: false,
       sidebarCollapsed: false,
       headingNumbers: false,
@@ -391,6 +396,8 @@ export const useUIStore = create<UIState>()(
       toggleReading: () => set({ readingMode: !get().readingMode }),
       toggleTypewriter: () => set({ typewriterMode: !get().typewriterMode }),
       toggleParagraphFocus: () => set({ paragraphFocus: !get().paragraphFocus }),
+      togglePageThumbs: () => set({ pageThumbs: !get().pageThumbs }),
+      setPageThumbs: (v) => set({ pageThumbs: v }),
       toggleSpellCheck: () => set({ spellCheck: !get().spellCheck }),
       setFocus: (v) => set({ focusMode: v }),
       toggleSidebar: () => set({ sidebarCollapsed: !get().sidebarCollapsed }),
