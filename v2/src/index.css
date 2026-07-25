@@ -5791,6 +5791,20 @@ body.jan-split-dragging * { cursor: inherit !important; }
   width: auto !important;
   grid-template-columns: none !important;
 }
+/* 세로 눈금자는 용지 왼쪽에 나란히 둔다.
+   block 으로 바꾸면 눈금자(높이=용지 한 장)가 흐름을 차지해 용지가 그만큼 아래로
+   밀려나고, 화면에는 눈금자만 보이고 용지는 사라진다(스크롤해야 나온다). */
+@media (min-width: 701px) {
+  .jan-editor-pages[data-rulers="true"][data-page-model="nodes"] .jan-page-layout,
+  .jan-editor-pages[data-rulers="true"][data-page-model="columns"] .jan-page-layout {
+    display: grid !important;
+    grid-template-columns: 28px auto !important;
+    column-gap: 6px;
+    align-items: start;
+    width: fit-content !important;
+    margin-inline: auto;
+  }
+}
 .jan-editor-pages[data-page-model="nodes"] .jan-page-shell {
   width: auto !important;
   min-height: 0 !important;
