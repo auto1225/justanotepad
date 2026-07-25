@@ -87,10 +87,18 @@ function groupLines(rects: ArrayLike<DOMRect>): LineBox[] {
   for (const r of Array.from(rects)) {
     if (r.height <= 0) continue
     const last = lines[lines.length - 1]
-    if (last && r.top < last.bottom - 1) {
-      last.top = Math.min(last.top, r.top)
-      last.bottom = Math.max(last.bottom, r.bottom)
-      continue
+    if (last) {
+      /* 같은 줄인지는 "겹치는가"가 아니라 "가운데가 비슷한가"로 본다.
+         줄 간격을 좁히면(line-height 1) 글자 사각형이 아래윗줄끼리 겹쳐서,
+         겹침으로 묶으면 문단 전체가 한 줄로 뭉쳐 버린다. */
+      const mid = (r.top + r.bottom) / 2
+      const lastMid = (last.top + last.bottom) / 2
+      const tol = Math.max(2, Math.min(last.bottom - last.top, r.height) * 0.5)
+      if (Math.abs(mid - lastMid) < tol) {
+        last.top = Math.min(last.top, r.top)
+        last.bottom = Math.max(last.bottom, r.bottom)
+        continue
+      }
     }
     lines.push({ top: r.top, bottom: r.bottom })
   }
@@ -141,9 +149,13 @@ function findLineCut(el: HTMLElement, maxHeight: number): { node: Text; offset: 
   const all = linesUpTo(total)
   if (all.length < 2) return null // 한 줄짜리는 쪼갤 수 없다
   const elTop = el.getBoundingClientRect().top
+  /* i 번째 줄까지 넣었을 때 차지하는 높이 — 다음 줄의 윗선이 실제 줄 간격이다.
+     글자 사각형의 아래끝(bottom)은 내려긋기(descent) 때문에 줄 간격보다 커서,
+     그 값으로 재면 줄 간격을 좁혔을 때 한두 줄씩 덜 들어간다. */
+  const lineEnd = (i: number) => (i + 1 < all.length ? all[i + 1].top : all[i].bottom)
   let fit = -1
   for (let i = 0; i < all.length; i++) {
-    if (all[i].bottom - elTop > maxHeight) break
+    if (lineEnd(i) - elTop > maxHeight) break
     fit = i
   }
   if (fit < 0) return null              // 첫 줄도 안 들어간다 → 통째로 옮기는 편이 낫다
@@ -311,7 +323,10 @@ function firstLineHeight(dom: HTMLElement): number {
   const range = document.createRange()
   range.selectNodeContents(dom)
   const lines = groupLines(range.getClientRects())
-  return lines.length ? lines[0].bottom - lines[0].top : 0
+  if (!lines.length) return 0
+  // 두 줄 이상이면 줄 사이 거리(줄 간격)가 실제로 필요한 높이다
+  if (lines.length > 1) return Math.max(1, lines[1].top - lines[0].top)
+  return lines[0].bottom - lines[0].top
 }
 
 /**
@@ -433,33 +448,42 @@ function reflowOnce(view: EditorView, contentHeight: number): boolean {
     return true
   }
 
-  // 3) 여유 → 쪼갠 조각 되돌리기. 앞 쪽에 한 줄이라도 더 들어가면 조각을 도로 붙여
-  //    한 문단으로 만든다. 넘치면 위의 넘침 단계가 정확한 줄에서 다시 쪼개므로,
-  //    결과적으로 지운 만큼 앞 쪽이 다시 채워진다 (당기기는 블록 단위라 이 경로가 필요하다).
+  // 3) 여유 → 다음 쪽 앞부분을 줄 단위로 끌어올린다.
+  //    줄 간격을 줄이거나 글을 지워 앞 쪽에 자리가 생기면, 다음 쪽 첫 문단에서 들어가는
+  //    줄까지만 잘라 올려 앞 쪽을 다시 채운다 (워드·한글과 같은 흐름).
+  //    아래 4단계의 당기기는 블록 단위라, 문단 하나가 남는 자리보다 크면 아무것도 못 올린다.
   for (let i = 0; i < pages.length - 1; i++) {
     const { pos, node } = pages[i]
     const next = pages[i + 1]
-    const frag = next.node.firstChild
-    const prev = node.lastChild
-    if (!frag || !prev || !frag.attrs?.janCont || !frag.isTextblock || !prev.isTextblock) continue
+    const first = next.node.firstChild
+    if (!first || !first.isTextblock || first.content.size < 2) continue
     const m = measure(view, pos)
     if (!m) continue
     const room = contentHeight - m.used
     if (room < MIN_SPLIT_ROOM) continue
-    const fragDom = view.nodeDOM(next.pos + 1)
+    const fragPos = next.pos + 1
+    const fragDom = view.nodeDOM(fragPos)
     if (!(fragDom instanceof HTMLElement)) continue
     const rect = fragDom.getBoundingClientRect()
     const scale = fragDom.offsetWidth > 0 ? rect.width / fragDom.offsetWidth : 1
     const line = firstLineHeight(fragDom) / (scale || 1)
-    // 한 줄도 못 올릴 여유라면 그대로 둔다 (되돌렸다 그대로 다시 쪼개는 왕복을 막는다)
+    // 한 줄도 못 올릴 여유면 그대로 둔다 (올렸다 도로 내리는 왕복 방지)
     if (!line || room < line + 1) continue
+    // 남는 자리에 들어가는 마지막 줄에서 자른다. -1 이면 전부 들어간다는 뜻이라
+    // 아래 4단계(블록 통째로 당기기)에 맡긴다.
+    const splitAt = findSplitPos(view, fragPos, first, room)
+    if (splitAt <= 0) continue
 
     const tr = state.tr
-    const { moved, held } = takeFromPageStart(tr, next, 1)
-    const joinPos = pos + node.nodeSize - 1 // 앞 쪽 마지막 블록 뒤
-    tr.insert(joinPos, moved)
-    restoreSelection(tr, held, joinPos)
-    joinContinuedAt(tr, joinPos)
+    // 뒤에 남는 조각에 "이어짐" 표시 — 저장할 때 원래 한 문단으로 합쳐진다
+    tr.split(splitAt, 1, [{ type: first.type, attrs: { ...first.attrs, janCont: '1' } }])
+    const fresh = collectPages(tr.doc)[i + 1]
+    if (!fresh) continue
+    const { moved, held } = takeFromPageStart(tr, fresh, 1)
+    const at = pos + node.nodeSize - 1 // 앞 쪽 마지막 블록 뒤 (앞 쪽 좌표는 쪼개기의 영향을 받지 않는다)
+    tr.insert(at, moved)
+    restoreSelection(tr, held, at)
+    joinContinuedAt(tr, at) // 올라온 조각이 앞 문단의 뒷부분이면 도로 한 문단으로
     tr.setMeta(reflowKey, true)
     tr.setMeta('addToHistory', false)
     view.dispatch(tr)

@@ -248,4 +248,25 @@ test.describe('줄 단위 문단 분할', () => {
     expect(back.grown).toBe(0)
     expect(back.pages[0].overflow).toBeLessThanOrEqual(2)
   })
+
+  test('줄 간격을 줄이면 다음 쪽 내용이 줄 단위로 올라와 앞 쪽을 채운다', async ({ page }) => {
+    await page.keyboard.insertText(LONG_PARAGRAPH.repeat(3))
+    await waitForReflow(page)
+    const before = await pageMetrics(page)
+    expect(before.count).toBeGreaterThanOrEqual(3)
+
+    // 문단 전체의 줄 간격을 좁힌다 (툴바 · 현재 문단 기준)
+    await page.keyboard.press('Control+a')
+    await page.locator('select[title="줄 간격 (현재 문단)"]').selectOption('1')
+    await waitForReflow(page)
+
+    const after = await pageMetrics(page)
+    // 줄이 짧아진 만큼 뒷 쪽 내용이 올라와 쪽 수가 줄고, 앞 쪽은 계속 꽉 차 있다
+    expect(after.count).toBeLessThan(before.count)
+    // 마지막 쪽을 뺀 모든 쪽은 마지막 줄까지 차 있어야 한다 (구멍이 남으면 안 된다)
+    after.pages.slice(0, -1).forEach((p) => expect(p.bottomGap).toBeLessThan(40))
+    for (const p of after.pages) expect(p.overflow).toBeLessThanOrEqual(2)
+    // 글자는 그대로
+    expect(after.text.replace(/\s+/g, '')).toBe(before.text.replace(/\s+/g, ''))
+  })
 })

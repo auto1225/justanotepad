@@ -3546,24 +3546,40 @@ html, body, #root {
    세로 자는 쪽마다 하나씩 놓여 용지와 함께 스크롤된다(붙박이면 위치를 알 수 없다).
    ============================================================ */
 .jan-ruler {
-  --ruler-line: #9aa1ab;
+  --ruler-line: #8a919b;
+  --ruler-line-weak: #b9bec6;
   --ruler-pad: #d8dade;
   --ruler-face: #ffffff;
   font-family: var(--jan-editor-font);
-  color: #5b6068;
+  color: #4a4f57;
   pointer-events: none;
 }
+/* 가로 자 — 화면 위에 붙어 있으므로 아래 여백까지 자기 배경으로 덮는다.
+   (margin 으로 띄우면 그 틈으로 스크롤되는 본문 글자가 비쳐 보인다) */
 .jan-ruler-h {
   grid-area: hruler;
   position: sticky;
   top: 0;
   z-index: 6;
+  box-sizing: content-box;
   width: var(--jan-page-w, 210mm);
-  height: 20px;
-  margin-bottom: 6px;
+  height: 22px;
+  padding-bottom: 8px;
+  background: var(--jan-bg, #f7f7f7);
+}
+/* 자 위쪽 띠 — 스크롤 컨테이너의 위 여백(24px) 안에서는 자가 붙지 못해 그 틈으로
+   본문 글자가 지나간다. 자와 같은 배경을 위로 넉넉히 깔아 가린다. */
+.jan-ruler-h::before {
+  content: '';
+  position: absolute;
+  left: -56px;
+  right: -56px;
+  bottom: 100%;
+  height: 56px;
+  background: var(--jan-bg, #f7f7f7);
 }
 .jan-ruler-v {
-  width: 20px;
+  width: 22px;
   height: var(--jan-page-h, 297mm);
 }
 .jan-ruler-vstack {
@@ -3588,49 +3604,66 @@ html, body, #root {
 }
 .jan-ruler-h .jan-ruler-pad { top: 0; bottom: 0; }
 .jan-ruler-v .jan-ruler-pad { left: 0; right: 0; }
-/* 눈금 — 1cm 은 길고 숫자, 5mm 는 짧게 */
-.jan-ruler-tick {
+/* 눈금 — 1mm 짧게, 5mm 조금 길게, 10mm 가장 길게.
+   1mm 간격이면 쪽마다 수백 개라 요소로 그리지 않고 배경으로 그린다. */
+.jan-ruler-ticks {
   position: absolute;
-  background: var(--ruler-line);
+  inset: 0;
+  background-repeat: repeat-x;
+  background-position: left bottom;
 }
-.jan-ruler-h .jan-ruler-tick { top: 50%; width: 1px; height: 4px; transform: translateY(-2px); }
-.jan-ruler-h .jan-ruler-tick.is-cm { height: 7px; transform: translateY(-3.5px); }
-.jan-ruler-v .jan-ruler-tick { right: 0; height: 1px; width: 4px; }
-.jan-ruler-v .jan-ruler-tick.is-cm { width: 7px; }
-.jan-ruler-tick em {
+.jan-ruler-h .jan-ruler-ticks {
+  background-image:
+    repeating-linear-gradient(to right, var(--ruler-line) 0 1px, transparent 1px 10mm),
+    repeating-linear-gradient(to right, var(--ruler-line) 0 1px, transparent 1px 5mm),
+    repeating-linear-gradient(to right, var(--ruler-line-weak) 0 1px, transparent 1px 1mm);
+  background-size: 100% 8px, 100% 5px, 100% 3px;
+}
+.jan-ruler-v .jan-ruler-ticks {
+  background-repeat: repeat-y;
+  background-position: right top;
+  background-image:
+    repeating-linear-gradient(to bottom, var(--ruler-line) 0 1px, transparent 1px 10mm),
+    repeating-linear-gradient(to bottom, var(--ruler-line) 0 1px, transparent 1px 5mm),
+    repeating-linear-gradient(to bottom, var(--ruler-line-weak) 0 1px, transparent 1px 1mm);
+  background-size: 8px 100%, 5px 100%, 3px 100%;
+}
+/* cm 숫자 — 눈금이 없는 쪽(가로는 위, 세로는 왼쪽)에 두어 눈금과 겹치지 않는다 */
+.jan-ruler-num {
   position: absolute;
-  font-style: normal;
   font-size: 8.5px;
   line-height: 1;
   color: #4a4f57;
 }
-.jan-ruler-h .jan-ruler-tick em { top: -8px; left: 50%; transform: translateX(-50%); }
-.jan-ruler-v .jan-ruler-tick em { left: 2px; top: 50%; transform: translateY(-50%); }
+.jan-ruler-h .jan-ruler-num { top: 2px; transform: translateX(-50%); }
+.jan-ruler-v .jan-ruler-num { left: 2px; transform: translateY(-50%); font-size: 8px; }
 /* 현재 문단 들여쓰기 손잡이 — 끌어서 조절 */
 .jan-ruler-grip {
   position: absolute;
   width: 11px;
   height: 8px;
   padding: 0;
-  border: 1px solid #6b7280;
-  background: #f4f5f7;
+  border: 1px solid #5b6068;
+  background: #eceef1;
   cursor: ew-resize;
   pointer-events: auto;
   transform: translateX(-50%);
+  z-index: 2;
 }
 .jan-ruler-grip:hover, .jan-ruler-grip.is-dragging { background: var(--accent, #D97757); border-color: var(--accent, #D97757); }
-/* 첫 줄 = 위쪽 아래꼭짓점 삼각형, 왼쪽 = 아래쪽 위꼭짓점 삼각형, 오른쪽 = 아래쪽 삼각형 */
 .jan-ruler-grip.is-first { top: 0; clip-path: polygon(0 0, 100% 0, 50% 100%); }
 .jan-ruler-grip.is-left { bottom: 0; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
 .jan-ruler-grip.is-right { bottom: 0; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
 .jan-ruler-cap { display: none; }
 .jan-theme-dark .jan-ruler {
-  --ruler-line: #6b7078;
+  --ruler-line: #8d939b;
+  --ruler-line-weak: #5f656d;
   --ruler-pad: #3a3d42;
   --ruler-face: #26282c;
-  color: #b9bec6;
+  color: #c3c8d0;
 }
-.jan-theme-dark .jan-ruler-tick em { color: #c3c8d0; }
+.jan-theme-dark .jan-ruler-h { background: var(--jan-bg, #1e1e1e); }
+.jan-theme-dark .jan-ruler-num { color: #c3c8d0; }
 .jan-theme-dark .jan-ruler-grip { background: #43474d; border-color: #8b919a; }
 
 .jan-editor-pages[data-view-layout="draft"] .jan-page-shell {

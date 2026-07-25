@@ -15,13 +15,11 @@ const PX_PER_IN = 96
 export const mmToPx = (mm: number) => (mm * PX_PER_IN) / MM_PER_IN
 export const pxToMm = (px: number) => (px * MM_PER_IN) / PX_PER_IN
 
-/** 1cm 간격 숫자 + 5mm 보조 눈금 */
-function ticksOf(lengthMm: number) {
-  const ticks: Array<{ mm: number; kind: 'cm' | 'half' }> = []
-  for (let mm = 5; mm < lengthMm; mm += 5) {
-    ticks.push({ mm, kind: mm % 10 === 0 ? 'cm' : 'half' })
-  }
-  return ticks
+/** 1cm 간격 숫자 (눈금 자체는 CSS 그라데이션으로 1mm 마다 그린다) */
+function numbersOf(lengthMm: number) {
+  const out: number[] = []
+  for (let mm = 10; mm < lengthMm; mm += 10) out.push(mm)
+  return out
 }
 
 interface Margins {
@@ -121,7 +119,7 @@ export function HorizontalRuler({
     setDrag({ handle, px: toValuePx(e.clientX) })
   }
 
-  const ticks = useMemo(() => ticksOf(widthMm), [widthMm])
+  const numbers = useMemo(() => numbersOf(widthMm), [widthMm])
 
   return (
     <div className="jan-ruler jan-ruler-h" role="img" aria-label={`가로 눈금자 ${Math.round(widthMm)}mm`}>
@@ -129,14 +127,11 @@ export function HorizontalRuler({
         {/* 여백 구간(회색) — 본문이 놓이는 구간만 희게 남는다 */}
         <span className="jan-ruler-pad" style={{ left: 0, width: `${pct(margins.left)}%` }} />
         <span className="jan-ruler-pad" style={{ right: 0, width: `${pct(margins.right)}%` }} />
-        {ticks.map((t) => (
-          <span
-            key={t.mm}
-            className={`jan-ruler-tick is-${t.kind}`}
-            style={{ left: `${pct(t.mm)}%` }}
-            aria-hidden="true"
-          >
-            {t.kind === 'cm' && <em>{t.mm / 10}</em>}
+        {/* 눈금(1·5·10mm)은 배경으로 그리고, 숫자는 그 위 빈 자리에 놓아 겹치지 않게 한다 */}
+        <i className="jan-ruler-ticks" aria-hidden="true" />
+        {numbers.map((mm) => (
+          <span key={mm} className="jan-ruler-num" style={{ left: `${pct(mm)}%` }} aria-hidden="true">
+            {mm / 10}
           </span>
         ))}
         {/* 들여쓰기 손잡이 — 끌어서 현재 문단의 여백을 바꾼다 */}
@@ -187,7 +182,7 @@ export function VerticalRulers({
   pageCount: number
   gapPx: number
 }) {
-  const ticks = useMemo(() => ticksOf(heightMm), [heightMm])
+  const numbers = useMemo(() => numbersOf(heightMm), [heightMm])
   const pct = (mm: number) => (mm / heightMm) * 100
   return (
     <div className="jan-ruler-vstack" style={{ gap: `${gapPx}px` }} aria-hidden="true">
@@ -196,9 +191,10 @@ export function VerticalRulers({
           <div className="jan-ruler-track">
             <span className="jan-ruler-pad" style={{ top: 0, height: `${pct(margins.top)}%` }} />
             <span className="jan-ruler-pad" style={{ bottom: 0, height: `${pct(margins.bottom)}%` }} />
-            {ticks.map((t) => (
-              <span key={t.mm} className={`jan-ruler-tick is-${t.kind}`} style={{ top: `${pct(t.mm)}%` }}>
-                {t.kind === 'cm' && <em>{t.mm / 10}</em>}
+            <i className="jan-ruler-ticks" />
+            {numbers.map((mm) => (
+              <span key={mm} className="jan-ruler-num" style={{ top: `${pct(mm)}%` }}>
+                {mm / 10}
               </span>
             ))}
           </div>
