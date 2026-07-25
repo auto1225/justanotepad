@@ -105,6 +105,30 @@ function reflowOnce(view: EditorView, contentHeight: number): boolean {
   const pageType = state.schema.nodes[PAGE_NODE_NAME]
   if (!pageType) return false
 
+  // 0) 앞 쪽이 텅 비었는데 뒤에 내용이 있으면 크기를 따지지 않고 당겨온다.
+  //    (한 쪽보다 큰 블록이 통째로 밀리면 앞 쪽이 백지로 남는다 — 어떤 경우에도 잘못이다)
+  const NEARLY_EMPTY = Math.max(24, contentHeight * 0.12)
+  for (let i = 0; i < pages.length - 1; i++) {
+    const { pos, node } = pages[i]
+    const m = measure(view, pos)
+    if (!m || m.used > NEARLY_EMPTY) continue
+    const next = pages[i + 1]
+    const first = next.node.firstChild
+    if (!first) continue
+    const tr = state.tr
+    const takeFrom = next.pos + 1
+    tr.delete(takeFrom, takeFrom + first.nodeSize)
+    tr.insert(tr.mapping.map(pos + node.nodeSize - 1), first)
+    collectPages(tr.doc)
+      .filter((p) => p.node.childCount === 0)
+      .reverse()
+      .forEach((p) => tr.delete(p.pos, p.pos + p.node.nodeSize))
+    tr.setMeta(reflowKey, true)
+    tr.setMeta('addToHistory', false)
+    view.dispatch(tr)
+    return true
+  }
+
   // 1) 넘침 → 용지를 넘어가는 블록 전체를 한 번에 다음 쪽으로 (한 블록씩 옮기면 너무 느리다)
   for (let i = 0; i < pages.length; i++) {
     const { pos, node } = pages[i]
@@ -123,6 +147,13 @@ function reflowOnce(view: EditorView, contentHeight: number): boolean {
       acc += h
     }
     if (cutIndex < 1) continue
+    // 잘라낼 지점 앞이 거의 비어 있다면(큰 글씨 문단·큰 표가 남은 자리를 다 먹는 경우)
+    // 그 큰 블록까지 이 쪽에 두고 그 다음부터 넘긴다. 앞 쪽을 백지로 만들고 뒤로
+    // 넘기는 것이 가장 나쁘고, 밀기를 아예 포기하면 문서 전체가 한 쪽에 쌓인다.
+    if (acc <= NEARLY_EMPTY) {
+      if (cutIndex + 1 >= node.childCount) continue // 뒤에 밀 것이 없다 → 넘침 허용
+      cutIndex += 1
+    }
 
     // cutIndex 이후 전부를 잘라 옮긴다
     let offset = 0
