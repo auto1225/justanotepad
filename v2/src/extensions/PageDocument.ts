@@ -1,7 +1,9 @@
 import { Node, Extension } from '@tiptap/core'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
+import { canJoin } from '@tiptap/pm/transform'
+import type { Transaction } from '@tiptap/pm/state'
 import type { EditorView } from '@tiptap/pm/view'
-import type { Node as PMNode } from '@tiptap/pm/model'
+import type { Node as PMNode, NodeType } from '@tiptap/pm/model'
 
 /**
  * 독립 페이지 문서 모델 — 용지 규격에 따라 각 쪽을 실제 노드(page)로 만든다.
@@ -69,10 +71,37 @@ export const ContinuedAttr = Extension.create({
   },
 })
 
+/** 줄 상자 하나 — 화면 좌표 기준 위·아래 */
+interface LineBox { top: number; bottom: number }
+
 /**
- * 요소 안에서 주어진 높이까지 들어가는 마지막 줄의 끝 문자 위치를 찾는다.
- * 문자 하나씩 재면 긴 문단에서 너무 느리므로 이진 탐색으로 좁힌 뒤,
- * 그 문자가 속한 줄의 시작으로 되돌려 "줄 단위"로 자를 지점을 반환한다.
+ * Range 가 돌려준 사각형들을 줄 단위로 묶는다.
+ * 한 줄이라도 굵기·크기가 다른 글자가 섞이면 사각형이 여러 개로 나뉘므로,
+ * 세로로 겹치는 것끼리 한 줄로 합친다.
+ */
+function groupLines(rects: ArrayLike<DOMRect>): LineBox[] {
+  const lines: LineBox[] = []
+  for (const r of Array.from(rects)) {
+    if (r.height <= 0) continue
+    const last = lines[lines.length - 1]
+    if (last && r.top < last.bottom - 1) {
+      last.top = Math.min(last.top, r.top)
+      last.bottom = Math.max(last.bottom, r.bottom)
+      continue
+    }
+    lines.push({ top: r.top, bottom: r.bottom })
+  }
+  return lines
+}
+
+/**
+ * 요소 안에서 maxHeight(화면 px) 안에 들어가는 마지막 줄을 찾아,
+ * 그 다음 줄이 시작하는 문자 위치를 돌려준다 — 줄 중간에서는 자르지 않는다.
+ *
+ * 글자 하나의 사각형이 아니라 줄 상자를 재는 이유: 글자 아래끝은 줄 상자보다
+ * 줄 간격만큼 위에 있어서, 그 값으로 자르면 앞조각이 예상보다 커져 쪽을 넘긴다.
+ * 자를 문자는 "앞에서부터 세어 몇 줄을 차지하는가"로 이진 탐색한다
+ * (문자마다 재면 긴 문단에서 너무 느리다).
  */
 function findLineCut(el: HTMLElement, maxHeight: number): { node: Text; offset: number } | null {
   const texts: Array<{ node: Text; start: number }> = []
@@ -87,45 +116,48 @@ function findLineCut(el: HTMLElement, maxHeight: number): { node: Text; offset: 
   }
   if (total < 2) return null
 
-  const elTop = el.getBoundingClientRect().top
-  const range = document.createRange()
+  /** 문자 인덱스 → 텍스트 노드 안 위치 (끝 경계 포함) */
   const locate = (i: number) => {
     for (let k = texts.length - 1; k >= 0; k--) {
       if (i >= texts[k].start) {
-        const off = Math.max(0, Math.min(i - texts[k].start, texts[k].node.length - 1))
-        return { node: texts[k].node, off }
+        return { node: texts[k].node, off: Math.min(i - texts[k].start, texts[k].node.length) }
       }
     }
     return { node: texts[0].node, off: 0 }
   }
-  const rectAt = (i: number) => {
+
+  const range = document.createRange()
+  const linesUpTo = (i: number): LineBox[] => {
     const { node, off } = locate(i)
-    range.setStart(node, off)
-    range.setEnd(node, off + 1)
-    return range.getBoundingClientRect()
+    range.setStart(texts[0].node, 0)
+    range.setEnd(node, off)
+    return groupLines(range.getClientRects())
   }
 
-  // 1) maxHeight 안에 들어가는 마지막 문자 찾기
-  let lo = 0
-  let hi = total - 1
+  // 1) 문단 전체의 줄 상자 — 어느 줄까지 남는 자리에 들어가는가
+  const all = linesUpTo(total)
+  if (all.length < 2) return null // 한 줄짜리는 쪼갤 수 없다
+  const elTop = el.getBoundingClientRect().top
   let fit = -1
+  for (let i = 0; i < all.length; i++) {
+    if (all[i].bottom - elTop > maxHeight) break
+    fit = i
+  }
+  if (fit < 0) return null              // 첫 줄도 안 들어간다 → 통째로 옮기는 편이 낫다
+  if (fit >= all.length - 1) return null // 전부 들어간다 → 쪼갤 필요 없다
+
+  // 2) (fit+1)번째 줄의 첫 문자 = 자를 지점. 앞에서부터의 줄 수는 단조 증가하므로 이진 탐색
+  const want = fit + 2
+  let lo = 1
+  let hi = total
+  let end = -1
   while (lo <= hi) {
     const mid = (lo + hi) >> 1
-    if (rectAt(mid).bottom - elTop <= maxHeight) { fit = mid; lo = mid + 1 } else { hi = mid - 1 }
+    if (linesUpTo(mid).length >= want) { end = mid; hi = mid - 1 } else { lo = mid + 1 }
   }
-  if (fit < 0) return null            // 첫 줄도 안 들어간다 → 쪼갤 수 없다
-  if (fit >= total - 1) return null   // 전부 들어간다 → 쪼갤 필요 없다
+  if (end <= 1) return null             // 첫 줄부터 넘어간다
 
-  // 2) 다음 문자가 속한 줄의 시작으로 되돌린다 (줄 중간에서 자르지 않기 위해)
-  const nextTop = Math.round(rectAt(fit + 1).top)
-  let cut = fit + 1
-  for (let i = fit; i >= 0 && cut - i < 400; i--) {
-    if (Math.round(rectAt(i).top) !== nextTop) break
-    cut = i
-  }
-  if (cut <= 0) return null           // 첫 줄부터 넘어간다 → 통째로 옮기는 편이 낫다
-
-  const { node, off } = locate(cut)
+  const { node, off } = locate(end - 1)
   return { node, offset: off }
 }
 
@@ -176,6 +208,99 @@ function collectPages(doc: PMNode): Array<{ pos: number; node: PMNode }> {
   return pages
 }
 
+/** 한 줄이라도 넣어 볼 만한 최소 여유 (이보다 좁으면 문단을 통째로 넘긴다) */
+const MIN_SPLIT_ROOM = 24
+
+/**
+ * 경계에 걸친 문단을 남는 자리(room)만큼 채웠을 때 자를 문서 위치.
+ * 쪼갤 수 없으면 -1 (표·이미지처럼 텍스트가 아니거나, 한 줄도 안 들어가는 경우).
+ */
+function findSplitPos(view: EditorView, childPos: number, child: PMNode, room: number): number {
+  if (!child.isTextblock || child.content.size < 2 || room < MIN_SPLIT_ROOM) return -1
+  const dom = view.nodeDOM(childPos)
+  if (!(dom instanceof HTMLElement)) return -1
+  const rect = dom.getBoundingClientRect()
+  const scale = dom.offsetWidth > 0 ? rect.width / dom.offsetWidth : 1
+  const style = window.getComputedStyle(dom)
+  // room 은 문단의 바깥 크기(여백 포함) 기준이므로, 글자가 놓일 높이만 남긴다
+  const outer =
+    (parseFloat(style.marginTop) || 0) +
+    (parseFloat(style.marginBottom) || 0) +
+    (parseFloat(style.paddingBottom) || 0) +
+    (parseFloat(style.borderBottomWidth) || 0)
+  const avail = (room - outer) * (scale || 1) - 1
+  if (avail <= 0) return -1
+  const hit = findLineCut(dom, avail)
+  if (!hit) return -1
+  let at = -1
+  try { at = view.posAtDOM(hit.node, hit.offset) } catch { return -1 }
+  // 문단 맨 앞·맨 뒤에서 자르면 빈 조각이 생긴다
+  if (at <= childPos + 1 || at >= childPos + child.nodeSize - 1) return -1
+  return at
+}
+
+/**
+ * 한 쪽의 childIndex 이후 블록 전부를 다음 쪽으로 옮긴다 (마지막 쪽이면 새 쪽을 만든다).
+ * 이미 진행 중인 트랜잭션의 문서를 기준으로 계산하므로 쪼개기와 같은 트랜잭션에서 쓸 수 있다.
+ */
+function pushRestToNextPage(tr: Transaction, pageIndex: number, childIndex: number, pageType: NodeType): boolean {
+  const pages = collectPages(tr.doc)
+  const cur = pages[pageIndex]
+  if (!cur || childIndex < 1 || childIndex >= cur.node.childCount) return false
+  const { pos, node } = cur
+
+  let offset = 0
+  for (let c = 0; c < childIndex; c++) offset += node.child(c).nodeSize
+  const cutFrom = pos + 1 + offset
+  const cutTo = pos + 1 + node.content.size
+  const moved = node.content.cut(offset)
+
+  tr.delete(cutFrom, cutTo)
+  // 잘라낸 만큼 이 쪽이 짧아졌다 → 쪽이 끝나는 위치를 다시 계산한다
+  const pageEnd = pos + node.nodeSize - (cutTo - cutFrom)
+  if (pageIndex === pages.length - 1) {
+    tr.insert(pageEnd, pageType.create(null, moved))
+  } else {
+    tr.insert(pageEnd + 1, moved) // 다음 쪽 안쪽(첫 블록 앞)
+    // 다음 쪽이 이미 같은 문단의 조각으로 시작했다면 방금 넘긴 조각과 하나로 붙인다
+    joinContinuedAt(tr, pageEnd + 1 + moved.size)
+  }
+  return true
+}
+
+/**
+ * 다음 쪽 앞에서 블록 count 개를 잘라내 돌려준다.
+ * 그 쪽의 내용을 전부 가져가면 쪽 노드째 지운다 — 내용만 지우면 ProseMirror 가
+ * block+ 를 맞추려고 빈 문단을 채워 넣어 빈 용지가 유령처럼 남는다.
+ */
+function takeFromPageStart(tr: Transaction, page: { pos: number; node: PMNode }, count: number) {
+  let size = 0
+  for (let c = 0; c < count; c++) size += page.node.child(c).nodeSize
+  const moved = page.node.content.cut(0, size)
+  if (count >= page.node.childCount) tr.delete(page.pos, page.pos + page.node.nodeSize)
+  else tr.delete(page.pos + 1, page.pos + 1 + size)
+  return moved
+}
+
+/** 요소의 첫 줄 높이(화면 px) — 앞 쪽에 한 줄이라도 더 올릴 수 있는지 판단에 쓴다 */
+function firstLineHeight(dom: HTMLElement): number {
+  const range = document.createRange()
+  range.selectNodeContents(dom)
+  const lines = groupLines(range.getClientRects())
+  return lines.length ? lines[0].bottom - lines[0].top : 0
+}
+
+/**
+ * 옮긴 자리에서 이어짐 조각을 앞 조각에 도로 붙인다.
+ * 리플로우가 방금 만든 경계에서만 부른다 — 문서 전체를 훑어 janCont 를 무조건 합치면
+ * 사용자가 조각 안에서 엔터로 문단을 나눈 것까지 되돌려 버린다(엔터가 먹히지 않는다).
+ */
+function joinContinuedAt(tr: Transaction, pos: number) {
+  if (pos <= 0 || pos >= tr.doc.content.size) return
+  if (!tr.doc.resolve(pos).nodeAfter?.attrs?.janCont) return
+  if (canJoin(tr.doc, pos)) tr.join(pos, 1)
+}
+
 /**
  * 한 번의 리플로우 패스 — 넘치는 첫 쪽에서 마지막 블록을 다음 쪽으로 밀거나,
  * 여유 있는 쪽으로 다음 쪽 첫 블록을 당겨온다. 변경했으면 true.
@@ -187,7 +312,7 @@ function reflowOnce(view: EditorView, contentHeight: number): boolean {
   const pageType = state.schema.nodes[PAGE_NODE_NAME]
   if (!pageType) return false
 
-  // 0) 앞 쪽이 텅 비었는데 뒤에 내용이 있으면 크기를 따지지 않고 당겨온다.
+  // 1) 앞 쪽이 텅 비었는데 뒤에 내용이 있으면 크기를 따지지 않고 당겨온다.
   //    (한 쪽보다 큰 블록이 통째로 밀리면 앞 쪽이 백지로 남는다 — 어떤 경우에도 잘못이다)
   const NEARLY_EMPTY = Math.max(24, contentHeight * 0.12)
   for (let i = 0; i < pages.length - 1; i++) {
@@ -195,23 +320,19 @@ function reflowOnce(view: EditorView, contentHeight: number): boolean {
     const m = measure(view, pos)
     if (!m || m.used > NEARLY_EMPTY) continue
     const next = pages[i + 1]
-    const first = next.node.firstChild
-    if (!first) continue
+    if (!next.node.firstChild) continue
     const tr = state.tr
-    const takeFrom = next.pos + 1
-    tr.delete(takeFrom, takeFrom + first.nodeSize)
-    tr.insert(tr.mapping.map(pos + node.nodeSize - 1), first)
-    collectPages(tr.doc)
-      .filter((p) => p.node.childCount === 0)
-      .reverse()
-      .forEach((p) => tr.delete(p.pos, p.pos + p.node.nodeSize))
+    const moved = takeFromPageStart(tr, next, 1)
+    const at = tr.mapping.map(pos + node.nodeSize - 1)
+    tr.insert(at, moved)
+    joinContinuedAt(tr, at)
     tr.setMeta(reflowKey, true)
     tr.setMeta('addToHistory', false)
     view.dispatch(tr)
     return true
   }
 
-  // 1) 넘침 → 용지를 넘어가는 블록 전체를 한 번에 다음 쪽으로 (한 블록씩 옮기면 너무 느리다)
+  // 2) 넘침 → 용지를 넘어가는 블록 전체를 한 번에 다음 쪽으로 (한 블록씩 옮기면 너무 느리다)
   for (let i = 0; i < pages.length; i++) {
     const { pos, node } = pages[i]
     const m = measure(view, pos)
@@ -229,40 +350,28 @@ function reflowOnce(view: EditorView, contentHeight: number): boolean {
     }
     if (cutIndex < 0) continue
 
-    // ── 줄 단위 분할 — 경계에 걸친 문단을 남는 자리만큼 채우고 그 줄에서 쪼갠다
+    // ── 줄 단위 분할 — 경계에 걸친 문단을 남는 자리만큼 채우고 그 줄에서 쪼갠 뒤,
+    //    같은 트랜잭션에서 뒷조각부터 다음 쪽으로 넘긴다.
     //    (워드·한글과 같은 흐름. 문단을 통째로 넘기면 쪽 바닥이 비어 버린다)
+    //    쪼개기만 하고 다음 패스에 맡기면 안 된다 — 그때는 앞조각이 이미 쪽을 꽉 채워
+    //    남는 자리가 24px 미만이라 뒷조각이 같은 쪽에 남고 용지만 늘어난다.
     {
-      const boundary = cutIndex // 경계에 걸친 블록
-      const child = node.child(boundary)
-      const room = contentHeight - acc
+      let childOffset = 0
+      for (let c = 0; c < cutIndex; c++) childOffset += node.child(c).nodeSize
+      const child = node.child(cutIndex) // 경계에 걸친 블록
       // 텍스트 문단·제목만 쪼갠다 (표·이미지·콜아웃은 블록 단위로 옮긴다)
-      if (child.isTextblock && child.content.size > 1 && room > 24) {
-        const childPos = (() => {
-          let off = 0
-          for (let c = 0; c < boundary; c++) off += node.child(c).nodeSize
-          return pos + 1 + off
-        })()
-        const dom = view.nodeDOM(childPos)
-        if (dom instanceof HTMLElement) {
-          const rect = dom.getBoundingClientRect()
-          const scale = dom.offsetWidth > 0 ? rect.width / dom.offsetWidth : 1
-          // 문자 아래끝 기준이라 실제 렌더 높이가 몇 px 더 크다 → 여유를 둔다
-          const hit = findLineCut(dom, room * (scale || 1) - 8)
-          if (hit) {
-            let splitAt = -1
-            try { splitAt = view.posAtDOM(hit.node, hit.offset) } catch { splitAt = -1 }
-            const inside = splitAt > childPos && splitAt < childPos + child.nodeSize - 1
-            if (inside) {
-              const tr = state.tr
-              // 쪼갠 뒷조각에 "이어짐" 표시를 처음부터 붙인다 (저장 시 원래 한 문단으로 합침)
-              tr.split(splitAt, 1, [{ type: child.type, attrs: { ...child.attrs, janCont: '1' } }])
-              tr.setMeta(reflowKey, true)
-              tr.setMeta('addToHistory', false)
-              view.dispatch(tr)
-              return true // 다음 패스에서 뒷조각부터 다음 쪽으로 밀려간다
-            }
-          }
+      const splitAt = findSplitPos(view, pos + 1 + childOffset, child, contentHeight - acc)
+      if (splitAt > 0) {
+        const tr = state.tr
+        // 쪼갠 뒷조각에 "이어짐" 표시를 처음부터 붙인다 (저장 시 원래 한 문단으로 합침)
+        tr.split(splitAt, 1, [{ type: child.type, attrs: { ...child.attrs, janCont: '1' } }])
+        if (pushRestToNextPage(tr, i, cutIndex + 1, pageType)) {
+          tr.setMeta(reflowKey, true)
+          tr.setMeta('addToHistory', false)
+          view.dispatch(tr)
+          return true
         }
+        // 넘길 수 없으면 쪼갠 것도 없던 일로 하고(dispatch 하지 않는다) 블록 단위 밀기로
       }
     }
 
@@ -299,7 +408,39 @@ function reflowOnce(view: EditorView, contentHeight: number): boolean {
     return true
   }
 
-  // 2) 여유 → 다음 쪽에서 들어갈 만큼 당겨오기 (내용을 지웠을 때 빈 쪽·구멍이 남지 않게)
+  // 3) 여유 → 쪼갠 조각 되돌리기. 앞 쪽에 한 줄이라도 더 들어가면 조각을 도로 붙여
+  //    한 문단으로 만든다. 넘치면 위의 넘침 단계가 정확한 줄에서 다시 쪼개므로,
+  //    결과적으로 지운 만큼 앞 쪽이 다시 채워진다 (당기기는 블록 단위라 이 경로가 필요하다).
+  for (let i = 0; i < pages.length - 1; i++) {
+    const { pos, node } = pages[i]
+    const next = pages[i + 1]
+    const frag = next.node.firstChild
+    const prev = node.lastChild
+    if (!frag || !prev || !frag.attrs?.janCont || !frag.isTextblock || !prev.isTextblock) continue
+    const m = measure(view, pos)
+    if (!m) continue
+    const room = contentHeight - m.used
+    if (room < MIN_SPLIT_ROOM) continue
+    const fragDom = view.nodeDOM(next.pos + 1)
+    if (!(fragDom instanceof HTMLElement)) continue
+    const rect = fragDom.getBoundingClientRect()
+    const scale = fragDom.offsetWidth > 0 ? rect.width / fragDom.offsetWidth : 1
+    const line = firstLineHeight(fragDom) / (scale || 1)
+    // 한 줄도 못 올릴 여유라면 그대로 둔다 (되돌렸다 그대로 다시 쪼개는 왕복을 막는다)
+    if (!line || room < line + 1) continue
+
+    const tr = state.tr
+    const moved = takeFromPageStart(tr, next, 1)
+    const joinPos = pos + node.nodeSize - 1 // 앞 쪽 마지막 블록 뒤
+    tr.insert(joinPos, moved)
+    joinContinuedAt(tr, joinPos)
+    tr.setMeta(reflowKey, true)
+    tr.setMeta('addToHistory', false)
+    view.dispatch(tr)
+    return true
+  }
+
+  // 4) 여유 → 다음 쪽에서 들어갈 만큼 당겨오기 (내용을 지웠을 때 빈 쪽·구멍이 남지 않게)
   for (let i = 0; i < pages.length - 1; i++) {
     const { pos, node } = pages[i]
     const m = measure(view, pos)
@@ -316,21 +457,14 @@ function reflowOnce(view: EditorView, contentHeight: number): boolean {
       room -= nm.heights[c]
       take++
     }
-    // 다음 쪽을 완전히 비우게 되면 그 쪽 자체를 없애야 하므로 허용, 아니면 최소 1개 남김
+    // 다음 쪽을 완전히 비우게 되면 그 쪽 자체가 사라진다 (takeFromPageStart 가 처리)
     if (take === 0) continue
 
-    let size = 0
-    for (let c = 0; c < take; c++) size += next.node.child(c).nodeSize
-    const moved = next.node.content.cut(0, size)
     const tr = state.tr
-    const takeFrom = next.pos + 1
-    tr.delete(takeFrom, takeFrom + size)
-    tr.insert(tr.mapping.map(pos + node.nodeSize - 1), moved)
-    // 텅 빈 쪽은 제거
-    collectPages(tr.doc)
-      .filter((p) => p.node.childCount === 0)
-      .reverse()
-      .forEach((p) => tr.delete(p.pos, p.pos + p.node.nodeSize))
+    const moved = takeFromPageStart(tr, next, take)
+    const at = tr.mapping.map(pos + node.nodeSize - 1)
+    tr.insert(at, moved)
+    joinContinuedAt(tr, at)
     tr.setMeta(reflowKey, true)
     tr.setMeta('addToHistory', false)
     view.dispatch(tr)
@@ -356,6 +490,26 @@ export const PageReflow = Extension.create<ReflowOptions>({
     return [
       new Plugin({
         key: new PluginKey('janPageReflowRunner'),
+        /**
+         * 사용자가 이어짐 조각 안에서 엔터를 치면 새로 생긴 문단까지 이어짐 표시를
+         * 물려받는다(ProseMirror 의 split 은 속성을 그대로 복사한다). 그대로 두면
+         * 저장할 때 앞 문단에 합쳐져 사용자가 나눈 문단이 사라진다.
+         * 리플로우가 만든 조각은 언제나 쪽의 첫 블록이므로, 그렇지 않은 이어짐 표시는 지운다.
+         */
+        appendTransaction(trs, _oldState, newState) {
+          if (!trs.some((tr) => tr.docChanged)) return null
+          if (trs.some((tr) => tr.getMeta(reflowKey))) return null
+          let tr: Transaction | null = null
+          newState.doc.forEach((page, pageOffset) => {
+            if (page.type.name !== PAGE_NODE_NAME) return
+            page.forEach((block, blockOffset, index) => {
+              if (index === 0 || !block.attrs?.janCont) return
+              tr = tr ?? newState.tr
+              tr.setNodeMarkup(pageOffset + 1 + blockOffset, undefined, { ...block.attrs, janCont: null })
+            })
+          })
+          return tr
+        },
         view(editorView) {
           let raf = 0
           let passes = 0
