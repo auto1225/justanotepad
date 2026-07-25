@@ -5784,6 +5784,17 @@ body.jan-split-dragging * { cursor: inherit !important; }
    (데코레이션 기반 눈금이 아니라 진짜 낱장이므로 엔터·삭제에 정확히 반응하고
     가로 배치도 편집기 하나로 된다)
    ============================================================ */
+/* 기존 용지 껍데기(.jan-page-layout/.jan-page-shell)는 A4 폭을 고정한다 —
+   독립 페이지 모델에서는 페이지 노드가 용지 역할이므로 껍데기 제약을 푼다 */
+.jan-editor-pages[data-page-model="nodes"] .jan-page-layout {
+  display: block !important;
+  width: auto !important;
+  grid-template-columns: none !important;
+}
+.jan-editor-pages[data-page-model="nodes"] .jan-page-shell {
+  width: auto !important;
+  min-height: 0 !important;
+}
 /* 편집기 루트는 용지가 아니라 '책상'이 된다 — 기존 용지 스타일을 무효화 */
 .jan-editor-pages[data-page-model="nodes"] .ProseMirror {
   width: auto !important;
@@ -5827,12 +5838,31 @@ body.jan-split-dragging * { cursor: inherit !important; }
 .jan-editor-pages[data-page-model="nodes"] .ProseMirror { counter-reset: jan-page-counter; }
 .jan-page-node { counter-increment: jan-page-counter; }
 
-/* 쪽 나란히 — 같은 편집기 안에서 용지를 가로로 흘린다 (인스턴스 복제 불필요) */
+/* 쪽 나란히 — 같은 편집기 안에서 용지를 가로로 흘린다 (인스턴스 복제 불필요).
+   컨테이너가 용지 한 장 폭(fit-content)이면 곧바로 줄바꿈되므로 폭을 먼저 넓힌다. */
+.jan-editor-pages[data-page-model="nodes"][data-spread="on"] {
+  width: 100% !important;
+  max-width: none !important;
+}
 .jan-editor-pages[data-page-model="nodes"][data-spread="on"] .ProseMirror {
   flex-direction: row;
   flex-wrap: wrap;
   align-items: flex-start;
   justify-content: center;
   gap: 20px;
+  /* 지정한 쪽 수만큼만 한 줄에 놓이도록 폭을 제한 */
+  max-width: calc(
+    var(--jan-page-w, 210mm) * var(--jan-spread-cols, 2)
+    + 20px * (var(--jan-spread-cols, 2) - 1)
+  ) !important;
+  margin: 0 auto;
 }
 .jan-theme-dark .jan-page-node::after { color: #777; }
+
+/* 독립 페이지 모델에서는 껍데기의 여백 프레임·머리말 미리보기가 용지와 어긋난다
+   (각 페이지 노드가 자체 여백을 갖는다) → 껍데기 장식은 숨긴다 */
+.jan-editor-pages[data-page-model="nodes"] .jan-page-margin-frame,
+.jan-editor-pages[data-page-model="nodes"] .jan-page-running-header,
+.jan-editor-pages[data-page-model="nodes"] .jan-page-running-footer { display: none !important; }
+/* 용지 사이를 또렷하게 */
+.jan-editor-pages[data-page-model="nodes"][data-spread="on"] .ProseMirror { gap: 24px; }

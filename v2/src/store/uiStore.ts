@@ -392,7 +392,7 @@ export const useUIStore = create<UIState>()(
       splitDir: 'h',
       splitRatio: 0.5,
       spreadCols: 0,
-      pageModel: 'legacy',
+      pageModel: 'nodes',
       spellCheck: false,
       sidebarCollapsed: false,
       headingNumbers: false,
@@ -479,6 +479,16 @@ export const useUIStore = create<UIState>()(
         })
       },
     }),
-    { name: 'jan-v2-ui' }
+    {
+      name: 'jan-v2-ui',
+      version: 1,
+      // v0 사용자는 pageModel 이 없다 → 독립 페이지 모델로 이관
+      // (명시적으로 'legacy' 를 고른 설정은 그대로 존중한다)
+      migrate: (persisted, from) => {
+        const state = (persisted || {}) as Record<string, unknown>
+        if (from < 1 && state.pageModel !== 'legacy') state.pageModel = 'nodes'
+        return state as never
+      },
+    }
   )
 )

@@ -235,6 +235,8 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       left: mmToPx(pageMargins.left),
     }
   }, [pageMargins])
+  // 쪽 나란히 편집의 열 수 — pageStyle 이 CSS 변수로 넘긴다 (선언 순서상 여기서 읽는다)
+  const spreadColsForStyle = useUIStore((s) => s.spreadCols) || 2
   const pageStyle = useMemo<CSSProperties>(() => ({
     '--jan-page-w': `${pageMm.widthMm}mm`,
     '--jan-page-h': `${pageMm.heightMm}mm`,
@@ -244,7 +246,9 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
     '--jan-page-margin-bottom': `${pageMargins.bottom}mm`,
     '--jan-page-margin-left': `${pageMargins.left}mm`,
     '--jan-page-columns': pageColumnCount,
-  } as CSSProperties), [pageMm.widthMm, pageMm.heightMm, pageMarginMm, pageMargins, pageColumnCount])
+    // 쪽 나란히 편집에서 한 줄에 놓을 용지 수 (독립 페이지 모델 CSS 가 사용)
+    '--jan-spread-cols': spreadColsForStyle,
+  } as CSSProperties), [pageMm.widthMm, pageMm.heightMm, pageMarginMm, pageMargins, pageColumnCount, spreadColsForStyle])
   const rulerMarks = useMemo(() => {
     const width = Math.max(1, Math.round(pageMm.widthMm))
     const marks: Array<{ mm: number; percent: number; major: boolean }> = []
@@ -878,7 +882,9 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
         <div
           className={
             'jan-editor-stack' +
-            (showSpread ? ' has-spread' : splitView ? ` is-split is-split-${splitDir}` : '')
+            // has-spread 는 대표 창을 화면 밖으로 숨긴다 — 별도 셀 인스턴스를 쓰는
+            // legacy 모델 전용. 독립 페이지 모델은 대표 창 안에서 CSS 로 가로 배치한다.
+            (showSpread && !usePageNodes ? ' has-spread' : splitView && !showSpread ? ` is-split is-split-${splitDir}` : '')
           }
           style={splitView && !showSpread ? ({ ['--jan-split-ratio' as string]: `${Math.round(splitRatio * 100)}%` } as CSSProperties) : undefined}
         >
