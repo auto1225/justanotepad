@@ -79,7 +79,8 @@ import { AudioNode, VideoNode } from '../extensions/Media'
 import { PageBreak } from '../extensions/PageBreak'
 import { PaperTag, PaperBlockAttrs } from '../extensions/PaperTag'
 import { CurrentParaHighlight } from '../extensions/CurrentParaHighlight'
-import { PageDoc, PageNode, PageReflow, ContinuedAttr, getSavableHtml } from '../extensions/PageDocument'
+import { PageDoc, PageNode, PageReflow, ContinuedAttr, getSavableHtml, PAGE_NODE_NAME } from '../extensions/PageDocument'
+import { HorizontalRuler, VerticalRulers } from './PageRulers'
 import { PageThumbnailPanel } from './PageThumbnailPanel'
 import { SplitEditorPane } from './SplitEditorPane'
 import { PageSpreadView } from './PageSpreadView'
@@ -249,33 +250,6 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
     // 쪽 나란히 편집에서 한 줄에 놓을 용지 수 (독립 페이지 모델 CSS 가 사용)
     '--jan-spread-cols': spreadColsForStyle,
   } as CSSProperties), [pageMm.widthMm, pageMm.heightMm, pageMarginMm, pageMargins, pageColumnCount, spreadColsForStyle])
-  const rulerMarks = useMemo(() => {
-    const width = Math.max(1, Math.round(pageMm.widthMm))
-    const marks: Array<{ mm: number; percent: number; major: boolean }> = []
-    for (let mm = 0; mm <= width; mm += 10) {
-      marks.push({ mm, percent: (mm / width) * 100, major: mm % 50 === 0 })
-    }
-    if (marks[marks.length - 1]?.mm !== width) {
-      marks.push({ mm: width, percent: 100, major: true })
-    }
-    return marks
-  }, [pageMm.widthMm])
-  const verticalRulerMarks = useMemo(() => {
-    const height = Math.max(1, Math.round(pageMm.heightMm))
-    const marks: Array<{ mm: number; percent: number; major: boolean }> = []
-    for (let mm = 0; mm <= height; mm += 10) {
-      marks.push({ mm, percent: (mm / height) * 100, major: mm % 50 === 0 })
-    }
-    if (marks[marks.length - 1]?.mm !== height) {
-      marks.push({ mm: height, percent: 100, major: true })
-    }
-    return marks
-  }, [pageMm.heightMm])
-  const leftMarginPercent = Math.min(100, Math.max(0, (pageMargins.left / pageMm.widthMm) * 100))
-  const rightMarginPercent = Math.min(100, Math.max(0, (pageMargins.right / pageMm.widthMm) * 100))
-  const topMarginPercent = Math.min(100, Math.max(0, (pageMargins.top / pageMm.heightMm) * 100))
-  const bottomMarginPercent = Math.min(100, Math.max(0, (pageMargins.bottom / pageMm.heightMm) * 100))
-
   const initialContent = memo?.content || '<p></p>'
   const title = memo?.title || '새 메모'
   // tiptap-pagination-plus 는 {page} 만 치환하므로 {total} 은 span 으로 바꿔두고
@@ -495,6 +469,27 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
     },
     [editorExtensions, scheduleEditorContentCommit]
   )
+
+  /* 세로 눈금자를 쪽마다 하나씩 놓기 위해 현재 쪽 수를 따라간다 (독립 페이지 모델) */
+  const [pageCount, setPageCount] = useState(1)
+  useEffect(() => {
+    if (!editor || !usePageNodes) {
+      setPageCount(1)
+      return
+    }
+    const read = () => {
+      let n = 0
+      editor.state.doc.forEach((node) => {
+        if (node.type.name === PAGE_NODE_NAME) n++
+      })
+      setPageCount((prev) => (prev === (n || 1) ? prev : n || 1))
+    }
+    read()
+    editor.on('transaction', read)
+    return () => {
+      editor.off('transaction', read)
+    }
+  }, [editor, usePageNodes])
 
   useEffect(() => {
     if (!editor) return
@@ -909,60 +904,17 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
           data-first-running={firstPageRunningOff ? 'off' : 'on'}
           style={pageStyle}
         >
-          {shouldShowRulers && (
-            <div className="jan-page-ruler" role="img" aria-label={`가로 페이지 눈금자 ${Math.round(pageMm.widthMm)}mm`}>
-              <div className="jan-page-ruler-track" aria-hidden="true">
-                {rulerMarks.map((mark) => (
-                  <span
-                    key={mark.mm}
-                    className={'jan-page-ruler-tick' + (mark.major ? ' is-major' : '')}
-                    style={{ left: `${mark.percent}%` }}
-                  >
-                    {mark.major && <em>{mark.mm}</em>}
-                  </span>
-                ))}
-                <span
-                  className="jan-page-ruler-margin jan-page-ruler-margin-left"
-                  style={{ left: `${leftMarginPercent}%` }}
-                >
-                  <b>{pageMargins.left}mm</b>
-                </span>
-                <span
-                  className="jan-page-ruler-margin jan-page-ruler-margin-right"
-                  style={{ right: `${rightMarginPercent}%` }}
-                >
-                  <b>{pageMargins.right}mm</b>
-                </span>
-              </div>
-            </div>
-          )}
           <div className="jan-page-layout">
             {shouldShowRulers && (
-              <div className="jan-page-vertical-ruler" role="img" aria-label={`세로 페이지 눈금자 ${Math.round(pageMm.heightMm)}mm`}>
-                <div className="jan-page-vertical-ruler-track" aria-hidden="true">
-                  {verticalRulerMarks.map((mark) => (
-                    <span
-                      key={mark.mm}
-                      className={'jan-page-vertical-ruler-tick' + (mark.major ? ' is-major' : '')}
-                      style={{ top: `${mark.percent}%` }}
-                    >
-                      {mark.major && <em>{mark.mm}</em>}
-                    </span>
-                  ))}
-                  <span
-                    className="jan-page-vertical-ruler-margin jan-page-vertical-ruler-margin-top"
-                    style={{ top: `${topMarginPercent}%` }}
-                  >
-                    <b>{pageMargins.top}mm</b>
-                  </span>
-                  <span
-                    className="jan-page-vertical-ruler-margin jan-page-vertical-ruler-margin-bottom"
-                    style={{ bottom: `${bottomMarginPercent}%` }}
-                  >
-                    <b>{pageMargins.bottom}mm</b>
-                  </span>
-                </div>
-              </div>
+              <>
+                <HorizontalRuler widthMm={pageMm.widthMm} margins={pageMargins} editor={editor} />
+                <VerticalRulers
+                  heightMm={pageMm.heightMm}
+                  margins={pageMargins}
+                  pageCount={usePageNodes ? pageCount : 1}
+                  gapPx={32}
+                />
+              </>
             )}
             <div className="jan-page-shell" data-has-running-preview={hasRunningPreview ? 'true' : 'false'}>
               <EditorContent editor={editor} />

@@ -155,14 +155,18 @@ test.describe('v2 smoke', () => {
     await expect(pages).toHaveAttribute('data-page-orientation', 'portrait')
     await expect(pages).toHaveAttribute('data-page-columns', '1')
     await expect(page.locator('.jan-page-running-footer')).toHaveCount(0)
-    const ruler = page.getByRole('img', { name: /가로 페이지 눈금자/ })
-    const verticalRuler = page.getByRole('img', { name: /세로 페이지 눈금자/ })
+    const ruler = page.getByRole('img', { name: /가로 눈금자/ })
+    const verticalRuler = page.locator('.jan-ruler-v').first()
     await expect(ruler).toBeVisible()
     await expect(verticalRuler).toBeVisible()
-    await expect(ruler.locator('.jan-page-ruler-margin-left')).toContainText('20mm')
-    await expect(ruler.locator('.jan-page-ruler-margin-right')).toContainText('20mm')
-    await expect(verticalRuler.locator('.jan-page-vertical-ruler-margin-top')).toContainText('20mm')
-    await expect(verticalRuler.locator('.jan-page-vertical-ruler-margin-bottom')).toContainText('20mm')
+    // 여백은 눈금자의 회색 구간으로 보인다 — 20mm 는 96dpi 기준 약 75.6px
+    const padWidths = await ruler.locator('.jan-ruler-pad').evaluateAll((els) =>
+      els.map((el) => Math.round(el.getBoundingClientRect().width))
+    )
+    expect(padWidths).toHaveLength(2)
+    padWidths.forEach((w) => expect(Math.abs(w - 76)).toBeLessThanOrEqual(2))
+    // 들여쓰기 손잡이(첫 줄·왼쪽·오른쪽)
+    await expect(ruler.locator('.jan-ruler-grip')).toHaveCount(3)
     const pageStatus = page.getByRole('button', { name: '상태바 페이지 설정' })
     await expect(pageStatus).toContainText('인쇄')
     await expect(pageStatus).toContainText('A4')
@@ -173,8 +177,28 @@ test.describe('v2 smoke', () => {
     await expect(page.locator('.jan-page-settings-modal')).toBeVisible()
     await page.locator('.jan-page-settings-modal').getByLabel('닫기').click()
 
-    const backgroundImage = await editor.evaluate((node) => getComputedStyle(node).backgroundImage)
+    // 노트 줄 무늬는 노트 화면(초안 보기·기존 모델)에만 그린다 —
+    // 인쇄 보기의 독립 페이지 모델에서 이 요소는 용지가 아니라 '책상'이라
+    // 여기에 무늬를 그리면 용지 밖에 줄이 그어진다.
+    await page.evaluate(() => {
+      const raw = JSON.parse(localStorage.getItem('jan-v2-ui') || '{}')
+      raw.state = { ...(raw.state || {}), pageModel: 'legacy' }
+      localStorage.setItem('jan-v2-ui', JSON.stringify(raw))
+    })
+    await page.reload()
+    await page.locator('.ProseMirror').first().waitFor({ state: 'visible', timeout: 15000 })
+    const backgroundImage = await page
+      .locator('.ProseMirror')
+      .first()
+      .evaluate((node) => getComputedStyle(node).backgroundImage)
     expect(backgroundImage).toContain('repeating-linear-gradient')
+    await page.evaluate(() => {
+      const raw = JSON.parse(localStorage.getItem('jan-v2-ui') || '{}')
+      raw.state = { ...(raw.state || {}), pageModel: 'nodes' }
+      localStorage.setItem('jan-v2-ui', JSON.stringify(raw))
+    })
+    await page.reload()
+    await page.locator('.ProseMirror').first().waitFor({ state: 'visible', timeout: 15000 })
 
     await page.getByRole('button', { name: '설정', exact: true }).click()
     await expect(page.locator('.jan-settings-modal')).toBeVisible()
@@ -206,10 +230,19 @@ test.describe('v2 smoke', () => {
     await expect(pageStatus).toContainText('가로')
     await expect(pageStatus).toContainText('2단')
     await expect(pageStatus).toContainText('상12 우16 하20 좌24mm')
-    await expect(ruler.locator('.jan-page-ruler-margin-left')).toContainText('24mm')
-    await expect(ruler.locator('.jan-page-ruler-margin-right')).toContainText('16mm')
-    await expect(verticalRuler.locator('.jan-page-vertical-ruler-margin-top')).toContainText('12mm')
-    await expect(verticalRuler.locator('.jan-page-vertical-ruler-margin-bottom')).toContainText('20mm')
+    // 바뀐 여백은 눈금자의 회색 구간 폭으로 나타난다 (좌 24mm≈91px, 우 16mm≈60px)
+    const changedPads = await ruler.locator('.jan-ruler-pad').evaluateAll((els) =>
+      els.map((el) => Math.round(el.getBoundingClientRect().width))
+    )
+    expect(Math.abs(changedPads[0] - 91)).toBeLessThanOrEqual(3)
+    expect(Math.abs(changedPads[1] - 60)).toBeLessThanOrEqual(3)
+    const vPads = await page
+      .locator('.jan-ruler-v')
+      .first()
+      .locator('.jan-ruler-pad')
+      .evaluateAll((els) => els.map((el) => Math.round(el.getBoundingClientRect().height)))
+    expect(Math.abs(vPads[0] - 45)).toBeLessThanOrEqual(3)
+    expect(Math.abs(vPads[1] - 76)).toBeLessThanOrEqual(3)
     const columnCount = await editor.evaluate((node) => getComputedStyle(node).columnCount)
     expect(columnCount).toBe('2')
     const padding = await editor.evaluate((node) => {
@@ -384,22 +417,22 @@ test.describe('v2 smoke', () => {
     const pages = page.locator('.jan-editor-pages').first()
     await expect(page.locator('.ProseMirror').first()).toBeVisible({ timeout: 15000 })
     await expect(pages).toHaveAttribute('data-rulers', 'true')
-    await expect(page.getByRole('img', { name: /가로 페이지 눈금자/ })).toBeVisible()
-    await expect(page.getByRole('img', { name: /세로 페이지 눈금자/ })).toBeVisible()
+    await expect(page.getByRole('img', { name: /가로 눈금자/ })).toBeVisible()
+    await expect(page.locator('.jan-ruler-v').first()).toBeVisible()
 
     await page.getByRole('button', { name: '보기', exact: true }).click()
     await page.getByRole('button', { name: '눈금자 숨기기' }).click()
     await expect(pages).toHaveAttribute('data-rulers', 'false')
-    await expect(page.getByRole('img', { name: /가로 페이지 눈금자/ })).toHaveCount(0)
-    await expect(page.getByRole('img', { name: /세로 페이지 눈금자/ })).toHaveCount(0)
+    await expect(page.getByRole('img', { name: /가로 눈금자/ })).toHaveCount(0)
+    await expect(page.locator('.jan-ruler-v')).toHaveCount(0)
     await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('jan-v2-ui') || '{}')?.state?.showRulers)).toBe(false)
 
     await page.keyboard.press('Control+Shift+P')
     await page.locator('.jan-cp-input').fill('눈금자 표시')
     await page.getByRole('button', { name: /눈금자 표시/ }).click()
     await expect(pages).toHaveAttribute('data-rulers', 'true')
-    await expect(page.getByRole('img', { name: /가로 페이지 눈금자/ })).toBeVisible()
-    await expect(page.getByRole('img', { name: /세로 페이지 눈금자/ })).toBeVisible()
+    await expect(page.getByRole('img', { name: /가로 눈금자/ })).toBeVisible()
+    await expect(page.locator('.jan-ruler-v').first()).toBeVisible()
   })
 
   test('view menu switches between print and draft layouts', async ({ page }) => {
@@ -415,7 +448,7 @@ test.describe('v2 smoke', () => {
     await page.getByRole('button', { name: '초안 레이아웃', exact: true }).click()
     await expect(pages).toHaveAttribute('data-view-layout', 'draft')
     await expect(pages).toHaveAttribute('data-rulers', 'false')
-    await expect(page.getByRole('img', { name: /가로 페이지 눈금자/ })).toHaveCount(0)
+    await expect(page.getByRole('img', { name: /가로 눈금자/ })).toHaveCount(0)
     await expect(pageStatus).toContainText('초안')
     await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('jan-v2-ui') || '{}')?.state?.viewLayout)).toBe('draft')
 
@@ -424,7 +457,7 @@ test.describe('v2 smoke', () => {
     await page.getByRole('button', { name: /인쇄 레이아웃/ }).first().click()
     await expect(pages).toHaveAttribute('data-view-layout', 'print')
     await expect(pageStatus).toContainText('인쇄')
-    await expect(page.getByRole('img', { name: /가로 페이지 눈금자/ })).toBeVisible()
+    await expect(page.getByRole('img', { name: /가로 눈금자/ })).toBeVisible()
   })
 
   test('page breaks use one canonical Word-style marker', async ({ page }) => {

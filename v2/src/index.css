@@ -2053,6 +2053,11 @@ svg.ico, .jan-icon {
   outline: 2px solid var(--jan-accent);
   outline-offset: 1px;
 }
+/* 편집 화면 자체는 포커스 링을 그리지 않는다 — 독립 페이지 모델에서 이 요소는 용지가
+   아니라 '책상'이라, 링이 용지 옆에 세로 주황선처럼 그려진다. 위치는 커서가 알려준다. */
+.jan-app .ProseMirror:focus-visible {
+  outline: none;
+}
 
 /* --- 16) Skip link --- */
 .skip-to-content {
@@ -3503,8 +3508,8 @@ html, body, #root {
   padding: 18px 24px 60px !important;
 }
 
-.jan-editor-pages[data-view-layout="draft"] .jan-page-ruler,
-.jan-editor-pages[data-view-layout="draft"] .jan-page-vertical-ruler {
+.jan-editor-pages[data-view-layout="draft"] .jan-ruler-h,
+.jan-editor-pages[data-view-layout="draft"] .jan-ruler-vstack {
   display: none !important;
 }
 
@@ -3513,170 +3518,7 @@ html, body, #root {
   width: min(100%, 980px);
 }
 
-.jan-page-ruler {
-  position: sticky;
-  top: 0;
-  z-index: 6;
-  width: var(--jan-page-w, 210mm);
-  height: 28px;
-  margin: 0 0 6px 34px;
-  pointer-events: none;
-  color: color-mix(in srgb, var(--ink-soft, #666) 86%, transparent);
-  font-family: var(--jan-editor-font);
-  font-size: 9.5px;
-}
-
-.jan-page-ruler-track {
-  position: relative;
-  height: 22px;
-  border: 1px solid color-mix(in srgb, var(--paper-edge, #e5e5e5) 88%, transparent);
-  border-radius: 4px;
-  background:
-    linear-gradient(to bottom, color-mix(in srgb, var(--paper, #fff) 94%, transparent), color-mix(in srgb, var(--paper, #fff) 84%, var(--jan-bg, #f7f7f7))),
-    repeating-linear-gradient(to right, transparent 0, transparent calc(10mm - 1px), color-mix(in srgb, var(--paper-edge, #e5e5e5) 70%, transparent) calc(10mm - 1px), color-mix(in srgb, var(--paper-edge, #e5e5e5) 70%, transparent) 10mm);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-  overflow: hidden;
-}
-
-.jan-page-ruler-tick {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 1px;
-  background: color-mix(in srgb, var(--paper-edge, #e5e5e5) 76%, transparent);
-}
-
-.jan-page-ruler-tick.is-major {
-  background: color-mix(in srgb, var(--ink-soft, #666) 36%, transparent);
-}
-
-.jan-page-ruler-tick em {
-  position: absolute;
-  top: 5px;
-  left: 3px;
-  font-style: normal;
-  font-size: 9px;
-  color: color-mix(in srgb, var(--ink-soft, #666) 78%, transparent);
-}
-
-.jan-page-ruler-margin {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  background: color-mix(in srgb, var(--accent, #D97757) 58%, transparent);
-}
-
-.jan-page-ruler-margin b {
-  position: absolute;
-  top: 4px;
-  min-width: 30px;
-  padding: 1px 4px;
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--accent, #D97757) 14%, var(--paper, #fff));
-  color: color-mix(in srgb, var(--ink, #191919) 88%, var(--accent, #D97757));
-  font-size: 9px;
-  font-weight: 700;
-  line-height: 1.2;
-  text-align: center;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
-}
-
-.jan-page-ruler-margin-left b {
-  left: 4px;
-}
-
-.jan-page-ruler-margin-right b {
-  right: 4px;
-}
-
-.jan-page-vertical-ruler {
-  position: sticky;
-  top: 34px;
-  z-index: 5;
-  width: 28px;
-  height: var(--jan-page-h, 297mm);
-  pointer-events: none;
-  color: color-mix(in srgb, var(--ink-soft, #666) 84%, transparent);
-  font-family: var(--jan-editor-font);
-  font-size: 8.5px;
-}
-
-.jan-page-vertical-ruler-track {
-  position: relative;
-  width: 22px;
-  height: 100%;
-  margin-left: 6px;
-  border: 1px solid color-mix(in srgb, var(--paper-edge, #e5e5e5) 88%, transparent);
-  border-radius: 4px;
-  background:
-    linear-gradient(to right, color-mix(in srgb, var(--paper, #fff) 94%, transparent), color-mix(in srgb, var(--paper, #fff) 84%, var(--jan-bg, #f7f7f7))),
-    repeating-linear-gradient(to bottom, transparent 0, transparent calc(10mm - 1px), color-mix(in srgb, var(--paper-edge, #e5e5e5) 70%, transparent) calc(10mm - 1px), color-mix(in srgb, var(--paper-edge, #e5e5e5) 70%, transparent) 10mm);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-  overflow: hidden;
-}
-
-.jan-page-vertical-ruler-tick {
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: color-mix(in srgb, var(--paper-edge, #e5e5e5) 76%, transparent);
-}
-
-.jan-page-vertical-ruler-tick.is-major {
-  background: color-mix(in srgb, var(--ink-soft, #666) 36%, transparent);
-}
-
-.jan-page-vertical-ruler-tick em {
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  font-style: normal;
-  font-size: 8.5px;
-  line-height: 1;
-  writing-mode: vertical-rl;
-  color: color-mix(in srgb, var(--ink-soft, #666) 78%, transparent);
-}
-
-.jan-page-vertical-ruler-margin {
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: color-mix(in srgb, var(--accent, #D97757) 58%, transparent);
-}
-
-.jan-page-vertical-ruler-margin b {
-  position: absolute;
-  left: 3px;
-  min-height: 30px;
-  padding: 4px 1px;
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--accent, #D97757) 14%, var(--paper, #fff));
-  color: color-mix(in srgb, var(--ink, #191919) 88%, var(--accent, #D97757));
-  font-size: 8.5px;
-  font-weight: 700;
-  line-height: 1;
-  text-align: center;
-  writing-mode: vertical-rl;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
-}
-
-.jan-page-vertical-ruler-margin-top b {
-  top: 4px;
-}
-
-.jan-page-vertical-ruler-margin-bottom b {
-  bottom: 4px;
-}
-
-.jan-page-shell {
-  position: relative;
-  width: var(--jan-page-w, 210mm);
-  min-height: var(--jan-page-h, 297mm);
-}
-
+/* 인쇄 보기의 용지(기존 모델) — 독립 페이지 모델에서는 아래 override 가 다시 푼다 */
 .jan-editor-pages .ProseMirror {
   width: var(--jan-page-w, 210mm) !important;
   max-width: none !important;
@@ -3697,6 +3539,99 @@ html, body, #root {
   line-height: var(--jan-editor-line) !important;
   background-clip: padding-box;
 }
+
+/* ============================================================
+   눈금자 — 워드·한글 방식
+   본문 구간은 희게, 여백 구간은 회색으로 칠해 여백이 눈에 보인다.
+   세로 자는 쪽마다 하나씩 놓여 용지와 함께 스크롤된다(붙박이면 위치를 알 수 없다).
+   ============================================================ */
+.jan-ruler {
+  --ruler-line: #9aa1ab;
+  --ruler-pad: #d8dade;
+  --ruler-face: #ffffff;
+  font-family: var(--jan-editor-font);
+  color: #5b6068;
+  pointer-events: none;
+}
+.jan-ruler-h {
+  grid-area: hruler;
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  width: var(--jan-page-w, 210mm);
+  height: 20px;
+  margin-bottom: 6px;
+}
+.jan-ruler-v {
+  width: 20px;
+  height: var(--jan-page-h, 297mm);
+}
+.jan-ruler-vstack {
+  grid-area: vruler;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.jan-ruler-track {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: var(--ruler-face);
+  border: 1px solid var(--ruler-line);
+  box-sizing: border-box;
+  overflow: hidden;
+}
+/* 여백 구간 */
+.jan-ruler-pad {
+  position: absolute;
+  background: var(--ruler-pad);
+}
+.jan-ruler-h .jan-ruler-pad { top: 0; bottom: 0; }
+.jan-ruler-v .jan-ruler-pad { left: 0; right: 0; }
+/* 눈금 — 1cm 은 길고 숫자, 5mm 는 짧게 */
+.jan-ruler-tick {
+  position: absolute;
+  background: var(--ruler-line);
+}
+.jan-ruler-h .jan-ruler-tick { top: 50%; width: 1px; height: 4px; transform: translateY(-2px); }
+.jan-ruler-h .jan-ruler-tick.is-cm { height: 7px; transform: translateY(-3.5px); }
+.jan-ruler-v .jan-ruler-tick { right: 0; height: 1px; width: 4px; }
+.jan-ruler-v .jan-ruler-tick.is-cm { width: 7px; }
+.jan-ruler-tick em {
+  position: absolute;
+  font-style: normal;
+  font-size: 8.5px;
+  line-height: 1;
+  color: #4a4f57;
+}
+.jan-ruler-h .jan-ruler-tick em { top: -8px; left: 50%; transform: translateX(-50%); }
+.jan-ruler-v .jan-ruler-tick em { left: 2px; top: 50%; transform: translateY(-50%); }
+/* 현재 문단 들여쓰기 손잡이 — 끌어서 조절 */
+.jan-ruler-grip {
+  position: absolute;
+  width: 11px;
+  height: 8px;
+  padding: 0;
+  border: 1px solid #6b7280;
+  background: #f4f5f7;
+  cursor: ew-resize;
+  pointer-events: auto;
+  transform: translateX(-50%);
+}
+.jan-ruler-grip:hover, .jan-ruler-grip.is-dragging { background: var(--accent, #D97757); border-color: var(--accent, #D97757); }
+/* 첫 줄 = 위쪽 아래꼭짓점 삼각형, 왼쪽 = 아래쪽 위꼭짓점 삼각형, 오른쪽 = 아래쪽 삼각형 */
+.jan-ruler-grip.is-first { top: 0; clip-path: polygon(0 0, 100% 0, 50% 100%); }
+.jan-ruler-grip.is-left { bottom: 0; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.jan-ruler-grip.is-right { bottom: 0; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.jan-ruler-cap { display: none; }
+.jan-theme-dark .jan-ruler {
+  --ruler-line: #6b7078;
+  --ruler-pad: #3a3d42;
+  --ruler-face: #26282c;
+  color: #b9bec6;
+}
+.jan-theme-dark .jan-ruler-tick em { color: #c3c8d0; }
+.jan-theme-dark .jan-ruler-grip { background: #43474d; border-color: #8b919a; }
 
 .jan-editor-pages[data-view-layout="draft"] .jan-page-shell {
   width: min(100%, 980px);
@@ -4947,12 +4882,12 @@ html, body, #root {
     font-size: 14px !important;
   }
 
-  .jan-page-ruler {
+  .jan-ruler-h {
     display: none;
     margin-left: 0;
   }
 
-  .jan-page-vertical-ruler {
+  .jan-ruler-vstack {
     display: none;
   }
 
@@ -5794,23 +5729,15 @@ body.jan-split-dragging * { cursor: inherit !important; }
 /* 세로 눈금자는 용지 왼쪽에 나란히 둔다.
    block 으로 바꾸면 눈금자(높이=용지 한 장)가 흐름을 차지해 용지가 그만큼 아래로
    밀려나고, 화면에는 눈금자만 보이고 용지는 사라진다(스크롤해야 나온다). */
-@media (min-width: 701px) {
-  .jan-editor-pages[data-rulers="true"][data-page-model="nodes"] .jan-page-layout,
-  .jan-editor-pages[data-rulers="true"][data-page-model="columns"] .jan-page-layout {
-    display: grid !important;
-    grid-template-columns: 28px auto !important;
-    column-gap: 6px;
-    align-items: start;
-    width: fit-content !important;
-    margin-inline: auto;
-  }
-}
 .jan-editor-pages[data-page-model="nodes"] .jan-page-shell {
   width: auto !important;
   min-height: 0 !important;
 }
 /* 편집기 루트는 용지가 아니라 '책상'이 된다 — 기존 용지 스타일을 무효화 */
 .jan-editor-pages[data-page-model="nodes"] .ProseMirror {
+  /* 이 요소는 용지가 아니라 '책상'이다. 노트 줄·모눈 같은 종이 무늬를 여기에 그리면
+     용지 밖(책상)에 줄이 그어져 용지 옆에 세로선이 생긴다 → 인쇄 보기에서는 그리지 않는다 */
+  background-image: none !important;
   width: auto !important;
   min-height: 0 !important;
   padding: 0 !important;
@@ -5840,12 +5767,38 @@ body.jan-split-dragging * { cursor: inherit !important; }
     var(--jan-page-margin-left, var(--jan-page-margin, 20mm));
   background-color: var(--paper, var(--jan-paper, #ffffff));
   color: var(--ink, var(--jan-fg, #191919));
-  border: 1px solid var(--paper-edge, var(--jan-border, #e5e5e5));
-  border-radius: 4px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05), 0 12px 28px rgba(0, 0, 0, 0.08);
+  /* 용지 윤곽은 그림자·둥근 모서리 없이 한 줄 테두리만 — 워드·한글의 인쇄 모양 */
+  border: 1px solid #b7bcc3;
+  border-radius: 0;
+  box-shadow: none;
   background-clip: padding-box;
   flex: 0 0 auto;
 }
+/* 여백 표시 — 본문 영역 네 모서리에 ㄱ자 표시 (한글의 여백 보기) */
+.jan-page-node::before {
+  content: '';
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  top: var(--jan-page-margin-top, var(--jan-page-margin, 20mm));
+  right: var(--jan-page-margin-right, var(--jan-page-margin, 20mm));
+  bottom: var(--jan-page-margin-bottom, var(--jan-page-margin, 20mm));
+  left: var(--jan-page-margin-left, var(--jan-page-margin, 20mm));
+  border: 1px solid #9aa1ab;
+  /* 네 모서리 24px 만 남기고 가린다 → ㄱ ㄴ 모양 표시가 된다 */
+  -webkit-mask:
+    linear-gradient(#000 0 0) top left / 24px 24px no-repeat,
+    linear-gradient(#000 0 0) top right / 24px 24px no-repeat,
+    linear-gradient(#000 0 0) bottom left / 24px 24px no-repeat,
+    linear-gradient(#000 0 0) bottom right / 24px 24px no-repeat;
+  mask:
+    linear-gradient(#000 0 0) top left / 24px 24px no-repeat,
+    linear-gradient(#000 0 0) top right / 24px 24px no-repeat,
+    linear-gradient(#000 0 0) bottom left / 24px 24px no-repeat,
+    linear-gradient(#000 0 0) bottom right / 24px 24px no-repeat;
+}
+.jan-theme-dark .jan-page-node { border-color: #4a4d52; }
+.jan-theme-dark .jan-page-node::before { border-color: #6b7078; }
 /* 예외 — 표·이미지처럼 쪼갤 수 없는 블록 하나가 한 쪽보다 큰 경우.
    리플로우가 더 줄일 수 없다고 판정한 쪽에만 붙으며(data-jan-grow), 이때는 잘라내면
    내용이 사라지므로 용지를 늘려서라도 보여준다. */
@@ -5922,6 +5875,19 @@ body.jan-split-dragging * { cursor: inherit !important; }
 .jan-editor-pages[data-page-model="columns"] .jan-page-shell {
   width: auto !important;
   min-height: 0 !important;
+}
+
+@media (min-width: 701px) {
+  .jan-editor-pages[data-rulers="true"] .jan-page-layout {
+    display: grid !important;
+    grid-template-columns: 22px auto !important;
+    grid-template-areas: ". hruler" "vruler page" !important;
+    column-gap: 6px;
+    align-items: start;
+    width: fit-content !important;
+    margin-inline: auto;
+  }
+  .jan-editor-pages[data-rulers="true"] .jan-page-shell { grid-area: page; }
 }
 .jan-editor-pages[data-page-model="columns"] .ProseMirror {
   /* 브라우저가 넘치는 줄을 다음 컬럼(=다음 쪽)으로 흘려보낸다 */
