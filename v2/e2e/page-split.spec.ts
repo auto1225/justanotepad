@@ -298,4 +298,29 @@ test.describe('줄 단위 문단 분할', () => {
     expect(tails.length).toBeGreaterThan(1)
     expect(tails.filter((t) => /^H[1-6]$/.test(t))).toEqual([])
   })
+
+  test('무거운 서식을 적용해도 리플로우가 폭주하지 않는다 (화면 멈춤 방지)', async ({ page }) => {
+    // 리플로우가 스스로를 두 배씩 예약하면 몇 초 만에 탭이 멈춘다 — 프레임 요청 수로 감시한다
+    await page.addInitScript(() => {
+      const w = window as unknown as { __raf: number; requestAnimationFrame: typeof requestAnimationFrame }
+      w.__raf = 0
+      const raf = w.requestAnimationFrame.bind(window)
+      w.requestAnimationFrame = (cb: FrameRequestCallback) => { w.__raf++; return raf(cb) }
+    })
+    await page.goto('./')
+    await page.locator('.ProseMirror').first().waitFor({ state: 'visible', timeout: 15000 })
+    await page.waitForTimeout(400)
+
+    await page.getByRole('tab', { name: '논문', exact: true }).click()
+    await page.locator('.jan-ribbon-body .jan-ribbon-btn').filter({ hasText: /APA/ }).first().click()
+    await page.waitForTimeout(1500)
+
+    const frames = await page.evaluate(() => (window as unknown as { __raf: number }).__raf)
+    expect(frames).toBeLessThan(200) // 폭주하면 1.5초에 수백~수천 회가 된다
+
+    // 그리고 화면이 여전히 즉시 응답해야 한다
+    const t0 = Date.now()
+    await page.evaluate(() => document.querySelectorAll('.jan-page-node').length)
+    expect(Date.now() - t0).toBeLessThan(600)
+  })
 })

@@ -620,26 +620,41 @@ export const PageReflow = Extension.create<ReflowOptions>({
         view(editorView) {
           let raf = 0
           let passes = 0
+          /* 지금 리플로우 한 판이 도는 중인가 —
+             리플로우는 문서를 고치므로 그 자리에서 update() 가 불려 다시 예약을 시도한다.
+             그때 막지 않으면 한 판이 두 판을 낳아 프레임마다 2배로 불어나고(2→4→8…)
+             몇 초 만에 화면이 멈춘다. 게다가 예약이 passes 를 0 으로 되돌려
+             최대 횟수 제한도 무력해진다. */
+          let running = false
 
           const run = (view: EditorView) => {
             raf = 0
-            const contentHeight = options.getContentHeight()
-            if (!contentHeight || contentHeight < 40) return
-            if (passes >= (options.maxPasses ?? 40)) return
-            passes++
-            const changed = reflowOnce(view, contentHeight)
-            if (changed) {
-              raf = window.requestAnimationFrame(() => run(view))
-            } else {
-              passes = 0
-              markGrowPages(view, contentHeight)
+            running = true
+            try {
+              const contentHeight = options.getContentHeight()
+              if (!contentHeight || contentHeight < 40) return
+              if (passes >= (options.maxPasses ?? 40)) {
+                // 여기까지 왔는데 안 끝나면 그만둔다 (다음 편집 때 다시 시도)
+                passes = 0
+                return
+              }
+              passes++
+              const changed = reflowOnce(view, contentHeight)
+              if (changed) {
+                raf = window.requestAnimationFrame(() => run(view))
+              } else {
+                passes = 0
+                markGrowPages(view, contentHeight)
+              }
+            } finally {
+              running = false
             }
           }
 
           /* 다음 프레임에 바로 정리한다. 예전처럼 60ms 모아서 처리하면 타이핑이
              이어지는 동안 넘친 줄이 계속 쌓여, 용지가 늘어나거나(예전) 잘려 보인다. */
           const schedule = (view: EditorView) => {
-            if (raf) return
+            if (raf || running) return // 이미 잡혀 있거나, 그 판 안에서 온 요청이다
             passes = 0
             raf = window.requestAnimationFrame(() => run(view))
           }
