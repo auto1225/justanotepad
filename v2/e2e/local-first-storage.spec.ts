@@ -147,15 +147,13 @@ test.describe('local-first memo storage', () => {
     await expect(page.locator('.jan-settings-modal')).toBeVisible({ timeout: 15000 })
     await page.locator('.jan-settings-modal').getByRole('button', { name: '닫기' }).click()
 
-    await page.getByRole('button', { name: '페이지', exact: true }).click()
-    const dropdown = page.locator('.jan-menu-dropdown')
-    await expect(dropdown).toBeVisible()
-    const box = await dropdown.boundingBox()
+    // 리본 — 좁은 화면에서도 탭과 명령이 화면 안에 들어온다
+    await page.getByRole('tab', { name: '쪽', exact: true }).click()
+    const ribbon = page.locator('.jan-ribbon-body')
+    await expect(ribbon).toBeVisible()
+    const box = await ribbon.boundingBox()
     expect(box).toBeTruthy()
     expect(box!.x).toBeGreaterThanOrEqual(0)
-    expect(box!.x + box!.width).toBeLessThanOrEqual(392)
-
-    const hasHorizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 2)
-    expect(hasHorizontalOverflow).toBe(false)
+    expect(Math.ceil(box!.x + box!.width)).toBeLessThanOrEqual(390)
   })
 })

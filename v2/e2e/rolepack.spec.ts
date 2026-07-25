@@ -15,7 +15,7 @@ test.describe('role pack and my tools', () => {
 
     await page.getByRole('button', { name: /대학생/ }).click()
     await page.getByRole('button', { name: /기획자/ }).click()
-    await page.getByRole('button', { name: '적용' }).click()
+    await page.locator('.jan-rolepack-modal').getByRole('button', { name: '적용' }).click()
 
     await expect(page.getByText('내 도구 모음')).toBeVisible()
     await expect(page.locator('.jan-role-tool-card').filter({ hasText: 'GPA 계산기' })).toBeVisible()

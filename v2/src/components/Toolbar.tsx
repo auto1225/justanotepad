@@ -1,13 +1,13 @@
 ﻿import { useState, useRef, useEffect } from 'react'
 import type { Editor } from '@tiptap/react'
 import type { Mark as PMMark } from '@tiptap/pm/model'
-import type { CSSProperties } from 'react'
 import { downloadHwpx } from '../lib/hwpxExport'
 import { downloadMd } from '../lib/markdownIO'
 import { exportToPdf } from '../lib/pdfExport'
 import { ColorPicker } from './ColorPicker'
 import { TTSButton } from './TTSButton'
 import { VoiceButton } from './VoiceButton'
+import { Ribbon } from './Ribbon'
 import { Icon } from './Icons'
 import type { IconName } from './Icons'
 import { useTypographyStore } from '../store/typographyStore'
@@ -110,9 +110,8 @@ const SYMBOL_GROUPS: Array<{ label: string; chars: string[] }> = [
   { label: '통화 · 단위', chars: ['₩', '$', '€', '¥', '£', '℃', '℉', '㎡', '㎥', '㎏', '㎜', '㎝', '㎞', '㏄'] },
 ]
 
-interface MenuItem { label: string; hint?: string; icon?: IconName; divider?: string; onClick?: () => void }
+interface MenuItem { label: string; short?: string; hint?: string; icon?: IconName; divider?: string; onClick?: () => void }
 interface MenuGroup { label: string; items: MenuItem[] }
-interface MenuPosition { left: number; top: number; width: number }
 
 /**
  * Phase 24 — v1 8개 카테고리 메뉴 모든 기능 실제 구현 (stub 제거).
@@ -125,10 +124,16 @@ function escHtml(v: string): string {
 
 export function Toolbar(p: ToolbarProps) {
   const editor = p.editor
-  const [openMenu, setOpenMenu] = useState<string | null>(null)
-  const [menuPosition, setMenuPosition] = useState<MenuPosition | null>(null)
+  /* 리본 — 한글·워드식 탭 메뉴. 고른 탭과 접힘 상태는 다시 방문해도 유지한다 */
+  const [ribbonTab, setRibbonTab] = useState<string>(() => {
+    try { return localStorage.getItem('jan-v2-ribbon-tab') || '서식' } catch { return '서식' }
+  })
+  const [ribbonCollapsed, setRibbonCollapsed] = useState<boolean>(() => {
+    try { return localStorage.getItem('jan-v2-ribbon-collapsed') === '1' } catch { return false }
+  })
+  useEffect(() => { try { localStorage.setItem('jan-v2-ribbon-tab', ribbonTab) } catch { /* 저장 실패는 무시 */ } }, [ribbonTab])
+  useEffect(() => { try { localStorage.setItem('jan-v2-ribbon-collapsed', ribbonCollapsed ? '1' : '0') } catch { /* 무시 */ } }, [ribbonCollapsed])
   const containerRef = useRef<HTMLDivElement>(null)
-  const menuButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({})
   useTypographyStore() // 문서 기본 타이포 변경 시 리렌더 (셀렉트 기본값 반영)
   const [showLinkPop, setShowLinkPop] = useState(false)
   const [linkDraft, setLinkDraft] = useState('')
@@ -158,44 +163,6 @@ export function Toolbar(p: ToolbarProps) {
     return () => window.removeEventListener('jan-math-edit', onEdit)
   }, [editor])
   const ui = useUIStore()
-
-  useEffect(() => {
-    function onClickOutside(e: MouseEvent) {
-      if (!containerRef.current?.contains(e.target as Node)) setOpenMenu(null)
-    }
-    if (openMenu) document.addEventListener('mousedown', onClickOutside)
-    return () => document.removeEventListener('mousedown', onClickOutside)
-  }, [openMenu])
-
-  useEffect(() => {
-    if (!openMenu || typeof window === 'undefined') {
-      setMenuPosition(null)
-      return
-    }
-
-    const update = () => {
-      const button = menuButtonRefs.current[openMenu]
-      if (!button || !window.matchMedia('(max-width: 800px)').matches) {
-        setMenuPosition(null)
-        return
-      }
-
-      const rect = button.getBoundingClientRect()
-      const width = Math.round(Math.min(340, Math.max(260, window.innerWidth - 16)))
-      const leftMax = Math.max(8, window.innerWidth - width - 8)
-      const left = Math.round(Math.min(Math.max(8, rect.left), leftMax))
-      const top = Math.round(Math.min(Math.max(8, rect.bottom + 6), Math.max(8, window.innerHeight - 96)))
-      setMenuPosition({ left, top, width })
-    }
-
-    update()
-    window.addEventListener('resize', update)
-    window.addEventListener('scroll', update, true)
-    return () => {
-      window.removeEventListener('resize', update)
-      window.removeEventListener('scroll', update, true)
-    }
-  }, [openMenu])
 
   if (!editor) return null
 
@@ -695,13 +662,13 @@ export function Toolbar(p: ToolbarProps) {
   /* === 명령 팔레트 / 검색 등 === */
   const cmdPalette = () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'P', ctrlKey: true, shiftKey: true, bubbles: true }))
 
-  function close() { setOpenMenu(null) }
-  function run(fn: () => void) { fn(); close() }
+  /* 리본 버튼은 눌리면 바로 실행된다 (닫을 드롭다운이 없다) */
+  function run(fn: () => void) { fn() }
 
   /* ============================================================
    * 8 카테고리 메뉴
    * ============================================================ */
-  const groups: MenuGroup[] = [
+  const rawGroups: MenuGroup[] = [
     /* 1. 논문 */
     {
       label: '논문', items: [
@@ -736,9 +703,9 @@ export function Toolbar(p: ToolbarProps) {
         { label: '표 목록 (List of Tables)', icon: 'table', onClick: () => run(() => insertListOfTables(editor)) },
         { label: '약어 목록 자동 추출', icon: 'hash', onClick: () => run(() => insertAcronymList(editor)) },
         { divider: '레이아웃', label: '' },
-        { label: `다단 레이아웃: ${pageColumnLabel}`, icon: 'columns', onClick: () => run(cyclePageColumns) },
+        { short: '단', label: `다단 레이아웃: ${pageColumnLabel}`, icon: 'columns', onClick: () => run(cyclePageColumns) },
         { label: '페이지 구분 삽입', hint: 'Ctrl+Enter', icon: 'page-break', onClick: () => run(insertPageBreak) },
-        { label: '러닝 헤더 · 꼬리말 설정', icon: 'pin', onClick: () => run(setRunningHeader) },
+        { short: '머리말', label: '러닝 헤더 · 꼬리말 설정', icon: 'pin', onClick: () => run(setRunningHeader) },
         { divider: '참조 & 인용', label: '' },
         { label: '각주 삽입', icon: 'sup', onClick: () => run(insertFootnote) },
         { label: '인용 삽입', icon: 'quote', onClick: () => run(insertCitation) },
@@ -773,23 +740,23 @@ export function Toolbar(p: ToolbarProps) {
         { divider: '한국어 타이포', label: '' },
         { label: '자간 설정', icon: 'palette', onClick: () => run(setLetterSpacing) },
         { label: '장평 설정', icon: 'palette', onClick: () => run(setCharScale) },
-        { label: '첫 줄 들여쓰기 토글', icon: 'paragraph', onClick: () => run(toggleFirstLineIndent) },
+        { short: '첫 줄', label: '첫 줄 들여쓰기 토글', icon: 'paragraph', onClick: () => run(toggleFirstLineIndent) },
         { label: '단락 간격', icon: 'paragraph', onClick: () => run(setParagraphSpacing) },
         { label: '글자 효과', icon: 'sparkle', onClick: () => run(setTextEffect) },
-        { label: '강조 배경 상자', icon: 'highlight', onClick: () => run(insertHighlightBox) },
+        { short: '강조 상자', label: '강조 배경 상자', icon: 'highlight', onClick: () => run(insertHighlightBox) },
         { divider: '서식 복사 · 내 스타일', label: '' },
         { label: '서식 복사', hint: 'Ctrl+Shift+C', icon: 'wand', onClick: () => run(() => window.dispatchEvent(new Event('jan-format-copy'))) },
         { label: '서식 붙여넣기', hint: 'Ctrl+Shift+V', icon: 'wand', onClick: () => run(() => window.dispatchEvent(new Event('jan-format-paste'))) },
-        { label: '현재 서식을 내 스타일로 저장', icon: 'save', onClick: () => run(async () => {
+        { short: '스타일 저장', label: '현재 서식을 내 스타일로 저장', icon: 'save', onClick: () => run(async () => {
           if (editor.state.selection.empty) { flash('먼저 서식이 적용된 텍스트를 선택하세요'); return }
           const name = await askText('스타일 이름:', '', { placeholder: '예: 핵심 강조, 보고서 소제목' })
           if (name) saveCurrentAsStyle(editor, name)
         }) },
-        { label: '내 스타일 적용 / 관리', icon: 'palette', onClick: () => run(() => showMyStylesPicker(editor)) },
+        { short: '내 스타일', label: '내 스타일 적용 / 관리', icon: 'palette', onClick: () => run(() => showMyStylesPicker(editor)) },
         { divider: '기타', label: '' },
         { label: '문서 스타일', icon: 'palette', onClick: () => run(p.onTypo) },
         { label: '서식 지우기', icon: 'wand', onClick: () => run(() => editor.chain().focus().unsetAllMarks().clearNodes().run()) },
-        { label: '엔터 표시(¶) 켬/끔', icon: 'paragraph', onClick: () => run(togglePilcrow) },
+        { short: '엔터 표시', label: '엔터 표시(¶) 켬/끔', icon: 'paragraph', onClick: () => run(togglePilcrow) },
       ],
     },
 
@@ -838,10 +805,10 @@ export function Toolbar(p: ToolbarProps) {
         { divider: '페이지 동작', label: '' },
         { label: '페이지 구분 삽입', hint: 'Ctrl+Enter', icon: 'page-break', onClick: () => run(insertPageBreak) },
         { label: `다단 레이아웃: ${pageColumnLabel}`, icon: 'columns', onClick: () => run(cyclePageColumns) },
-        { label: '러닝 헤더 · 꼬리말', icon: 'pin', onClick: () => run(setRunningHeader) },
+        { short: '머리말', label: '러닝 헤더 · 꼬리말', icon: 'pin', onClick: () => run(setRunningHeader) },
         { divider: '미리보기 / 인쇄', label: '' },
         { label: '엔터 표시(¶) 켬/끔', icon: 'paragraph', onClick: () => run(togglePilcrow) },
-        { label: '인쇄 미리보기 (Paged.js)', hint: 'Ctrl+Alt+P', icon: 'preview', onClick: () => run(p.onPrintPreview) },
+        { short: '미리보기', label: '인쇄 미리보기 (Paged.js)', hint: 'Ctrl+Alt+P', icon: 'preview', onClick: () => run(p.onPrintPreview) },
         { label: '인쇄', hint: 'Ctrl+P', icon: 'print', onClick: () => run(() => window.print()) },
       ],
     },
@@ -887,7 +854,7 @@ export function Toolbar(p: ToolbarProps) {
         { label: '찾아 바꾸기', hint: 'Ctrl+H', icon: 'replace', onClick: () => run(p.onFind) },
         { label: '깨진 링크 검사', icon: 'unlink', onClick: () => run(p.onLinkCheck) },
         { divider: '분석', label: '' },
-        { label: '문서 건강 점수 (100점 진단)', icon: 'shield', onClick: () => run(runDocHealth) },
+        { short: '문서 진단', label: '문서 건강 점수 (100점 진단)', icon: 'shield', onClick: () => run(runDocHealth) },
         { label: '통계 / 대시보드', icon: 'hash', onClick: () => run(p.onStats) },
         { label: '활동 히트맵', icon: 'hash', onClick: () => run(p.onHeatmap) },
         { label: '메모 정보', icon: 'info', onClick: () => run(p.onInfo) },
@@ -900,7 +867,7 @@ export function Toolbar(p: ToolbarProps) {
         { label: '마인드맵', icon: 'sparkle', onClick: () => run(p.onMindMap) },
         { label: '플래시카드 학습', icon: 'list-bullet', onClick: () => run(flashcards) },
         { divider: 'OCR / 자동화', label: '' },
-        { label: 'OCR (이미지 → 텍스트)', icon: 'image', onClick: () => run(p.onOcr) },
+        { short: 'OCR', label: 'OCR (이미지 → 텍스트)', icon: 'image', onClick: () => run(p.onOcr) },
         { label: '템플릿', icon: 'file-text', onClick: () => run(p.onTemplates) },
         { label: '스니펫', icon: 'file-plus', onClick: () => run(p.onSnippets) },
         { label: '매크로', icon: 'wand', onClick: () => run(p.onMacros) },
@@ -911,7 +878,7 @@ export function Toolbar(p: ToolbarProps) {
     /* 7. 보기 */
     {
       label: '보기', items: [
-        { label: `문서 보기: ${viewLayoutLabel}`, icon: 'preview', onClick: () => run(() => ui.setViewLayout(ui.viewLayout === 'draft' ? 'print' : 'draft')) },
+        { short: '문서 보기', label: `문서 보기: ${viewLayoutLabel}`, icon: 'preview', onClick: () => run(() => ui.setViewLayout(ui.viewLayout === 'draft' ? 'print' : 'draft')) },
         { label: '인쇄 레이아웃', icon: 'page', onClick: () => run(() => ui.setViewLayout('print')) },
         { label: '초안 레이아웃', icon: 'file-text', onClick: () => run(() => ui.setViewLayout('draft')) },
         { divider: '창', label: '' },
@@ -984,49 +951,43 @@ export function Toolbar(p: ToolbarProps) {
     },
   ]
 
-  function MenuButton({ group }: { group: MenuGroup }) {
-    const isOpen = openMenu === group.label
-    const menuStyle = isOpen && menuPosition
-      ? ({
-          '--jan-menu-left': `${menuPosition.left}px`,
-          '--jan-menu-top': `${menuPosition.top}px`,
-          '--jan-menu-width': `${menuPosition.width}px`,
-        } as CSSProperties)
-      : undefined
-
-    return (
-      <div className="jan-menu-wrap">
-        <button
-          ref={(node) => { menuButtonRefs.current[group.label] = node }}
-          className={'jan-menu-btn' + (isOpen ? ' is-open' : '')}
-          onClick={() => {
-            setOpenMenu(isOpen ? null : group.label)
-            if (isOpen) setMenuPosition(null)
-          }}
-          aria-expanded={isOpen}
-        >
-          <span>{group.label}</span>
-          <Icon name="chevron-down" size={10} className="jan-menu-arrow" />
-        </button>
-        {isOpen && (
-          <div className="jan-menu-dropdown" style={menuStyle} onMouseDown={(e) => e.stopPropagation()}>
-            {group.items.map((it, i) => {
-              if (it.divider) return <div key={i} className="jan-menu-divider">{it.divider}</div>
-              return (
-                <button key={i} className="jan-menu-item" onClick={it.onClick}>
-                  {it.icon && <Icon name={it.icon} size={14} />}
-                  <span className="jan-menu-label">{it.label}</span>
-                  {it.hint && <span className="jan-menu-hint">{it.hint}</span>}
-                </button>
-              )
-            })}
-          </div>
-        )}
-      </div>
-    )
-  }
+  /* 한글·워드와 같은 탭 구성으로 재배치 — 명령은 그대로 두고 묶음만 옮긴다.
+     삽입+미디어 → 입력, 페이지 → 쪽, 편집 탭은 자주 쓰는 편집 명령을 모아 새로 만든다. */
+  const pick = (label: string) => rawGroups.find((g) => g.label === label)?.items ?? []
+  const editItems: MenuItem[] = [
+    { divider: '되돌리기', label: '' },
+    { label: '실행 취소', short: '되돌리기', hint: 'Ctrl+Z', icon: 'undo', onClick: () => run(() => editor.chain().focus().undo().run()) },
+    { label: '다시 실행', short: '다시실행', hint: 'Ctrl+Shift+Z', icon: 'redo', onClick: () => run(() => editor.chain().focus().redo().run()) },
+    { divider: '선택 · 찾기', label: '' },
+    { label: '모두 선택', short: '모두선택', hint: 'Ctrl+A', icon: 'check', onClick: () => run(() => editor.chain().focus().selectAll().run()) },
+    { label: '찾기 · 바꾸기', short: '찾기', hint: 'Ctrl+F', icon: 'find', onClick: () => run(p.onFind) },
+    { label: '전체 문서 검색', short: '전체검색', icon: 'search', onClick: () => run(p.onSearch) },
+    { divider: '서식 지우기', label: '' },
+    { label: '글자 서식 지우기', short: '서식지움', icon: 'close', onClick: () => run(() => editor.chain().focus().unsetAllMarks().run()) },
+    { label: '문단 서식 지우기 (본문으로)', short: '문단초기화', icon: 'paragraph', onClick: () => run(() => editor.chain().focus().setParagraph().run()) },
+    { divider: '명령 찾기', label: '' },
+    { label: '명령 팔레트', short: '명령', hint: 'Ctrl+Shift+P', icon: 'cmd', onClick: () => run(cmdPalette) },
+  ]
+  const groups: MenuGroup[] = [
+    { label: '파일', items: pick('파일') },
+    { label: '편집', items: editItems },
+    { label: '보기', items: pick('보기') },
+    { label: '입력', items: [...pick('삽입'), { divider: '미디어', label: '' }, ...pick('미디어')] },
+    { label: '서식', items: pick('서식') },
+    { label: '쪽', items: pick('페이지') },
+    { label: '도구', items: pick('도구') },
+    { label: '논문', items: pick('논문') },
+  ]
 
   return (
+    <div className="jan-toolbar-stack">
+    <Ribbon
+      tabs={groups}
+      activeTab={ribbonTab}
+      onTabChange={setRibbonTab}
+      collapsed={ribbonCollapsed}
+      onToggleCollapsed={() => setRibbonCollapsed((v) => !v)}
+    />
     <div className="jan-toolbar-row" ref={containerRef}>
       <select
         className="jan-toolbar-select"
@@ -1099,8 +1060,6 @@ export function Toolbar(p: ToolbarProps) {
 
       <span className="jan-spacer" />
 
-      {groups.map((g) => <MenuButton key={g.label} group={g} />)}
-
       {showLinkPop && (
         <div className="jan-link-popover" role="dialog" aria-label="링크 편집" style={{ position: 'fixed', top: 96, left: '50%', transform: 'translateX(-50%)', background: 'var(--jan-bg, #fff)', border: '1px solid rgba(0,0,0,0.15)', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.18)', padding: 12, zIndex: 500, display: 'flex', gap: 6, alignItems: 'center' }}>
           <input
@@ -1152,6 +1111,7 @@ export function Toolbar(p: ToolbarProps) {
           onClose={() => setMathStudio(null)}
         />
       )}
+    </div>
     </div>
   )
 }

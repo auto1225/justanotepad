@@ -10,7 +10,7 @@ test.describe('v2 smoke', () => {
     await page.goto('./')
     // 툴바 + ProseMirror 가 보이는지
     await expect(page.locator('.ProseMirror').first()).toBeVisible({ timeout: 15000 })
-    await expect(page.getByRole('button', { name: '파일' })).toBeVisible()
+    await expect(page.getByRole('tab', { name: '파일', exact: true })).toBeVisible()
   })
 
   test('typing in editor saves to memo', async ({ page }) => {
@@ -90,11 +90,11 @@ test.describe('v2 smoke', () => {
     for (const label of ['논문', '서식', '삽입', '페이지', '미디어', '도구', '보기', '파일']) {
       await expect(page.getByRole('button', { name: label, exact: true })).toBeVisible({ timeout: 5000 })
     }
-    await page.getByRole('button', { name: '파일', exact: true }).click()
+    await page.getByRole('tab', { name: '파일', exact: true }).click()
     await expect(page.getByRole('button', { name: '저장 Ctrl+S' })).toBeVisible()
     await expect(page.getByRole('button', { name: /HWPX/ })).toBeVisible()
     await expect(page.getByRole('button', { name: /Markdown/ })).toBeVisible()
-    await page.getByRole('button', { name: '페이지', exact: true }).click()
+    await page.getByRole('tab', { name: '쪽', exact: true }).click()
     await expect(page.getByRole('button', { name: /페이지 크기 설정/ })).toBeVisible()
     await expect(page.getByRole('button', { name: /노트 배경 스타일/ })).toBeVisible()
     await page.getByRole('button', { name: /페이지 크기 설정/ }).click()
@@ -111,8 +111,8 @@ test.describe('v2 smoke', () => {
 
     await editor.click()
     await page.keyboard.type('Memo before new file action')
-    await page.locator('.jan-menu-btn').nth(7).click()
-    await page.locator('.jan-menu-dropdown .jan-menu-item').first().click()
+    await page.getByRole('tab', { name: '파일', exact: true }).click()
+    await page.getByRole('button', { name: '새 메모', exact: true }).first().click()
     await expect(tabs).toHaveCount(2)
     await expect(editor).not.toContainText('Memo before new file action')
 
@@ -130,8 +130,8 @@ test.describe('v2 smoke', () => {
     await expect(editor).toBeVisible({ timeout: 15000 })
 
     const chooserPromise = page.waitForEvent('filechooser')
-    await page.locator('.jan-menu-btn').nth(7).click()
-    await page.locator('.jan-menu-dropdown .jan-menu-item').nth(1).click()
+    await page.getByRole('tab', { name: '파일', exact: true }).click()
+    await page.getByRole('button', { name: '열기...', exact: true }).click()
     const chooser = await chooserPromise
     await chooser.setFiles({
       name: 'opened-fallback.html',
@@ -218,7 +218,7 @@ test.describe('v2 smoke', () => {
     await page.getByLabel('왼쪽 여백 mm').fill('24')
     await page.getByLabel('페이지 머리글').fill('프로젝트 헤더')
     await page.getByLabel('페이지 꼬리말').fill('Page {page}')
-    await page.getByRole('button', { name: '적용' }).click()
+    await page.locator('.jan-page-settings-modal').getByRole('button', { name: '적용' }).click()
     await expect(pages).toHaveAttribute('data-paper', 'grid')
     await expect(pages).toHaveAttribute('data-page-size', 'B4')
     await expect(pages).toHaveAttribute('data-page-orientation', 'landscape')
@@ -269,8 +269,8 @@ test.describe('v2 smoke', () => {
     await expect(pages).toHaveAttribute('data-page-orientation', 'landscape')
     await expect(pages).toHaveAttribute('data-page-columns', '2')
 
-    await page.getByRole('button', { name: '페이지', exact: true }).click()
-    await page.locator('.jan-menu-dropdown').getByRole('button', { name: /인쇄 미리보기/ }).click()
+    await page.getByRole('tab', { name: '쪽', exact: true }).click()
+    await page.locator('.jan-ribbon-body').getByRole('button', { name: /인쇄 미리보기/ }).click()
     await expect(page.locator('.jan-print-title')).toContainText('B4 가로')
     await expect(page.locator('.jan-print-title')).toContainText('2단')
     const printSrcdoc = await page.locator('.jan-print-iframe').evaluate((iframe) => (iframe as HTMLIFrameElement).srcdoc)
@@ -388,13 +388,13 @@ test.describe('v2 smoke', () => {
     const readZoom = () => page.evaluate(() => JSON.parse(localStorage.getItem('jan-v2-ui') || '{}')?.state?.zoom || 1)
 
     await expect(zoomValue).toHaveText('100%')
-    await page.getByRole('button', { name: '보기', exact: true }).click()
+    await page.getByRole('tab', { name: '보기', exact: true }).click()
     await page.getByRole('button', { name: '한 페이지 보기', exact: true }).click()
     await expect.poll(readZoom).toBeLessThan(1)
     await expect(zoomValue).not.toHaveText('100%')
     const wholePageZoom = await readZoom()
 
-    await page.getByRole('button', { name: '보기', exact: true }).click()
+    await page.getByRole('tab', { name: '보기', exact: true }).click()
     await page.getByRole('button', { name: '페이지 너비에 맞춤', exact: true }).click()
     await expect.poll(readZoom).toBeGreaterThan(wholePageZoom)
     const widthZoom = await readZoom()
@@ -420,7 +420,7 @@ test.describe('v2 smoke', () => {
     await expect(page.getByRole('img', { name: /가로 눈금자/ })).toBeVisible()
     await expect(page.locator('.jan-ruler-v').first()).toBeVisible()
 
-    await page.getByRole('button', { name: '보기', exact: true }).click()
+    await page.getByRole('tab', { name: '보기', exact: true }).click()
     await page.getByRole('button', { name: '눈금자 숨기기' }).click()
     await expect(pages).toHaveAttribute('data-rulers', 'false')
     await expect(page.getByRole('img', { name: /가로 눈금자/ })).toHaveCount(0)
@@ -429,7 +429,7 @@ test.describe('v2 smoke', () => {
 
     await page.keyboard.press('Control+Shift+P')
     await page.locator('.jan-cp-input').fill('눈금자 표시')
-    await page.getByRole('button', { name: /눈금자 표시/ }).click()
+    await page.locator('.jan-cp-list').getByRole('button', { name: /눈금자 표시/ }).first().click()
     await expect(pages).toHaveAttribute('data-rulers', 'true')
     await expect(page.getByRole('img', { name: /가로 눈금자/ })).toBeVisible()
     await expect(page.locator('.jan-ruler-v').first()).toBeVisible()
@@ -444,7 +444,7 @@ test.describe('v2 smoke', () => {
     await expect(pages).toHaveAttribute('data-view-layout', 'print')
     await expect(pageStatus).toContainText('인쇄')
 
-    await page.getByRole('button', { name: '보기', exact: true }).click()
+    await page.getByRole('tab', { name: '보기', exact: true }).click()
     await page.getByRole('button', { name: '초안 레이아웃', exact: true }).click()
     await expect(pages).toHaveAttribute('data-view-layout', 'draft')
     await expect(pages).toHaveAttribute('data-rulers', 'false')
@@ -474,8 +474,8 @@ test.describe('v2 smoke', () => {
     await expect(breaks).toHaveCount(1)
     await expect(editor).toContainText('Second page')
 
-    await page.getByRole('button', { name: '페이지', exact: true }).click()
-    await page.locator('.jan-menu-dropdown').getByRole('button', { name: /페이지 구분 삽입/ }).click()
+    await page.getByRole('tab', { name: '쪽', exact: true }).click()
+    await page.locator('.jan-ribbon-body').getByRole('button', { name: /페이지 구분 삽입/ }).click()
     await expect(breaks).toHaveCount(2)
 
     await page.keyboard.press('Control+Shift+P')
@@ -548,7 +548,7 @@ test.describe('v2 smoke', () => {
     await page.keyboard.press('Control+Shift+N')
     await page.keyboard.type('Body text')
 
-    await page.getByRole('button', { name: '보기', exact: true }).click()
+    await page.getByRole('tab', { name: '보기', exact: true }).click()
     await page.getByRole('button', { name: /목차/ }).click()
     const outline = page.locator('.jan-outline')
     await expect(outline).toBeVisible()
@@ -573,7 +573,7 @@ test.describe('v2 smoke', () => {
     await editor.click()
     await page.keyboard.press('Control+A')
 
-    await page.getByRole('button', { name: '삽입', exact: true }).click()
+    await page.getByRole('tab', { name: '입력', exact: true }).click()
     await page.getByRole('button', { name: '표 (3×3)' }).click()
 
     const cells = page.locator('.ProseMirror table th, .ProseMirror table td')
@@ -604,7 +604,7 @@ test.describe('v2 smoke', () => {
     await editor.click()
     await page.keyboard.press('Control+A')
 
-    await page.getByRole('button', { name: '삽입', exact: true }).click()
+    await page.getByRole('tab', { name: '입력', exact: true }).click()
     await page.getByRole('button', { name: '표 (3×3)' }).click()
 
     const cells = page.locator('.ProseMirror table th, .ProseMirror table td')
@@ -628,8 +628,8 @@ test.describe('v2 smoke', () => {
     await page.goto('./')
     await page.locator('.ProseMirror').first().waitFor({ state: 'visible', timeout: 15000 })
 
-    await page.getByRole('button', { name: '서식', exact: true }).click()
-    await page.getByRole('button', { name: /문서 스타일/ }).click()
+    await page.getByRole('tab', { name: '서식', exact: true }).click()
+    await page.locator('.jan-ribbon-body').getByRole('button', { name: /문서 스타일/ }).click()
     const modal = page.locator('.jan-typography-modal')
     await expect(modal).toBeVisible()
 
@@ -699,7 +699,7 @@ test.describe('v2 smoke', () => {
     await page.keyboard.press('Control+A')
     await page.keyboard.type(marker)
 
-    await page.getByRole('button', { name: '도구', exact: true }).click()
+    await page.getByRole('tab', { name: '도구', exact: true }).click()
     await page.getByRole('button', { name: '템플릿', exact: true }).click()
     const modal = page.locator('.jan-templates-modal')
     await expect(modal).toBeVisible()
@@ -741,25 +741,24 @@ test.describe('v2 smoke', () => {
     await expect(page.locator('.jan-cp')).toBeVisible()
   })
 
-  test('mobile ribbon dropdown stays inside the viewport after toolbar wrapping', async ({ page }) => {
+  test('좁은 화면에서도 리본 탭·명령이 화면 안에 들어온다', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 740 })
     await page.addInitScript(() => localStorage.setItem('jan-v2-role-onboarded', '1'))
     await page.goto('./')
     await expect(page.locator('.ProseMirror').first()).toBeVisible({ timeout: 15000 })
 
-    await page.locator('.jan-menu-btn').nth(3).click()
-    const menu = page.locator('.jan-menu-dropdown')
-    await expect(menu).toBeVisible()
-    await expect(menu.locator('.jan-menu-item').first()).toBeVisible()
+    // 탭 줄은 가로로 스크롤되더라도 화면 밖으로 넘치지 않는다
+    const tabs = page.locator('.jan-ribbon-tabs')
+    await expect(tabs).toBeVisible()
+    const tabBox = await tabs.boundingBox()
+    expect(Math.floor(tabBox?.x || 0)).toBeGreaterThanOrEqual(0)
+    expect(Math.ceil((tabBox?.x || 0) + (tabBox?.width || 0))).toBeLessThanOrEqual(390)
 
-    const box = await menu.boundingBox()
-    expect(box).not.toBeNull()
-    expect(Math.floor(box?.x || 0)).toBeGreaterThanOrEqual(0)
-    expect(Math.floor(box?.y || 0)).toBeGreaterThanOrEqual(0)
-    expect(Math.ceil((box?.x || 0) + (box?.width || 0))).toBeLessThanOrEqual(390)
-    expect(Math.ceil((box?.y || 0) + (box?.height || 0))).toBeLessThanOrEqual(740)
-
-    await menu.locator('.jan-menu-item').first().click()
+    // 쪽 탭 → 쪽 설정 명령 실행
+    await page.getByRole('tab', { name: '쪽', exact: true }).click()
+    const cmd = page.locator('.jan-ribbon-body').getByRole('button', { name: /페이지 크기 설정/ }).first()
+    await cmd.scrollIntoViewIfNeeded()
+    await cmd.click()
     await expect(page.locator('.jan-page-settings-modal')).toBeVisible()
   })
 })
