@@ -597,7 +597,6 @@ export function Toolbar(p: ToolbarProps) {
     // eslint-disable-next-line react-hooks/purity -- 렌더가 아니라 사용자 동작(클릭/타이머)에서만 실행된다
     const end = Date.now() + min * 60000
     const id = setInterval(() => {
-      // eslint-disable-next-line react-hooks/purity -- 타이머 콜백
       const left = Math.max(0, end - Date.now())
       const m = Math.floor(left / 60000), s = Math.floor((left % 60000) / 1000)
       const el = document.getElementById('jan-pomo-display') || (() => { const d = document.createElement('div'); d.id = 'jan-pomo-display'; d.title = '클릭하면 타이머 중단'; d.style.cssText = 'position:fixed;top:8px;right:8px;background:#FAE100;color:#333;padding:6px 12px;border-radius:6px;font-weight:700;z-index:9999;cursor:pointer;'; document.body.appendChild(d); return d })()
