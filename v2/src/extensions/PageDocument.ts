@@ -428,6 +428,11 @@ function reflowOnce(view: EditorView, contentHeight: number): boolean {
       cutIndex += 1
     }
 
+    // 제목은 뒤따르는 내용과 붙어 다닌다 — 제목만 쪽 바닥에 홀로 남으면(고아 제목)
+    // 워드·한글처럼 제목도 함께 다음 쪽으로 넘긴다. 단 그 제목이 쪽의 첫 블록이면
+    // 넘길 수 없다(쪽이 백지가 된다).
+    if (cutIndex >= 2 && node.child(cutIndex - 1).type.name === 'heading') cutIndex -= 1
+
     // cutIndex 이후 전부를 잘라 옮긴다
     let offset = 0
     for (let c = 0; c < cutIndex; c++) offset += node.child(c).nodeSize
@@ -507,6 +512,9 @@ function reflowOnce(view: EditorView, contentHeight: number): boolean {
       room -= nm.heights[c]
       take++
     }
+    // 제목만 끌어올리면 제목이 쪽 바닥에 홀로 남는다 — 뒤따르는 내용이 함께 오지 못하면 제목도 두고 온다
+    // (다음 쪽을 통째로 가져오는 경우는 제목이 마지막이어도 홀로 남지 않으므로 그대로 둔다)
+    if (take > 0 && take < next.node.childCount && next.node.child(take - 1).type.name === 'heading') take -= 1
     // 다음 쪽을 완전히 비우게 되면 그 쪽 자체가 사라진다 (takeFromPageStart 가 처리)
     if (take === 0) continue
 

@@ -269,4 +269,29 @@ test.describe('줄 단위 문단 분할', () => {
     // 글자는 그대로
     expect(after.text.replace(/\s+/g, '')).toBe(before.text.replace(/\s+/g, ''))
   })
+
+  test('제목만 쪽 바닥에 홀로 남지 않는다 (고아 제목)', async ({ page }) => {
+    await page.goto('./')
+    const editor = page.locator('.ProseMirror').first()
+    await editor.waitFor({ state: 'visible', timeout: 15000 })
+    await editor.click()
+
+    // 제목 뒤에 목록이 오도록 채운다 — 앞 쪽에 자리가 남으면 제목만 끌어올려지기 쉬운 배치
+    await page.evaluate(() => {
+      const filler = Array.from({ length: 48 }, (_, i) => `<p>줄 ${i}</p>`).join('')
+      const pm = document.querySelector('.ProseMirror') as HTMLElement
+      pm.focus()
+      const dt = new DataTransfer()
+      dt.setData('text/html', filler + '<h2>제목</h2><ul><li><p>항목 하나</p></li><li><p>항목 둘</p></li><li><p>항목 셋</p></li></ul><p>목록 뒤 문단</p>')
+      pm.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }))
+    })
+    await page.waitForTimeout(2500)
+
+    const tails = await page.evaluate(() => [...document.querySelectorAll('.jan-page-node')].map((p) => {
+      const last = p.children[p.children.length - 1]
+      return last ? last.tagName : ''
+    }))
+    expect(tails.length).toBeGreaterThan(1)
+    expect(tails.filter((t) => /^H[1-6]$/.test(t))).toEqual([])
+  })
 })
