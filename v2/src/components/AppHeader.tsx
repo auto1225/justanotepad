@@ -8,6 +8,8 @@ import { flash } from '../lib/flash'
 import { askText } from '../lib/promptModal'
 
 interface AppHeaderProps {
+  /** 문서(메모) 탭 — 헤더와 같은 줄에 놓아 줄 수를 하나 줄인다 (한글·워드처럼) */
+  tabsSlot?: React.ReactNode
   onAccount: () => void
   onCmdPalette: () => void
   onSearch: () => void
@@ -259,6 +261,8 @@ export function AppHeader(p: AppHeaderProps) {
       </div>
 
       <input type="text" className="jan-header-title-input" value={title} onChange={(e) => updateCurrent({ title: e.target.value })} placeholder="제목 없음" aria-label="메모 제목" />
+
+      {p.tabsSlot}
 
       <div className="jan-header-right">
         {pomoText && (

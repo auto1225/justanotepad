@@ -829,10 +829,10 @@ export function Toolbar(p: ToolbarProps) {
         { label: '제목 3', hint: 'Ctrl+Alt+3', icon: 'h3', onClick: () => run(() => editor.chain().focus().toggleHeading({ level: 3 }).run()) },
         { label: '일반 문단', icon: 'paragraph', onClick: () => run(() => editor.chain().focus().setParagraph().run()) },
         { divider: '정렬', label: '' },
-        { label: '왼쪽 정렬', hint: 'Ctrl+L', icon: 'align-left', onClick: () => run(() => editor.chain().focus().setTextAlign('left').run()) },
-        { label: '가운데 정렬', hint: 'Ctrl+E', icon: 'align-center', onClick: () => run(() => editor.chain().focus().setTextAlign('center').run()) },
-        { label: '오른쪽 정렬', hint: 'Ctrl+R', icon: 'align-right', onClick: () => run(() => editor.chain().focus().setTextAlign('right').run()) },
-        { label: '양쪽 정렬', hint: 'Ctrl+J', icon: 'align-justify', onClick: () => run(() => editor.chain().focus().setTextAlign('justify').run()) },
+        { label: '왼쪽 정렬', short: '왼쪽', hint: 'Ctrl+L', icon: 'align-left', onClick: () => run(() => editor.chain().focus().setTextAlign('left').run()) },
+        { label: '가운데 정렬', short: '가운데', hint: 'Ctrl+E', icon: 'align-center', onClick: () => run(() => editor.chain().focus().setTextAlign('center').run()) },
+        { label: '오른쪽 정렬', short: '오른쪽', hint: 'Ctrl+R', icon: 'align-right', onClick: () => run(() => editor.chain().focus().setTextAlign('right').run()) },
+        { label: '양쪽 정렬', short: '양쪽', hint: 'Ctrl+J', icon: 'align-justify', onClick: () => run(() => editor.chain().focus().setTextAlign('justify').run()) },
         { divider: '한국어 타이포', label: '' },
         { label: '자간 설정', icon: 'palette', onClick: () => run(setLetterSpacing) },
         { label: '장평 설정', icon: 'palette', onClick: () => run(setCharScale) },
@@ -842,7 +842,7 @@ export function Toolbar(p: ToolbarProps) {
         { short: '강조 상자', label: '강조 배경 상자', icon: 'highlight', onClick: () => run(insertHighlightBox) },
         { divider: '서식 복사 · 내 스타일', label: '' },
         { label: '서식 복사', hint: 'Ctrl+Shift+C', icon: 'wand', onClick: () => run(() => window.dispatchEvent(new Event('jan-format-copy'))) },
-        { label: '서식 붙여넣기', hint: 'Ctrl+Shift+V', icon: 'wand', onClick: () => run(() => window.dispatchEvent(new Event('jan-format-paste'))) },
+        { label: '서식 붙여넣기', short: '붙여넣기', hint: 'Ctrl+Shift+V', icon: 'wand', onClick: () => run(() => window.dispatchEvent(new Event('jan-format-paste'))) },
         { short: '스타일 저장', label: '현재 서식을 내 스타일로 저장', icon: 'save', onClick: () => run(async () => {
           if (editor.state.selection.empty) { flash('먼저 서식이 적용된 텍스트를 선택하세요'); return }
           const name = await askText('스타일 이름:', '', { placeholder: '예: 핵심 강조, 보고서 소제목' })
@@ -1201,7 +1201,7 @@ export function Toolbar(p: ToolbarProps) {
           presets={[1, 1.15, 1.3, 1.5, 1.6, 1.7, 2, 2.5, 3]}
         />
       </span>
-      <span className="jan-field" title="자간 — 선택한 글자 사이 간격(%)">
+      <span className="jan-field jan-field-optional" title="자간 — 선택한 글자 사이 간격(%)">
         <span className="jan-field-label">자간</span>
         <NumberSpin
           value={letterSpacingPct}
@@ -1212,7 +1212,7 @@ export function Toolbar(p: ToolbarProps) {
           presets={[-10, -5, -3, 0, 3, 5, 10, 20]}
         />
       </span>
-      <span className="jan-field" title="장평 — 선택한 글자의 가로 비율(%)">
+      <span className="jan-field jan-field-optional" title="장평 — 선택한 글자의 가로 비율(%)">
         <span className="jan-field-label">장평</span>
         <NumberSpin
           value={charScalePct}

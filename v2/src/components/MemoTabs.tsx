@@ -9,7 +9,7 @@ const OPEN_TABS_KEY = 'jan-v2-open-tabs'
  * 사용자가 사이드바에서 클릭한 메모들이 탭으로 추가됨.
  * 탭 X → 닫기. + → 새 메모. 활성 탭 강조.
  */
-export function MemoTabs() {
+export function MemoTabs({ inline = false }: { inline?: boolean } = {}) {
   const { memos, currentId, setCurrent, newMemo } = useMemosStore()
   const [openIds, setOpenIds] = useState<string[]>(() => {
     try {
@@ -71,7 +71,7 @@ export function MemoTabs() {
   }
 
   return (
-    <div className="jan-memo-tabs">
+    <div className={'jan-memo-tabs' + (inline ? ' is-inline' : '')}>
       {openIds.map((id) => {
         const m = memos[id]
         if (!m) return null

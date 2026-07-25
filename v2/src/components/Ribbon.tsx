@@ -189,9 +189,6 @@ export function Ribbon({
                     </button>
                   ))}
                   {rest.length > 0 && <OverflowMenu items={rest} caption={sec.caption} />}
-                </div>
-                <div className="jan-ribbon-foot">
-                  {sec.caption && <span className="jan-ribbon-caption">{sec.caption}</span>}
                   {launchers[sec.caption] && (
                     <button
                       type="button"

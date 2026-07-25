@@ -832,8 +832,8 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
         onCards={() => setShowCards(true)}
         onLectureNotes={() => openMeetingNotes('lecture')}
         onMeetingNotes={() => openMeetingNotes('meeting')}
+        tabsSlot={<MemoTabs inline />}
       />
-      <MemoTabs />
       <Toolbar
         editor={editor}
         onNewMemo={handleNewMemo}

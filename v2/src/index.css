@@ -1645,6 +1645,46 @@ body { background: #FFE8E8; }
 .jan-toolbar-select:hover { border-color: #D97757; }
 
 /* ============================================================
+   머리부 3.5줄 구성 — 한글·워드를 참고해 줄 수를 줄였다.
+     1줄: 헤더(로고 · 제목 · 문서 탭 · 도구 아이콘)
+     2줄: 리본 탭
+     3줄: 리본 아이콘 (묶음 이름 줄 없음 — 한글도 없다)
+     4줄: 서식 도구 상자 (한글의 서식 도구 상자와 같은 자리)
+   ============================================================ */
+.jan-app-header { height: 34px !important; }
+.jan-header-title-input { max-width: 160px; flex: 0 1 160px; }
+
+/* 헤더 안에 들어간 문서 탭 — 브라우저 탭처럼 남는 자리를 차지하고 넘치면 가로 스크롤 */
+.jan-memo-tabs.is-inline {
+  height: 26px !important; min-height: 0 !important;
+  flex: 1 1 auto; min-width: 0; align-items: center !important;
+  gap: 2px; padding: 0 4px !important; margin: 0 4px;
+  background: transparent !important; border-bottom: 0 !important;
+  overflow-x: auto; overflow-y: hidden; scrollbar-width: none;
+}
+.jan-memo-tabs.is-inline::-webkit-scrollbar { display: none; }
+.jan-memo-tabs.is-inline .jan-memo-tab {
+  height: 22px !important; padding: 0 8px; border-radius: 4px;
+  font-size: 11.5px; max-width: 190px; flex: 0 0 auto;
+}
+.jan-memo-tabs.is-inline .jan-memo-tab-new { height: 22px; width: 22px; }
+
+/* 리본 아이콘 — 이름은 한 줄로 (두 줄이면 리본이 그만큼 두꺼워진다) */
+.jan-ribbon-btn {
+  width: 58px; min-height: 40px; padding: 3px 3px 2px;
+}
+.jan-ribbon-btn span {
+  display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 100%;
+}
+.jan-ribbon-items { align-items: center; }
+/* 묶음 설정 화살표는 아이콘 줄 끝에 붙는다 (이름 줄이 사라졌으므로) */
+.jan-ribbon-items .jan-ribbon-launcher { align-self: flex-start; margin-top: 2px; }
+.jan-ribbon-group { padding: 0 6px; justify-content: center; }
+.jan-ribbon-body { padding: 3px 8px; }
+.jan-toolbar-row { min-height: 28px !important; padding: 2px 8px !important; }
+
+/* ============================================================
    화면이 낮을 때 — 메뉴가 차지하는 세로 공간을 한 단계 더 줄인다.
    노트북(높이 900px 이하)에서는 문서가 보이는 높이가 곧 작업 공간이다.
    ============================================================ */
@@ -6291,3 +6331,13 @@ body.jan-split-dragging * { cursor: inherit !important; }
 .jan-editor-pages[data-page-model="columns"] .jan-page-margin-frame,
 .jan-editor-pages[data-page-model="columns"] .jan-page-running-header,
 .jan-editor-pages[data-page-model="columns"] .jan-page-running-footer { display: none !important; }
+
+/* 폭이 좁으면 서식 도구 상자가 두 줄로 접혀 세로 공간을 또 먹는다.
+   한글·워드처럼 한 줄을 유지하고, 리본에도 있는 자간·장평은 이 줄에서 뺀다. */
+@media (max-width: 1300px) {
+  .jan-toolbar-row { flex-wrap: nowrap !important; overflow-x: auto !important; scrollbar-width: thin; }
+  .jan-field-optional { display: none; }
+}
+@media (max-width: 1000px) {
+  .jan-field-label { display: none; }   /* 남은 줄간격도 칸만 남긴다 (도움말은 툴팁으로) */
+}

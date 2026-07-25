@@ -5,6 +5,9 @@ import { test, expect } from '@playwright/test'
  * 직접 입력 / 증감 단추 / 키보드 조작이 선택 영역에 실제로 적용되는지.
  */
 test.describe('글자 모양 도구 상자', () => {
+  // 자간·장평 칸은 좁은 화면에서 리본으로 물러난다(서식줄을 한 줄로 유지) — 넓은 창에서 확인한다
+  test.use({ viewport: { width: 1440, height: 900 } })
+
   const openDoc = async (page: import('@playwright/test').Page) => {
     await page.goto('./')
     const editor = page.locator('.ProseMirror').first()
@@ -200,13 +203,15 @@ test.describe('글자 모양 도구 상자', () => {
     // 문서가 시작되는 지점이 화면의 4분의 1을 넘지 않아야 한다
     expect(m.ratio).toBeLessThan(0.25)
     expect(m.header).toBeLessThanOrEqual(36)
-    expect(m.tabs).toBeLessThanOrEqual(34)
+    expect(m.tabs).toBeLessThanOrEqual(28)   // 문서 탭은 헤더 줄 안에 들어간다
     expect(m.toolbar).toBeLessThanOrEqual(36)
+    // 머리부는 세 띠(헤더 / 리본 / 서식줄)로만 이뤄진다
+    expect(m.top).toBeLessThan(200)
 
     // 리본을 접으면 더 줄어든다 (한글·워드의 리본 접기)
     await page.locator('.jan-ribbon-collapse').click()
     await page.waitForTimeout(300)
     const after = await page.evaluate(() => Math.round(document.querySelector('.jan-editor-pages')!.getBoundingClientRect().top))
-    expect(after).toBeLessThan(m.top - 40)
+    expect(after).toBeLessThanOrEqual(m.top - 38)
   })
 })
