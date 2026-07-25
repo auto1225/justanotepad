@@ -61,12 +61,18 @@ async function pageMetrics(page: import('@playwright/test').Page) {
   return page.evaluate(() => {
     const pages = [...document.querySelectorAll('.jan-page-node')] as HTMLElement[]
     const style = getComputedStyle(pages[0])
-    const spec = parseFloat(style.minHeight)
+    // 규격 높이 — 용지가 늘어난 상태에서도 흔들리지 않게 CSS 변수에서 직접 잰다
+    const ruler = document.createElement('div')
+    ruler.style.cssText = `position:absolute;visibility:hidden;height:${style.getPropertyValue('--jan-page-h') || '297mm'}`
+    document.body.appendChild(ruler)
+    const spec = ruler.getBoundingClientRect().height
+    ruler.remove()
     const padBottom = parseFloat(style.paddingBottom)
     return {
       spec,
       count: pages.length,
       continued: document.querySelectorAll('[data-jan-cont]').length,
+      grown: document.querySelectorAll('.jan-page-node[data-jan-grow]').length,
       pages: pages.map((p) => {
         const r = p.getBoundingClientRect()
         const last = p.lastElementChild as HTMLElement | null
@@ -108,7 +114,9 @@ test.describe('줄 단위 문단 분할', () => {
     // 1) 두 쪽 이상으로 나뉜다
     expect(m.count).toBeGreaterThanOrEqual(2)
     // 2) 쪼갠 뒷조각이 다음 쪽으로 넘어가 어떤 쪽도 규격을 넘기지 않는다
+    //    (글만 있는 문서에서 용지가 늘어나면 안 된다 — 규격 그대로 유지)
     for (const p of m.pages) expect(p.overflow).toBeLessThanOrEqual(2)
+    expect(m.grown).toBe(0)
     // 3) 문단 단위가 아니라 줄 단위로 잘렸다 — 앞 쪽 바닥에 한 줄 넘게 비지 않는다
     expect(m.pages[0].bottomGap).toBeLessThan(40)
     // 4) 이어짐 표시가 붙어 저장할 때 원래 한 문단으로 합쳐진다
@@ -138,9 +146,9 @@ test.describe('줄 단위 문단 분할', () => {
     await waitForReflow(page)
 
     // 둘째 쪽 조각 한가운데에 커서를 놓고 문단을 나눈 뒤 이어서 쓴다
+    // (locator.click 은 화면 밖이면 스크롤해서 누른다 — 좌표 클릭은 빗나간다)
     const frag = page.locator('.jan-page-node').nth(1).locator('p').first()
-    const box = (await frag.boundingBox())!
-    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
+    await frag.click()
     await page.keyboard.press('Enter')
     await page.keyboard.type(USER_BREAK)
     await waitForReflow(page)
@@ -173,5 +181,71 @@ test.describe('줄 단위 문단 분할', () => {
     // 앞에서만 지웠으므로 남은 글은 원래 글의 뒷부분 그대로다
     const strip = (s: string) => s.replace(/\s+/g, '')
     expect(strip(before.text).endsWith(strip(after.text))).toBe(true)
+  })
+
+  test('타자로 쪽을 넘길 때 용지가 한 프레임도 늘어나지 않는다', async ({ page }) => {
+    // 한 쪽을 거의 채운 뒤부터 실제 타자로 경계를 넘긴다
+    await page.keyboard.insertText(SENTENCE.repeat(26))
+    await waitForReflow(page)
+
+    // 프레임마다 가장 큰 용지 높이를 기록
+    await page.evaluate(() => {
+      const w = window as unknown as { __h: number[]; __raf: number }
+      w.__h = []
+      const tick = () => {
+        const hs = [...document.querySelectorAll('.jan-page-node')].map((p) => p.getBoundingClientRect().height)
+        if (hs.length) w.__h.push(Math.max(...hs))
+        w.__raf = requestAnimationFrame(tick)
+      }
+      tick()
+    })
+    await page.keyboard.type(SENTENCE.repeat(5), { delay: 10 })
+    await waitForReflow(page)
+
+    const m = await pageMetrics(page)
+    const over = await page.evaluate((spec) => {
+      const w = window as unknown as { __h: number[]; __raf: number }
+      cancelAnimationFrame(w.__raf)
+      return { frames: w.__h.length, over: w.__h.filter((h) => h > spec + 1).length, max: Math.max(...w.__h) }
+    }, m.spec)
+
+    expect(over.frames).toBeGreaterThan(30) // 표본이 실제로 모였는지
+    expect(over.over).toBe(0) // 타자 중 어느 프레임에서도 규격을 넘지 않는다
+    expect(m.count).toBeGreaterThanOrEqual(2)
+    expect(m.grown).toBe(0)
+    // 규격에 묶였다고 글자가 잘려 사라지면 안 된다
+    expect(m.text.replace(/\s+/g, '')).toBe(SENTENCE.repeat(31).replace(/\s+/g, ''))
+  })
+
+  test('쪼갤 수 없는 큰 표가 있는 쪽만 늘어나고, 표를 지우면 규격으로 돌아온다', async ({ page }) => {
+    // 슬래시 명령으로 표를 넣고 Tab 으로 행을 늘려 한 쪽보다 크게 만든다
+    await page.keyboard.type('/표')
+    await page.waitForTimeout(600)
+    await page.keyboard.press('Enter')
+    await page.waitForTimeout(500)
+    await page.keyboard.press('Control+End')
+    for (let i = 0; i < 160; i++) await page.keyboard.press('Tab')
+    await waitForReflow(page)
+
+    const grown = await pageMetrics(page)
+    expect(grown.grown).toBe(1) // 이 쪽만 예외로 늘어난다
+    expect(grown.pages[0].height).toBeGreaterThan(grown.spec)
+    // 늘어난 덕분에 표가 잘리지 않고 전부 보인다
+    expect(
+      await page.evaluate(() => {
+        const p = document.querySelector('.jan-page-node') as HTMLElement
+        const t = p.querySelector('table') as HTMLElement
+        return t.getBoundingClientRect().bottom <= p.getBoundingClientRect().bottom + 1
+      })
+    ).toBe(true)
+
+    // 표를 지우면 다시 규격 높이로
+    await page.keyboard.press('Control+a')
+    await page.keyboard.press('Delete')
+    await page.keyboard.type('표를 지웠습니다.')
+    await waitForReflow(page)
+    const back = await pageMetrics(page)
+    expect(back.grown).toBe(0)
+    expect(back.pages[0].overflow).toBeLessThanOrEqual(2)
   })
 })

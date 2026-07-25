@@ -5828,7 +5828,11 @@ body.jan-split-dragging * { cursor: inherit !important; }
   position: relative;
   box-sizing: border-box;
   width: var(--jan-page-w, 210mm);
-  min-height: var(--jan-page-h, 297mm);
+  /* 용지는 규격 그대로 — 글이 넘쳐도 종이가 늘어나지 않는다.
+     넘친 줄은 다음 프레임의 리플로우가 다음 쪽으로 옮긴다. clip 은 스크롤 상자를
+     만들지 않아(hidden 과 달리) 커서가 종이 안에서 밀려 올라가지 않는다. */
+  height: var(--jan-page-h, 297mm);
+  overflow: clip;
   padding:
     var(--jan-page-margin-top, var(--jan-page-margin, 20mm))
     var(--jan-page-margin-right, var(--jan-page-margin, 20mm))
@@ -5840,9 +5844,15 @@ body.jan-split-dragging * { cursor: inherit !important; }
   border-radius: 4px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05), 0 12px 28px rgba(0, 0, 0, 0.08);
   background-clip: padding-box;
-  /* 규격 높이는 최소값으로만 — 한 쪽보다 큰 문단·표는 쪼갤 수 없으므로(문단 중간
-     분할 미지원) 용지를 늘려서라도 보여준다. hidden 이면 글자가 사라져 버린다. */
   flex: 0 0 auto;
+}
+/* 예외 — 표·이미지처럼 쪼갤 수 없는 블록 하나가 한 쪽보다 큰 경우.
+   리플로우가 더 줄일 수 없다고 판정한 쪽에만 붙으며(data-jan-grow), 이때는 잘라내면
+   내용이 사라지므로 용지를 늘려서라도 보여준다. */
+.jan-page-node[data-jan-grow="1"] {
+  height: auto;
+  min-height: var(--jan-page-h, 297mm);
+  overflow: visible;
 }
 /* 쪽 번호 — 용지 오른쪽 아래 (인쇄 꼬리말과 별개인 화면 안내) */
 .jan-page-node::after {

@@ -1,5 +1,6 @@
 import { Node, Extension } from '@tiptap/core'
-import { Plugin, PluginKey } from '@tiptap/pm/state'
+import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
+import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { canJoin } from '@tiptap/pm/transform'
 import type { Transaction } from '@tiptap/pm/state'
 import type { EditorView } from '@tiptap/pm/view'
@@ -29,6 +30,8 @@ export interface PageMetrics {
 
 export const PAGE_NODE_NAME = 'page'
 const reflowKey = new PluginKey('janPageReflow')
+/** 늘어나도 되는 쪽(쪼갤 수 없는 큰 블록이 든 쪽)의 위치 목록 */
+const growKey = new PluginKey<number[]>('janPageGrow')
 
 /** 페이지 노드 — 한 장의 용지 */
 export const PageNode = Node.create({
@@ -254,6 +257,7 @@ function pushRestToNextPage(tr: Transaction, pageIndex: number, childIndex: numb
   const cutFrom = pos + 1 + offset
   const cutTo = pos + 1 + node.content.size
   const moved = node.content.cut(offset)
+  const held = takeSelection(tr, cutFrom, cutTo)
 
   tr.delete(cutFrom, cutTo)
   // 잘라낸 만큼 이 쪽이 짧아졌다 → 쪽이 끝나는 위치를 다시 계산한다
@@ -265,7 +269,26 @@ function pushRestToNextPage(tr: Transaction, pageIndex: number, childIndex: numb
     // 다음 쪽이 이미 같은 문단의 조각으로 시작했다면 방금 넘긴 조각과 하나로 붙인다
     joinContinuedAt(tr, pageEnd + 1 + moved.size)
   }
+  // 넘긴 내용 안에 커서가 있었다면 같이 따라간다 (타자 중 글자가 앞 쪽에 남지 않게)
+  restoreSelection(tr, held, pageEnd + 1)
   return true
+}
+
+/**
+ * 옮길 내용 안에 커서가 있었는지 기억해 두는 도우미.
+ * 리플로우는 "지우고 다시 넣기"로 내용을 옮기는데, ProseMirror 는 그것을 이동으로
+ * 보지 않으므로 커서가 지운 자리에 남는다. 타자 중이라면 그 뒤 글자가 앞 쪽에 쌓인다.
+ */
+function takeSelection(tr: Transaction, from: number, to: number) {
+  const pos = tr.selection.from
+  return { inside: pos >= from && pos <= to, offset: pos - from }
+}
+
+/** 옮긴 내용을 따라 커서를 새 자리로 되돌린다 */
+function restoreSelection(tr: Transaction, held: { inside: boolean; offset: number }, base: number) {
+  if (!held.inside) return
+  const at = Math.max(0, Math.min(base + held.offset, tr.doc.content.size))
+  tr.setSelection(TextSelection.near(tr.doc.resolve(at)))
 }
 
 /**
@@ -277,9 +300,10 @@ function takeFromPageStart(tr: Transaction, page: { pos: number; node: PMNode },
   let size = 0
   for (let c = 0; c < count; c++) size += page.node.child(c).nodeSize
   const moved = page.node.content.cut(0, size)
+  const held = takeSelection(tr, page.pos + 1, page.pos + 1 + size)
   if (count >= page.node.childCount) tr.delete(page.pos, page.pos + page.node.nodeSize)
   else tr.delete(page.pos + 1, page.pos + 1 + size)
-  return moved
+  return { moved, held }
 }
 
 /** 요소의 첫 줄 높이(화면 px) — 앞 쪽에 한 줄이라도 더 올릴 수 있는지 판단에 쓴다 */
@@ -322,9 +346,10 @@ function reflowOnce(view: EditorView, contentHeight: number): boolean {
     const next = pages[i + 1]
     if (!next.node.firstChild) continue
     const tr = state.tr
-    const moved = takeFromPageStart(tr, next, 1)
+    const { moved, held } = takeFromPageStart(tr, next, 1)
     const at = tr.mapping.map(pos + node.nodeSize - 1)
     tr.insert(at, moved)
+    restoreSelection(tr, held, at) // 커서는 join 단계에서 자동으로 다시 매핑된다
     joinContinuedAt(tr, at)
     tr.setMeta(reflowKey, true)
     tr.setMeta('addToHistory', false)
@@ -430,9 +455,10 @@ function reflowOnce(view: EditorView, contentHeight: number): boolean {
     if (!line || room < line + 1) continue
 
     const tr = state.tr
-    const moved = takeFromPageStart(tr, next, 1)
+    const { moved, held } = takeFromPageStart(tr, next, 1)
     const joinPos = pos + node.nodeSize - 1 // 앞 쪽 마지막 블록 뒤
     tr.insert(joinPos, moved)
+    restoreSelection(tr, held, joinPos)
     joinContinuedAt(tr, joinPos)
     tr.setMeta(reflowKey, true)
     tr.setMeta('addToHistory', false)
@@ -461,9 +487,10 @@ function reflowOnce(view: EditorView, contentHeight: number): boolean {
     if (take === 0) continue
 
     const tr = state.tr
-    const moved = takeFromPageStart(tr, next, take)
+    const { moved, held } = takeFromPageStart(tr, next, take)
     const at = tr.mapping.map(pos + node.nodeSize - 1)
     tr.insert(at, moved)
+    restoreSelection(tr, held, at)
     joinContinuedAt(tr, at)
     tr.setMeta(reflowKey, true)
     tr.setMeta('addToHistory', false)
@@ -472,6 +499,27 @@ function reflowOnce(view: EditorView, contentHeight: number): boolean {
   }
 
   return false
+}
+
+/**
+ * 리플로우가 끝난 뒤, 더 줄일 수 없어 여전히 넘치는 쪽만 "늘어나도 되는 쪽"으로 표시한다.
+ * 용지는 기본적으로 규격 높이에 고정(넘치면 잘림)이라, 표·이미지처럼 쪼갤 수 없는
+ * 블록이 한 쪽보다 큰 경우에만 이 표시로 예외를 준다 — 안 그러면 내용이 사라진다.
+ * 리플로우가 아직 진행 중일 때는 부르지 않는다(타이핑 중 잠깐 넘친 것까지 늘리면
+ * 예전처럼 용지가 늘었다 줄었다 한다).
+ */
+function markGrowPages(view: EditorView, contentHeight: number) {
+  const marks: number[] = []
+  collectPages(view.state.doc).forEach(({ pos }) => {
+    const m = measure(view, pos)
+    if (m && m.used > contentHeight + 1) marks.push(pos)
+  })
+  const cur = (growKey.getState(view.state) || []) as number[]
+  if (cur.length === marks.length && cur.every((p, i) => p === marks[i])) return
+  const tr = view.state.tr.setMeta(growKey, marks)
+  tr.setMeta(reflowKey, true)
+  tr.setMeta('addToHistory', false)
+  view.dispatch(tr)
 }
 
 /** 리플로우 엔진 — DOM 갱신 후 측정해 한 프레임에 한 번씩 정리한다 */
@@ -488,6 +536,33 @@ export const PageReflow = Extension.create<ReflowOptions>({
   addProseMirrorPlugins() {
     const options = this.options
     return [
+      /* 늘어나도 되는 쪽 표시 — DOM 속성을 직접 건드리면 ProseMirror 가 문서 상태와
+         다르다고 보고 되돌리므로, 데코레이션으로 얹는다 (CSS: [data-jan-grow]) */
+      new Plugin({
+        key: growKey,
+        state: {
+          init: () => [] as number[],
+          apply(tr, old: number[]) {
+            const next = tr.getMeta(growKey) as number[] | undefined
+            if (next) return next
+            if (!tr.docChanged) return old
+            return old.map((pos) => tr.mapping.map(pos)).filter((pos, i, a) => a.indexOf(pos) === i)
+          },
+        },
+        props: {
+          decorations(state) {
+            const marks = growKey.getState(state) || []
+            if (!marks.length) return null
+            const decos: Decoration[] = []
+            marks.forEach((pos) => {
+              const node = state.doc.nodeAt(pos)
+              if (node && node.type.name === PAGE_NODE_NAME)
+                decos.push(Decoration.node(pos, pos + node.nodeSize, { 'data-jan-grow': '1' }))
+            })
+            return decos.length ? DecorationSet.create(state.doc, decos) : null
+          },
+        },
+      }),
       new Plugin({
         key: new PluginKey('janPageReflowRunner'),
         /**
@@ -513,7 +588,6 @@ export const PageReflow = Extension.create<ReflowOptions>({
         view(editorView) {
           let raf = 0
           let passes = 0
-          let idleTimer = 0
 
           const run = (view: EditorView) => {
             raf = 0
@@ -526,17 +600,16 @@ export const PageReflow = Extension.create<ReflowOptions>({
               raf = window.requestAnimationFrame(() => run(view))
             } else {
               passes = 0
+              markGrowPages(view, contentHeight)
             }
           }
 
+          /* 다음 프레임에 바로 정리한다. 예전처럼 60ms 모아서 처리하면 타이핑이
+             이어지는 동안 넘친 줄이 계속 쌓여, 용지가 늘어나거나(예전) 잘려 보인다. */
           const schedule = (view: EditorView) => {
             if (raf) return
-            window.clearTimeout(idleTimer)
-            // 타이핑 중에는 조금 모아서 처리 (측정·리플로우 비용 절감)
-            idleTimer = window.setTimeout(() => {
-              passes = 0
-              raf = window.requestAnimationFrame(() => run(view))
-            }, 60)
+            passes = 0
+            raf = window.requestAnimationFrame(() => run(view))
           }
 
           // 문서를 처음 열었을 때도 용지 규격대로 나눠야 한다 (로드 직후 1회)
@@ -549,7 +622,6 @@ export const PageReflow = Extension.create<ReflowOptions>({
             },
             destroy() {
               window.cancelAnimationFrame(raf)
-              window.clearTimeout(idleTimer)
             },
           }
         },
