@@ -9,6 +9,27 @@ const FALLBACK_PREFIX = 'jan:v2:local-first:fallback:'
 
 let dbPromise: Promise<IDBDatabase> | null = null
 
+/* IndexedDB 쓰기는 비동기다 — 저장이 끝나기 전에 새로고침·창 닫기가 일어나면 방금 고친 내용이 사라진다.
+   (예: 문서 이름을 바꾸고 바로 Ctrl+R)
+   그래서 '아직 안 끝난 쓰기'를 들고 있다가, 페이지가 사라지는 순간 localStorage 에 동기로 남긴다.
+   다음에 열 때 getItem 이 fallback 표시를 보고 그 최신본을 먼저 읽는다. */
+const pending = new Map<string, string>()
+let unloadHooked = false
+
+function hookUnloadFlush() {
+  if (unloadHooked || typeof window === 'undefined') return
+  unloadHooked = true
+  const flush = () => {
+    if (!pending.size) return
+    pending.forEach((value, key) => {
+      if (safeLocalSet(key, value)) safeLocalSet(FALLBACK_PREFIX + key, String(Date.now()))
+    })
+  }
+  window.addEventListener('pagehide', flush)
+  window.addEventListener('beforeunload', flush)
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush() })
+}
+
 function hasBrowserStorage() {
   return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined'
 }
@@ -132,11 +153,15 @@ export const localFirstStorage: StateStorage<Promise<void>> = {
       return
     }
 
+    hookUnloadFlush()
+    pending.set(name, value) // 쓰기가 끝나기 전에 창이 닫히면 이 값을 동기로 남긴다
     try {
       await idbSet(name, value)
+      pending.delete(name)
       safeLocalRemove(name)
       safeLocalRemove(FALLBACK_PREFIX + name)
     } catch (error) {
+      pending.delete(name)
       const ok = safeLocalSet(name, value) && safeLocalSet(FALLBACK_PREFIX + name, String(Date.now()))
       if (!ok) console.error('[localFirstStorage] persist failed for', name, error)
     }

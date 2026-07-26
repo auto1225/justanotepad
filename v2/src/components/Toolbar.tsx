@@ -1189,9 +1189,9 @@ export function Toolbar(p: ToolbarProps) {
     { label: '서식', items: drop(pick('서식'), ['엔터 표시']) },
     { label: '쪽', items: drop(pick('페이지'), ['엔터 표시']) },
     { label: '검토', items: reviewItems },
-    { label: 'AI', items: aiItems, extra: true, icon: 'ai' },
+    { label: 'AI', items: aiItems, extra: true },
     /* 논문 탭은 학술 문서 전용만 남긴다 — 개요·각주·쪽 나눔·단 같은 일반 기능은 코어 탭이 담당한다 */
-    { label: '논문', items: drop(pick('논문'), ['문서 개요 패널', '각주 삽입', '페이지 구분 삽입', '다단 레이아웃']), extra: true, icon: 'file-text' },
+    { label: '논문', items: drop(pick('논문'), ['문서 개요 패널', '각주 삽입', '페이지 구분 삽입', '다단 레이아웃']), extra: true },
     ...(inTable ? [{ label: '표', items: tableItems, context: true }] : []),
     ...(onImage ? [{ label: '그림', items: imageItems, context: true }] : []),
   ]
