@@ -234,6 +234,8 @@ export function Toolbar(p: ToolbarProps) {
   const typo = useTypographyStore.getState()
   const docSizePt = Math.round(typo.fontSize * 0.75 * 10) / 10
   const docLineHeight = typo.lineHeight
+  const docLetterSpacing = typo.letterSpacing
+  const docCharScale = typo.charScale
   const fontSizePt = (() => {
     const raw = charState.fontSize
     if (!raw) return null
@@ -461,28 +463,41 @@ export function Toolbar(p: ToolbarProps) {
   /* === 특수 문자 === */
   const insertSymbol = () => setShowSymbolPop(true)
 
-  /* === 한국어 타이포 인라인 === */
-  const setLetterSpacing = async () => {
-    const v = await askText('자간 (em) — 예: -0.05 좁게 / 0.1 넓게', localStorage.getItem('jan-letter-spacing') || '0')
+  /* === 문서 기본 조판 (한국어 타이포) — 문단마다가 아니라 문서 전체의 기본값 ===
+     예전에는 <style> 태그를 끼워 넣어 저장도 안 되고 도구 상자에도 안 보였다.
+     이제 문서 설정으로 두어 저장되고, 자간·장평 칸에 회색 기본값으로 보인다. */
+  const setDocLetterSpacing = async () => {
+    const cur = useTypographyStore.getState().letterSpacing
+    const v = await askText('문서 기본 자간 (%) — 음수면 좁아진다', String(cur))
     if (v === null) return
-    if (Number.isNaN(Number(v))) { flash('숫자를 입력하세요 (예: -0.05, 0.1)'); return }
-    localStorage.setItem('jan-letter-spacing', v)
-    const id = 'jan-letter-spacing-style'
-    const s = document.getElementById(id) || (() => { const e = document.createElement('style'); e.id = id; document.head.appendChild(e); return e })()
-    s.textContent = `.ProseMirror { letter-spacing: ${Number(v)}em; }`
+    const n = Number(v)
+    if (!Number.isFinite(n) || n < -50 || n > 100) { flash('-50 ~ 100 사이 숫자를 입력하세요'); return }
+    useTypographyStore.getState().setLetterSpacing(n)
+    flash(`문서 기본 자간 ${n}%`)
   }
-  const setCharScale = async () => {
-    const v = await askText('장평 (%) — 20~200, 기본 100', localStorage.getItem('jan-char-scale') || '100')
+  const setDocCharScale = async () => {
+    const cur = useTypographyStore.getState().charScale
+    const v = await askText('문서 기본 장평 (%) — 100 보다 작으면 홀쭉', String(cur))
     if (v === null) return
-    const scaleNum = Number(v)
-    if (Number.isNaN(scaleNum) || scaleNum < 20 || scaleNum > 200) { flash('20~200 사이 숫자를 입력하세요'); return }
-    localStorage.setItem('jan-char-scale', v)
-    const id = 'jan-char-scale-style'
-    const s = document.getElementById(id) || (() => { const e = document.createElement('style'); e.id = id; document.head.appendChild(e); return e })()
-    if (Number(v) === 100) { s.textContent = ''; return }
-    const ratio = Number(v)/100
-    const compW = (100/ratio).toFixed(2)
-    s.textContent = `.ProseMirror p, .ProseMirror h1, .ProseMirror h2, .ProseMirror h3, .ProseMirror h4, .ProseMirror h5, .ProseMirror h6, .ProseMirror li, .ProseMirror blockquote { transform: scaleX(${ratio}); transform-origin: left top; width: ${compW}%; }`
+    const n = Number(v)
+    if (!Number.isFinite(n) || n < 10 || n > 250) { flash('10 ~ 250 사이 숫자를 입력하세요'); return }
+    useTypographyStore.getState().setCharScale(n)
+    flash(`문서 기본 장평 ${n}%`)
+  }
+  const setDocTextIndent = async () => {
+    const cur = useTypographyStore.getState().textIndent
+    const v = await askText('첫 줄 들여쓰기 (글자 수) — 0 이면 들여쓰지 않는다', String(cur))
+    if (v === null) return
+    const n = Number(v)
+    if (!Number.isFinite(n) || n < 0 || n > 20) { flash('0 ~ 20 사이 숫자를 입력하세요'); return }
+    useTypographyStore.getState().setTextIndent(n)
+    flash(n ? `첫 줄 ${n}글자 들여쓰기` : '첫 줄 들여쓰기 없음')
+  }
+  const toggleDocJustify = () => {
+    const t = useTypographyStore.getState()
+    const next = t.align === 'justify' ? 'left' : 'justify'
+    t.setAlign(next)
+    flash(next === 'justify' ? '문서 기본 양쪽 정렬' : '문서 기본 왼쪽 정렬')
   }
   const toggleFirstLineIndent = () => {
     const cur = localStorage.getItem('jan-first-line-indent') === '1'
@@ -819,8 +834,10 @@ export function Toolbar(p: ToolbarProps) {
         { label: '오른쪽 정렬', short: '오른쪽', hint: 'Ctrl+R', icon: 'align-right', onClick: () => run(() => editor.chain().focus().setTextAlign('right').run()) },
         { label: '양쪽 정렬', short: '양쪽', hint: 'Ctrl+J', icon: 'align-justify', onClick: () => run(() => editor.chain().focus().setTextAlign('justify').run()) },
         { divider: '한국어 타이포', label: '' },
-        { label: '자간 설정', icon: 'palette', onClick: () => run(setLetterSpacing) },
-        { label: '장평 설정', icon: 'palette', onClick: () => run(setCharScale) },
+        { label: '문서 기본 자간', icon: 'palette', onClick: () => run(() => { void setDocLetterSpacing() }) },
+        { label: '문서 기본 장평', icon: 'palette', onClick: () => run(() => { void setDocCharScale() }) },
+        { label: '첫 줄 들여쓰기 (문서 기본)', icon: 'paragraph', onClick: () => run(() => { void setDocTextIndent() }) },
+        { label: '문서 기본 양쪽 정렬 켬/끔', icon: 'align-justify', onClick: () => run(toggleDocJustify) },
         { short: '첫 줄', label: '첫 줄 들여쓰기 토글', icon: 'paragraph', onClick: () => run(toggleFirstLineIndent) },
         { label: '단락 간격', icon: 'paragraph', onClick: () => run(setParagraphSpacing) },
         { label: '글자 효과', icon: 'sparkle', onClick: () => run(setTextEffect) },
@@ -1244,7 +1261,7 @@ export function Toolbar(p: ToolbarProps) {
         <NumberSpin
           value={letterSpacingPct}
           onChange={(v, o) => applyToSelection((c) => c.setLetterSpacingPct(v), o?.keepFocus)}
-          min={-50} max={100} step={1} unit="%" width={34} inherited={0}
+          min={-50} max={100} step={1} unit="%" width={34} inherited={docLetterSpacing}
           title="자간 (%) — 음수면 좁아진다"
           ariaLabel="자간"
           presets={[-10, -5, -3, 0, 3, 5, 10, 20]}
@@ -1255,7 +1272,7 @@ export function Toolbar(p: ToolbarProps) {
         <NumberSpin
           value={charScalePct}
           onChange={(v, o) => applyToSelection((c) => c.setCharScalePct(v), o?.keepFocus)}
-          min={10} max={250} step={1} unit="%" width={34} inherited={100}
+          min={10} max={250} step={1} unit="%" width={34} inherited={docCharScale}
           title="장평 (%) — 100 보다 작으면 홀쭉, 크면 넓적"
           ariaLabel="장평"
           presets={[70, 80, 90, 100, 110, 120, 150]}

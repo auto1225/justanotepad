@@ -105,6 +105,58 @@ test.describe('줄 단위 문단 분할', () => {
     await page.keyboard.press('Delete')
   })
 
+  test('2단으로 조판해도 쪽이 나뉜다 — 단을 다 채우고 다음 쪽으로 넘어간다', async ({ page }) => {
+    // 논문 양식(2단)에서 쪽 나눔이 아예 꺼져 있던 적이 있다. 한 쪽에 다 쌓이면 안 된다.
+    await page.getByRole('tab', { name: '논문' }).click()
+    await page.getByRole('button', { name: /IEEE/ }).first().click()
+    await page.waitForTimeout(1200)
+    await page.locator('.jan-page-node').first().click()
+    await page.keyboard.press('Control+a')
+    await page.keyboard.press('Delete')
+    await page.keyboard.insertText(LONG_PARAGRAPH + LONG_PARAGRAPH)
+    await waitForReflow(page)
+
+    const m = await page.evaluate(() => {
+      const pages = [...document.querySelectorAll('.jan-page-node')] as HTMLElement[]
+      return {
+        columns: Number(getComputedStyle(pages[0]).columnCount) || 1,
+        fill: getComputedStyle(pages[0]).columnFill,
+        count: pages.length,
+        heights: pages.map((p) => Math.round(p.getBoundingClientRect().height)),
+      }
+    })
+    expect(m.columns).toBe(2)
+    expect(m.fill).toBe('auto') // 왼 단을 바닥까지 채우고 오른 단으로 넘어가야 한다
+    expect(m.count).toBeGreaterThan(1)
+    // 용지가 늘어나 한 장에 다 담기는 방식이면 안 된다 — 규격 높이를 지킨다
+    expect(Math.max(...m.heights) - Math.min(...m.heights)).toBeLessThan(4)
+  })
+
+  test('표 캡션은 표와, 그림 캡션은 그림과 붙어 다닌다', async ({ page }) => {
+    await page.evaluate(() => {
+      const pm = document.querySelector('.ProseMirror') as HTMLElement
+      pm.focus()
+      const filler = '<p>' + '쪽을 채우기 위한 문장입니다. '.repeat(60) + '</p>'
+      const html = filler
+        + '<p data-paper-block="tabcap">Table 1. 표 캡션</p>'
+        + '<table><tbody><tr><th><p>가</p></th><th><p>나</p></th></tr><tr><td><p>1</p></td><td><p>2</p></td></tr></tbody></table>'
+      const dt = new DataTransfer()
+      dt.setData('text/html', html)
+      pm.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }))
+    })
+    await waitForReflow(page)
+
+    const split = await page.evaluate(() => {
+      const cap = document.querySelector('p[data-paper-block="tabcap"]')
+      if (!cap) return 'no-caption'
+      const capPage = cap.closest('.jan-page-node')
+      const table = document.querySelector('.jan-page-node table')
+      const tablePage = table?.closest('.jan-page-node')
+      return capPage === tablePage ? 'together' : 'apart'
+    })
+    expect(split).toBe('together')
+  })
+
   test('한 쪽보다 긴 문단은 줄 경계에서 쪼개져 다음 쪽으로 이어진다', async ({ page }) => {
     await page.keyboard.insertText(LONG_PARAGRAPH)
     await waitForReflow(page)

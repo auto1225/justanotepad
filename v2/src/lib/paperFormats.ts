@@ -26,8 +26,8 @@ const pt = (n: number) => `${n}pt`
 function ieeeSkeleton(): string {
   return [
     `<h1 style="text-align:center"><span style="font-size:${pt(24)}">Paper Title Here</span></h1>`,
-    `<p style="text-align:center"><span style="font-size:${pt(11)}">First Author, Second Author, Third Author</span></p>`,
-    `<p style="text-align:center"><span style="font-size:${pt(10)}"><em>Department, University, City, Country · email@example.com</em></span></p>`,
+    `<p data-paper-block="titleblock" style="text-align:center"><span style="font-size:${pt(11)}">First Author, Second Author, Third Author</span></p>`,
+    `<p data-paper-block="titleblock" style="text-align:center"><span style="font-size:${pt(10)}"><em>Department, University, City, Country · email@example.com</em></span></p>`,
     `<p><strong><em><span style="font-size:${pt(9)}">Abstract—</span></em></strong><em><span style="font-size:${pt(9)}">This paper presents ... (150~250 words)</span></em></p>`,
     `<p><strong><em><span style="font-size:${pt(9)}">Index Terms—</span></em></strong><em><span style="font-size:${pt(9)}">keyword one, keyword two, keyword three</span></em></p>`,
     '<h2>I. Introduction</h2><p></p>',
@@ -124,7 +124,7 @@ export const PAPER_FORMATS: PaperFormatDef[] = [
       pageColumnCount: 2, paperStyle: 'blank',
       runningFooter: '', runningHeader: '',
     },
-    typo: { fontFamily: 'serif', fontSize: 13, lineHeight: 1.35, paragraphSpacing: 4 },
+    typo: { fontFamily: 'serif', fontSize: 13, lineHeight: 1.15, paragraphSpacing: 0, letterSpacing: -1, charScale: 100, textIndent: 1, align: 'justify' },
     skeleton: ieeeSkeleton(),
   },
   {
@@ -138,7 +138,7 @@ export const PAPER_FORMATS: PaperFormatDef[] = [
       runningHeader: '', runningFooter: '{page}',
       pageNumberFormat: 'arabic', firstPageRunningOff: false,
     },
-    typo: { fontFamily: 'serif', fontSize: 16, lineHeight: 2.0, paragraphSpacing: 0 },
+    typo: { fontFamily: 'serif', fontSize: 16, lineHeight: 2.0, paragraphSpacing: 0, letterSpacing: 0, charScale: 100, textIndent: 0.5, align: 'left' },
     skeleton: apaSkeleton(),
   },
   {
@@ -151,7 +151,7 @@ export const PAPER_FORMATS: PaperFormatDef[] = [
       pageColumnCount: 1, paperStyle: 'blank',
       runningHeader: '', runningFooter: '',
     },
-    typo: { fontFamily: 'serif', fontSize: 13, lineHeight: 1.45, paragraphSpacing: 6 },
+    typo: { fontFamily: 'serif', fontSize: 13, lineHeight: 1.35, paragraphSpacing: 0, letterSpacing: -0.5, charScale: 100, textIndent: 1, align: 'justify' },
     skeleton: lncsSkeleton(),
   },
   {
@@ -164,7 +164,7 @@ export const PAPER_FORMATS: PaperFormatDef[] = [
       pageColumnCount: 1, paperStyle: 'blank',
       runningHeader: '', runningFooter: 'Page {page} / {total}',
     },
-    typo: { fontFamily: 'serif', fontSize: 16, lineHeight: 2.0, paragraphSpacing: 6 },
+    typo: { fontFamily: 'serif', fontSize: 16, lineHeight: 2.0, paragraphSpacing: 6, letterSpacing: 0, charScale: 100, textIndent: 0.5, align: 'left' },
     skeleton: elsevierSkeleton(),
   },
   {
@@ -179,7 +179,7 @@ export const PAPER_FORMATS: PaperFormatDef[] = [
       runningHeader: '', runningFooter: '{page}',
       pageNumberFormat: 'arabic', firstPageRunningOff: true,
     },
-    typo: { fontFamily: 'serif', fontSize: 16, lineHeight: 1.9, paragraphSpacing: 8 },
+    typo: { fontFamily: 'serif', fontSize: 16, lineHeight: 1.9, paragraphSpacing: 8, letterSpacing: 0, charScale: 100, textIndent: 1, align: 'justify' },
     skeleton: thesisSkeleton(),
   },
 ]
@@ -199,6 +199,11 @@ export function applyPaperFormat(editor: Editor | null, key: string, withSkeleto
   typo.setFontSize(fmt.typo.fontSize)
   typo.setLineHeight(fmt.typo.lineHeight)
   typo.setParagraphSpacing(fmt.typo.paragraphSpacing)
+  // 본문 조판(정렬·첫 줄 들여쓰기·자간·장평)도 양식의 일부다 — 규정대로 함께 적용한다
+  typo.setAlign(fmt.typo.align)
+  typo.setTextIndent(fmt.typo.textIndent)
+  typo.setLetterSpacing(fmt.typo.letterSpacing)
+  typo.setCharScale(fmt.typo.charScale)
   window.setTimeout(() => {
     useUIStore.getState().applyPageSettings(fmt.page)
   }, withSkeleton ? 600 : 0)

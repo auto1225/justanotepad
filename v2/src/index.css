@@ -1072,8 +1072,27 @@ mark{padding:1px 2px;border-radius:2px;}
 
 /* ==================== Phase 15 — Typography vars ==================== */
 :root{--jan-editor-font:"Noto Sans KR","Malgun Gothic",sans-serif;--jan-editor-line:1.7;--jan-editor-para:8px;--jan-editor-size:14px;}
-.ProseMirror{font-family:var(--jan-editor-font);line-height:var(--jan-editor-line);font-size:var(--jan-editor-size);}
+.ProseMirror{font-family:var(--jan-editor-font);line-height:var(--jan-editor-line);font-size:var(--jan-editor-size);letter-spacing:var(--jan-editor-tracking,0);text-align:var(--jan-editor-align,left);}
 .ProseMirror p{margin-bottom:var(--jan-editor-para);}
+
+/* 문서 기본 조판 — 첫 줄 들여쓰기·양쪽 정렬·장평.
+   워드·한글처럼 "문서 전체의 기본"이고, 문단마다 지정한 값이 있으면 그쪽이 이긴다. */
+.ProseMirror > p:not([style*="text-align"]):not([data-paper-block]),
+.jan-page-node > p:not([style*="text-align"]):not([data-paper-block]) {
+  text-indent: var(--jan-editor-indent, 0);
+}
+/* 제목 바로 다음 문단은 들여쓰지 않는다 (논문·단행본의 관례) */
+.ProseMirror :where(h1,h2,h3,h4,h5,h6) + p:not([style*="text-align"]) { text-indent: 0; }
+/* 양쪽 정렬일 때 한글은 낱말 단위로 늘리면 틈이 벌어진다 — 글자 사이도 함께 늘린다 */
+.ProseMirror { text-justify: inter-character; word-break: keep-all; overflow-wrap: break-word; }
+
+/* 장평 — 글자를 가로로 늘이고 줄인다. 문단을 그만큼 넓게 잡고 다시 눌러 그리므로
+   줄바꿈 위치도 한글의 장평과 같아진다. 100% 면 이 규칙 자체가 걸리지 않는다. */
+[data-jan-scaled] .ProseMirror :where(p, li, h1, h2, h3, h4, h5, h6, blockquote) {
+  transform: scaleX(var(--jan-editor-scale, 1));
+  transform-origin: left top;
+  width: var(--jan-editor-scale-w, 100%);
+}
 
 /* ============================================================
    문서 본문 서식 — 편집기 / 마크다운 미리보기 / 공유 보기가 같은 모습이어야 한다.
@@ -4022,19 +4041,53 @@ html, body, #root {
   border-top: 1px solid color-mix(in srgb, var(--paper-edge, #e5e5e5) 82%, transparent);
 }
 
-.jan-editor-pages[data-page-columns="2"] .ProseMirror,
-.jan-editor-pages[data-page-columns="3"] .ProseMirror {
+/* 다단 — 독립 페이지 모델에서는 각 용지 안에서 단이 흐르고(그래야 쪽이 나뉜다),
+   그 밖의 모델에서는 예전처럼 편집 영역 전체가 한 덩어리로 흐른다. */
+.jan-editor-pages[data-page-columns="2"]:not([data-page-model="nodes"]) .ProseMirror,
+.jan-editor-pages[data-page-columns="3"]:not([data-page-model="nodes"]) .ProseMirror,
+.jan-editor-pages[data-page-columns="2"][data-page-model="nodes"] .jan-page-node,
+.jan-editor-pages[data-page-columns="3"][data-page-model="nodes"] .jan-page-node {
   column-gap: 7mm;
   column-rule: 1px solid color-mix(in srgb, var(--paper-edge, #e5e5e5) 72%, transparent);
 }
 
-.jan-editor-pages[data-page-columns="2"] .ProseMirror {
+.jan-editor-pages[data-page-columns="2"]:not([data-page-model="nodes"]) .ProseMirror,
+.jan-editor-pages[data-page-columns="2"][data-page-model="nodes"] .jan-page-node {
   column-count: 2;
 }
 
-.jan-editor-pages[data-page-columns="3"] .ProseMirror {
+.jan-editor-pages[data-page-columns="3"]:not([data-page-model="nodes"]) .ProseMirror,
+.jan-editor-pages[data-page-columns="3"][data-page-model="nodes"] .jan-page-node {
   column-count: 3;
   column-gap: 5mm;
+}
+
+/* 제목과 저자 줄은 단을 가로질러 지면 전체 폭을 쓴다 — 2단 저널의 표준 첫 장 모양 */
+.jan-editor-pages[data-page-model="nodes"] .jan-page-node > h1,
+.jan-editor-pages[data-page-model="nodes"] .jan-page-node > [data-paper-block="titleblock"] {
+  column-span: all;
+  text-indent: 0;
+}
+
+/* 열이 많은 표는 좁은 단에 넣으면 글자가 한 자씩 끊겨 읽을 수 없다 —
+   저널의 관행대로 지면 전체 폭을 쓰게 하고 캡션도 함께 가로지른다. */
+/* (표는 편집기가 .tableWrapper 로 감싸므로 그 껍데기에 걸어야 한다) */
+.jan-editor-pages[data-page-columns="2"][data-page-model="nodes"] .jan-page-node > .tableWrapper:has(table :is(th, td):nth-child(4)),
+.jan-editor-pages[data-page-columns="2"][data-page-model="nodes"] .jan-page-node > table:has(:is(th, td):nth-child(4)),
+.jan-editor-pages[data-page-columns="2"][data-page-model="nodes"] .jan-page-node > p[data-paper-block="tabcap"]:has(+ .tableWrapper table :is(th, td):nth-child(4)),
+.jan-editor-pages[data-page-columns="2"][data-page-model="nodes"] .jan-page-node > p[data-paper-block="tabcap"]:has(+ table :is(th, td):nth-child(4)) {
+  column-span: all;
+}
+/* 단 안에 들어가는 표는 글자를 조금 줄이고 낱말 단위로만 끊는다 */
+.jan-editor-pages[data-page-columns="2"] .jan-page-node table,
+.jan-editor-pages[data-page-columns="3"] .jan-page-node table { font-size: 0.88em; }
+.jan-editor-pages[data-page-columns="2"] .jan-page-node :is(th, td),
+.jan-editor-pages[data-page-columns="3"] .jan-page-node :is(th, td) { padding: 3px 5px; word-break: keep-all; }
+
+/* 용지 안의 단은 왼쪽부터 차례로 채운다 — 균등 배분(balance)은 마지막 쪽만 하면 된다.
+   auto 라야 왼 단을 바닥까지 채우고 오른 단으로 넘어가는 논문 조판이 된다. */
+.jan-editor-pages[data-page-model="nodes"] .jan-page-node {
+  column-fill: auto;
 }
 
 .jan-editor-pages[data-page-columns="2"] .ProseMirror :where(h1,h2,h3,table,pre,blockquote,img,.jan-page-break,.tiptap-pagination-page-break),
@@ -4043,7 +4096,9 @@ html, body, #root {
 }
 
 .jan-editor-pages[data-view-layout="draft"][data-page-columns="2"] .ProseMirror,
-.jan-editor-pages[data-view-layout="draft"][data-page-columns="3"] .ProseMirror {
+.jan-editor-pages[data-view-layout="draft"][data-page-columns="3"] .ProseMirror,
+.jan-editor-pages[data-view-layout="draft"][data-page-columns="2"] .jan-page-node,
+.jan-editor-pages[data-view-layout="draft"][data-page-columns="3"] .jan-page-node {
   column-count: 1 !important;
   column-gap: normal !important;
   column-rule: 0 !important;
@@ -5593,12 +5648,16 @@ html, body, #root {
   font-weight: 700;
 }
 
-/* 상호참조: 옅은 강조 + 클릭 유도 */
+/* 상호참조: 인쇄물이므로 본문과 같은 잉크색 — 편집 중에만 아주 옅은 밑줄로 표시한다.
+   (강조색을 쓰면 노란·주황 글자가 지면에 남아 읽기도 인쇄도 나빠진다) */
 .ProseMirror .jan-paper-tag-ref {
-  color: var(--accent, #D97757);
-  border-bottom: 1px dotted color-mix(in srgb, var(--accent, #D97757) 55%, transparent);
+  color: inherit;
+  border-bottom: 1px dotted color-mix(in srgb, currentColor 28%, transparent);
   cursor: default;
   white-space: nowrap;
+}
+.ProseMirror .jan-paper-tag-ref:hover {
+  border-bottom-color: color-mix(in srgb, currentColor 60%, transparent);
 }
 .ProseMirror .jan-paper-tag {
   font-variant-numeric: tabular-nums;

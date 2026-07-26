@@ -15,7 +15,18 @@ export interface TypographySettings {
   lineHeight: number
   paragraphSpacing: number
   fontSize: number
+  /** 자간 % — 음수면 좁아진다 (글자 크기 대비) */
+  letterSpacing: number
+  /** 장평 % — 100 보다 작으면 홀쭉, 크면 넓적 */
+  charScale: number
+  /** 첫 줄 들여쓰기 (글자 수) */
+  textIndent: number
+  /** 본문 정렬 — 논문·보고서는 양쪽 정렬이 기본 */
+  align: 'left' | 'justify'
 }
+
+/** 문서 기본값에서 자간·장평·들여쓰기·정렬을 뺀 나머지는 예전 프리셋 값 그대로 */
+const KOREAN_DEFAULTS = { letterSpacing: 0, charScale: 100, textIndent: 0, align: 'left' as const }
 
 export interface TypographyPreset extends TypographySettings {
   id: TypographyPresetId
@@ -38,6 +49,7 @@ export const TYPOGRAPHY_PRESETS: TypographyPreset[] = [
     lineHeight: 1.7,
     paragraphSpacing: 8,
     fontSize: 14,
+    ...KOREAN_DEFAULTS,
   },
   {
     id: 'compact',
@@ -47,6 +59,7 @@ export const TYPOGRAPHY_PRESETS: TypographyPreset[] = [
     lineHeight: 1.5,
     paragraphSpacing: 4,
     fontSize: 13,
+    ...KOREAN_DEFAULTS,
   },
   {
     id: 'manuscript',
@@ -56,6 +69,7 @@ export const TYPOGRAPHY_PRESETS: TypographyPreset[] = [
     lineHeight: 1.9,
     paragraphSpacing: 12,
     fontSize: 15,
+    ...KOREAN_DEFAULTS,
   },
   {
     id: 'large',
@@ -65,6 +79,7 @@ export const TYPOGRAPHY_PRESETS: TypographyPreset[] = [
     lineHeight: 1.8,
     paragraphSpacing: 14,
     fontSize: 18,
+    ...KOREAN_DEFAULTS,
   },
   {
     id: 'code',
@@ -74,6 +89,7 @@ export const TYPOGRAPHY_PRESETS: TypographyPreset[] = [
     lineHeight: 1.55,
     paragraphSpacing: 6,
     fontSize: 13,
+    ...KOREAN_DEFAULTS,
   },
 ]
 
@@ -83,10 +99,18 @@ interface TypographyState {
   lineHeight: number // 1.2 ~ 2.4
   paragraphSpacing: number // 0 ~ 24 (px)
   fontSize: number // 10 ~ 22 (px, ProseMirror base)
+  letterSpacing: number // 자간 %
+  charScale: number // 장평 %
+  textIndent: number // 첫 줄 들여쓰기 (글자 수)
+  align: 'left' | 'justify'
   setFontFamily: (f: FontFamily) => void
   setLineHeight: (n: number) => void
   setParagraphSpacing: (n: number) => void
   setFontSize: (n: number) => void
+  setLetterSpacing: (n: number) => void
+  setCharScale: (n: number) => void
+  setTextIndent: (n: number) => void
+  setAlign: (v: 'left' | 'justify') => void
   applyPreset: (id: TypographyPresetId) => void
   apply: () => void
   reset: () => void
@@ -107,6 +131,9 @@ const LIMITS = {
   fontSize: { min: 4, max: 200 },
   lineHeight: { min: 0.5, max: 5 },
   paragraphSpacing: { min: 0, max: 200 },
+  letterSpacing: { min: -50, max: 100 },
+  charScale: { min: 10, max: 250 },
+  textIndent: { min: 0, max: 20 },
 }
 
 const DEFAULT_PRESET = TYPOGRAPHY_PRESETS[0]
@@ -115,6 +142,7 @@ export const DEFAULT_TYPOGRAPHY: TypographySettings = {
   lineHeight: DEFAULT_PRESET.lineHeight,
   paragraphSpacing: DEFAULT_PRESET.paragraphSpacing,
   fontSize: DEFAULT_PRESET.fontSize,
+  ...KOREAN_DEFAULTS,
 }
 
 /** 미리 준비한 묶음('sans'·'serif'·'mono') 인가 */
@@ -144,6 +172,10 @@ export function clampTypographySettings(settings: TypographySettings): Typograph
     fontSize: clamp(Math.round(settings.fontSize), LIMITS.fontSize.min, LIMITS.fontSize.max),
     lineHeight: Number(clamp(settings.lineHeight, LIMITS.lineHeight.min, LIMITS.lineHeight.max).toFixed(2)),
     paragraphSpacing: clamp(Math.round(settings.paragraphSpacing), LIMITS.paragraphSpacing.min, LIMITS.paragraphSpacing.max),
+    letterSpacing: Number(clamp(settings.letterSpacing ?? 0, LIMITS.letterSpacing.min, LIMITS.letterSpacing.max).toFixed(1)),
+    charScale: Math.round(clamp(settings.charScale ?? 100, LIMITS.charScale.min, LIMITS.charScale.max)),
+    textIndent: Number(clamp(settings.textIndent ?? 0, LIMITS.textIndent.min, LIMITS.textIndent.max).toFixed(2)),
+    align: settings.align === 'justify' ? 'justify' : 'left',
   }
 }
 
@@ -166,6 +198,16 @@ function applyVars(s: TypographySettings) {
   r.style.setProperty('--jan-editor-line', String(normalized.lineHeight))
   r.style.setProperty('--jan-editor-para', normalized.paragraphSpacing + 'px')
   r.style.setProperty('--jan-editor-size', normalized.fontSize + 'px')
+  r.style.setProperty('--jan-editor-tracking', (normalized.letterSpacing / 100) + 'em')
+  r.style.setProperty('--jan-editor-indent', normalized.textIndent + 'em')
+  r.style.setProperty('--jan-editor-align', normalized.align)
+  /* 장평은 글자를 가로로 늘리고 줄이는 것 — CSS 에는 그런 속성이 없어 문단을 그만큼
+     넓게 잡고 다시 눌러 그린다(한글의 장평과 같은 결과). 100% 면 아예 걸지 않는다. */
+  const scale = normalized.charScale / 100
+  r.style.setProperty('--jan-editor-scale', String(scale))
+  r.style.setProperty('--jan-editor-scale-w', (100 / scale).toFixed(3) + '%')
+  if (normalized.charScale === 100) r.removeAttribute('data-jan-scaled')
+  else r.setAttribute('data-jan-scaled', '1')
 }
 
 export const useTypographyStore = create<TypographyState>()(
@@ -177,6 +219,10 @@ export const useTypographyStore = create<TypographyState>()(
       setLineHeight: (n) => { set({ lineHeight: n, presetId: 'custom' }); applyVars(get()) },
       setParagraphSpacing: (n) => { set({ paragraphSpacing: n, presetId: 'custom' }); applyVars(get()) },
       setFontSize: (n) => { set({ fontSize: n, presetId: 'custom' }); applyVars(get()) },
+      setLetterSpacing: (n) => { set({ letterSpacing: n, presetId: 'custom' }); applyVars(get()) },
+      setCharScale: (n) => { set({ charScale: n, presetId: 'custom' }); applyVars(get()) },
+      setTextIndent: (n) => { set({ textIndent: n, presetId: 'custom' }); applyVars(get()) },
+      setAlign: (v) => { set({ align: v, presetId: 'custom' }); applyVars(get()) },
       applyPreset: (id) => {
         const preset = getTypographyPreset(id)
         const next = clampTypographySettings(preset)

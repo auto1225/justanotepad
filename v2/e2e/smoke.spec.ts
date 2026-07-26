@@ -226,7 +226,15 @@ test.describe('v2 smoke', () => {
     await expect(pages).toHaveAttribute('data-page-columns', '2')
     await expect(page.getByLabel('편집 화면 머리글 미리보기')).toHaveText('프로젝트 헤더')
     await expect(page.getByLabel('편집 화면 꼬리말 미리보기')).toHaveText('Page 1')
-    await expect(page.locator('.jan-page-margin-frame')).toBeVisible()
+    // 여백이 실제 지면에 반영됐는가 — 독립 페이지 모델은 용지마다 스스로 여백을 갖고,
+    // 그 밖의 모델은 편집 껍데기에 여백 표시 틀을 그린다
+    const pageModel = await pages.getAttribute('data-page-model')
+    if (pageModel === 'nodes') {
+      const padLeft = await page.locator('.jan-page-node').first().evaluate((el) => parseFloat(getComputedStyle(el).paddingLeft))
+      expect(Math.round(padLeft)).toBeGreaterThan(80) // 좌 24mm ≈ 91px
+    } else {
+      await expect(page.locator('.jan-page-margin-frame')).toBeVisible()
+    }
     await expect(pageStatus).toContainText('B4')
     await expect(pageStatus).toContainText('가로')
     await expect(pageStatus).toContainText('2단')
@@ -244,9 +252,13 @@ test.describe('v2 smoke', () => {
       .evaluateAll((els) => els.map((el) => Math.round(el.getBoundingClientRect().height)))
     expect(Math.abs(vPads[0] - 45)).toBeLessThanOrEqual(3)
     expect(Math.abs(vPads[1] - 76)).toBeLessThanOrEqual(3)
-    const columnCount = await editor.evaluate((node) => getComputedStyle(node).columnCount)
+    /* 단과 여백을 지닌 요소는 모델에 따라 다르다 —
+       독립 페이지 모델은 용지(.jan-page-node)가, 그 밖에는 편집 영역이 갖는다.
+       (2단도 쪽으로 나뉘게 되면서 단은 용지 안에서 흐른다) */
+    const sheet = pageModel === 'nodes' ? page.locator('.jan-page-node').first() : editor
+    const columnCount = await sheet.evaluate((node) => getComputedStyle(node).columnCount)
     expect(columnCount).toBe('2')
-    const padding = await editor.evaluate((node) => {
+    const padding = await sheet.evaluate((node) => {
       const style = getComputedStyle(node)
       return {
         top: Math.round(parseFloat(style.paddingTop)),

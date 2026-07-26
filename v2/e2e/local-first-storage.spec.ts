@@ -138,7 +138,8 @@ test.describe('local-first memo storage', () => {
     await page.goto('./')
 
     await page.locator('.ProseMirror').first().waitFor({ state: 'visible', timeout: 15000 })
-    const moreButton = page.getByRole('button', { name: '더보기' })
+    // 리본 묶음마다 '<묶음> 더보기' 가 따로 있으므로 헤더의 ⋯ 만 정확히 집는다
+    const moreButton = page.getByRole('button', { name: '더보기', exact: true })
     await expect(moreButton).toBeVisible()
     await moreButton.click()
 

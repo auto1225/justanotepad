@@ -78,14 +78,69 @@ export const ContinuedAttr = Extension.create({
 interface LineBox { top: number; bottom: number }
 
 /**
+ * 단(段) 좌표계 — 다단 조판에서도 "한 줄기"로 재기 위한 변환.
+ *
+ * 2단 쪽은 왼 단 바닥에서 오른 단 꼭대기로 글이 이어진다. 화면 y 만 보면
+ * 오른 단의 첫 줄이 왼 단의 첫 줄과 같은 높이라 "앞으로 되돌아간" 것처럼 보이므로,
+ * 단을 아래로 이어 붙인 좌표(flow y)로 바꿔서 잰다. 1단이면 그냥 화면 좌표다.
+ * 줌(scale)도 여기서 함께 벗겨 내 모든 계산을 CSS 픽셀로 통일한다.
+ */
+interface Flow {
+  /** 화면 좌표(top,left) → 흐름 좌표 (CSS 픽셀, 쪽 안쪽 위끝이 0) */
+  y: (top: number, left: number) => number
+  /** 이 쪽이 담을 수 있는 흐름 길이 = 안쪽 높이 × 단 수 */
+  capacity: number
+  columns: number
+  /** 화면 픽셀 → CSS 픽셀 배율 */
+  scale: number
+}
+
+function pageFlow(el: HTMLElement, contentHeight: number): Flow {
+  const rect = el.getBoundingClientRect()
+  const scale = el.offsetWidth > 0 ? rect.width / el.offsetWidth : 1
+  const s = scale || 1
+  const cs = window.getComputedStyle(el)
+  const columns = Math.max(1, Math.round(Number(cs.columnCount)) || 1)
+  const padTop = parseFloat(cs.paddingTop) || 0
+  const contentTop = rect.top + padTop * s
+  if (columns === 1) {
+    return { y: (top) => (top - contentTop) / s, capacity: contentHeight, columns, scale: s }
+  }
+  const padLeft = parseFloat(cs.paddingLeft) || 0
+  const padRight = parseFloat(cs.paddingRight) || 0
+  const gap = parseFloat(cs.columnGap) || 0
+  const innerW = el.offsetWidth - padLeft - padRight
+  const colW = (innerW - gap * (columns - 1)) / columns
+  const step = (colW + gap) * s
+  const contentLeft = rect.left + padLeft * s
+  return {
+    // 단 번호는 왼끝 위치로 정한다. 단 k 는 [k*step, k*step+colW) 에 놓이므로 floor 로 정확히 갈린다
+    // (내어쓰기로 한두 픽셀 왼쪽으로 나간 줄까지 같은 단으로 보도록 1px 을 얹는다)
+    y: (top, left) => {
+      const idx = step > 0 ? Math.max(0, Math.floor((left - contentLeft + 1) / step)) : 0
+      return idx * contentHeight + (top - contentTop) / s
+    },
+    capacity: contentHeight * columns,
+    columns,
+    scale: s,
+  }
+}
+
+/** 1단·줌 없음 기준의 기본 흐름 (화면 좌표 그대로) */
+const SCREEN_FLOW: Flow = { y: (top) => top, capacity: 0, columns: 1, scale: 1 }
+
+/**
  * Range 가 돌려준 사각형들을 줄 단위로 묶는다.
  * 한 줄이라도 굵기·크기가 다른 글자가 섞이면 사각형이 여러 개로 나뉘므로,
- * 세로로 겹치는 것끼리 한 줄로 합친다.
+ * 세로로 겹치는 것끼리 한 줄로 합친다. 좌표는 흐름 좌표로 바꿔서 묶는다 —
+ * 그래야 서로 다른 단의 같은 높이 줄이 한 줄로 뭉치지 않는다.
  */
-function groupLines(rects: ArrayLike<DOMRect>): LineBox[] {
+function groupLines(rects: ArrayLike<DOMRect>, flow: Flow = SCREEN_FLOW): LineBox[] {
   const lines: LineBox[] = []
-  for (const r of Array.from(rects)) {
-    if (r.height <= 0) continue
+  for (const raw of Array.from(rects)) {
+    if (raw.height <= 0) continue
+    const top = flow.y(raw.top, raw.left)
+    const r = { top, bottom: top + raw.height / flow.scale, height: raw.height / flow.scale }
     const last = lines[lines.length - 1]
     if (last) {
       /* 같은 줄인지는 "겹치는가"가 아니라 "가운데가 비슷한가"로 본다.
@@ -106,7 +161,7 @@ function groupLines(rects: ArrayLike<DOMRect>): LineBox[] {
 }
 
 /**
- * 요소 안에서 maxHeight(화면 px) 안에 들어가는 마지막 줄을 찾아,
+ * 요소 안에서 maxHeight(CSS px, 흐름 좌표) 안에 들어가는 마지막 줄을 찾아,
  * 그 다음 줄이 시작하는 문자 위치를 돌려준다 — 줄 중간에서는 자르지 않는다.
  *
  * 글자 하나의 사각형이 아니라 줄 상자를 재는 이유: 글자 아래끝은 줄 상자보다
@@ -114,7 +169,7 @@ function groupLines(rects: ArrayLike<DOMRect>): LineBox[] {
  * 자를 문자는 "앞에서부터 세어 몇 줄을 차지하는가"로 이진 탐색한다
  * (문자마다 재면 긴 문단에서 너무 느리다).
  */
-function findLineCut(el: HTMLElement, maxHeight: number): { node: Text; offset: number } | null {
+function findLineCut(el: HTMLElement, maxHeight: number, flow: Flow = SCREEN_FLOW): { node: Text; offset: number } | null {
   const texts: Array<{ node: Text; start: number }> = []
   const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
   let total = 0
@@ -142,13 +197,15 @@ function findLineCut(el: HTMLElement, maxHeight: number): { node: Text; offset: 
     const { node, off } = locate(i)
     range.setStart(texts[0].node, 0)
     range.setEnd(node, off)
-    return groupLines(range.getClientRects())
+    return groupLines(range.getClientRects(), flow)
   }
 
   // 1) 문단 전체의 줄 상자 — 어느 줄까지 남는 자리에 들어가는가
   const all = linesUpTo(total)
   if (all.length < 2) return null // 한 줄짜리는 쪼갤 수 없다
-  const elTop = el.getBoundingClientRect().top
+  const elRects = el.getClientRects()
+  const elHead = elRects.length ? elRects[0] : el.getBoundingClientRect()
+  const elTop = flow.y(elHead.top, elHead.left)
   /* i 번째 줄까지 넣었을 때 차지하는 높이 — 다음 줄의 윗선이 실제 줄 간격이다.
      글자 사각형의 아래끝(bottom)은 내려긋기(descent) 때문에 줄 간격보다 커서,
      그 값으로 재면 줄 간격을 좁혔을 때 한두 줄씩 덜 들어간다. */
@@ -190,28 +247,54 @@ interface ReflowOptions {
   maxPasses?: number
 }
 
+interface PageMeasure {
+  el: HTMLElement
+  /** 이 쪽이 실제로 쓴 흐름 길이 */
+  used: number
+  /** 자식별 흐름 시작·끝 (바깥 여백 포함) */
+  starts: number[]
+  ends: number[]
+  flow: Flow
+}
+
 /**
- * 페이지 DOM 측정 — 콘텐츠 총 높이와 자식별 높이(줌 보정)
- * 자식별 높이를 알아야 "넘치는 만큼"을 한 번에 옮길 수 있다.
+ * 페이지 DOM 측정 — 자식마다 "흐름 좌표에서 어디부터 어디까지 차지하는가".
+ * 1단이면 높이를 차례로 더한 값과 같고, 다단이면 단을 이어 붙인 좌표로 잰다.
+ * 자식별 구간을 알아야 "넘치는 만큼"을 한 번에 옮길 수 있다.
  */
-function measure(view: EditorView, pagePos: number): { el: HTMLElement; used: number; heights: number[] } | null {
+function measure(view: EditorView, pagePos: number, contentHeight: number): PageMeasure | null {
   const dom = view.nodeDOM(pagePos)
   if (!(dom instanceof HTMLElement)) return null
-  const rect = dom.getBoundingClientRect()
-  const scale = dom.offsetWidth > 0 ? rect.width / dom.offsetWidth : 1
-  const heights: number[] = []
-  let used = 0
+  const flow = pageFlow(dom, contentHeight)
+  const starts: number[] = []
+  const ends: number[] = []
+  let acc = 0
   for (const child of Array.from(dom.children)) {
     const el = child as HTMLElement
     // 데코레이션 위젯 등 문서 노드가 아닌 요소는 건너뛴다
     if (el.classList.contains('ProseMirror-widget')) continue
     const style = window.getComputedStyle(el)
-    const marginY = (parseFloat(style.marginTop) || 0) + (parseFloat(style.marginBottom) || 0)
-    const h = el.getBoundingClientRect().height / (scale || 1) + marginY
-    heights.push(h)
-    used += h
+    const marginTop = parseFloat(style.marginTop) || 0
+    const marginBottom = parseFloat(style.marginBottom) || 0
+    if (flow.columns === 1) {
+      const h = el.getBoundingClientRect().height / flow.scale + marginTop + marginBottom
+      starts.push(acc)
+      acc += h
+      ends.push(acc)
+      continue
+    }
+    // 다단에서는 한 블록이 단을 넘어 조각날 수 있다 — 조각들의 처음과 끝으로 구간을 잡는다
+    const rects = el.getClientRects()
+    if (!rects.length) { starts.push(acc); ends.push(acc); continue }
+    const head = rects[0]
+    const tail = rects[rects.length - 1]
+    const start = flow.y(head.top, head.left) - marginTop
+    const end = flow.y(tail.top, tail.left) + tail.height / flow.scale + marginBottom
+    starts.push(start)
+    ends.push(Math.max(end, start))
+    acc = Math.max(acc, end)
   }
-  return { el: dom, used, heights }
+  return { el: dom, used: acc, starts, ends, flow }
 }
 
 /** 페이지 노드들의 위치와 노드를 순서대로 수집 */
@@ -226,16 +309,30 @@ function collectPages(doc: PMNode): Array<{ pos: number; node: PMNode }> {
 /** 한 줄이라도 넣어 볼 만한 최소 여유 (이보다 좁으면 문단을 통째로 넘긴다) */
 const MIN_SPLIT_ROOM = 24
 
+/* ── 떨어지면 안 되는 짝 ──
+   제목은 뒤따르는 본문과, 표 캡션은 아래 표와, 그림 캡션은 위 그림과 붙어 다닌다.
+   쪽 경계에서 이것들이 갈라지면 "표 1." 만 쪽 바닥에 남고 표는 다음 쪽에 오는
+   꼴이 되어, 워드·한글·저널 조판 어디에서도 허용하지 않는다. */
+function paperBlockKind(node: PMNode): string {
+  return String((node.attrs as Record<string, unknown> | undefined)?.['data-paper-block'] || '')
+}
+/** 뒤에 오는 블록과 함께 다녀야 하는가 (제목·표 캡션) */
+function keepsWithNext(node: PMNode): boolean {
+  return node.type.name === 'heading' || paperBlockKind(node) === 'tabcap'
+}
+/** 앞의 블록과 함께 다녀야 하는가 (그림 캡션) */
+function keepsWithPrev(node: PMNode): boolean {
+  return paperBlockKind(node) === 'figcap'
+}
+
 /**
  * 경계에 걸친 문단을 남는 자리(room)만큼 채웠을 때 자를 문서 위치.
  * 쪼갤 수 없으면 -1 (표·이미지처럼 텍스트가 아니거나, 한 줄도 안 들어가는 경우).
  */
-function findSplitPos(view: EditorView, childPos: number, child: PMNode, room: number): number {
+function findSplitPos(view: EditorView, childPos: number, child: PMNode, room: number, flow: Flow): number {
   if (!child.isTextblock || child.content.size < 2 || room < MIN_SPLIT_ROOM) return -1
   const dom = view.nodeDOM(childPos)
   if (!(dom instanceof HTMLElement)) return -1
-  const rect = dom.getBoundingClientRect()
-  const scale = dom.offsetWidth > 0 ? rect.width / dom.offsetWidth : 1
   const style = window.getComputedStyle(dom)
   // room 은 문단의 바깥 크기(여백 포함) 기준이므로, 글자가 놓일 높이만 남긴다
   const outer =
@@ -243,9 +340,9 @@ function findSplitPos(view: EditorView, childPos: number, child: PMNode, room: n
     (parseFloat(style.marginBottom) || 0) +
     (parseFloat(style.paddingBottom) || 0) +
     (parseFloat(style.borderBottomWidth) || 0)
-  const avail = (room - outer) * (scale || 1) - 1
+  const avail = room - outer - 1 // 흐름 좌표는 이미 CSS 픽셀이라 줌 보정이 필요 없다
   if (avail <= 0) return -1
-  const hit = findLineCut(dom, avail)
+  const hit = findLineCut(dom, avail, flow)
   if (!hit) return -1
   let at: number
   try { at = view.posAtDOM(hit.node, hit.offset) } catch { return -1 }
@@ -356,7 +453,7 @@ function reflowOnce(view: EditorView, contentHeight: number): boolean {
   const NEARLY_EMPTY = Math.max(24, contentHeight * 0.12)
   for (let i = 0; i < pages.length - 1; i++) {
     const { pos, node } = pages[i]
-    const m = measure(view, pos)
+    const m = measure(view, pos, contentHeight)
     if (!m || m.used > NEARLY_EMPTY) continue
     const next = pages[i + 1]
     if (!next.node.firstChild) continue
@@ -375,20 +472,19 @@ function reflowOnce(view: EditorView, contentHeight: number): boolean {
   // 2) 넘침 → 용지를 넘어가는 블록 전체를 한 번에 다음 쪽으로 (한 블록씩 옮기면 너무 느리다)
   for (let i = 0; i < pages.length; i++) {
     const { pos, node } = pages[i]
-    const m = measure(view, pos)
-    if (!m || m.heights.length !== node.childCount) continue
-    if (m.used <= contentHeight + 1) continue
+    const m = measure(view, pos, contentHeight)
+    if (!m || m.ends.length !== node.childCount) continue
+    const capacity = m.flow.capacity
+    if (m.used <= capacity + 1) continue
 
-    // 용지 안쪽 높이를 처음 넘기는 블록을 찾는다
+    // 용지가 담는 흐름 길이를 처음 넘기는 블록을 찾는다
     // (첫 블록이라도 경계에 걸리면 줄 단위 분할 대상이므로 c===0 도 포함한다)
-    let acc = 0
     let cutIndex = -1
     for (let c = 0; c < node.childCount; c++) {
-      const h = m.heights[c]
-      if (acc + h > contentHeight) { cutIndex = c; break }
-      acc += h
+      if (m.ends[c] > capacity) { cutIndex = c; break }
     }
     if (cutIndex < 0) continue
+    const acc = Math.max(0, m.starts[cutIndex])
 
     // ── 줄 단위 분할 — 경계에 걸친 문단을 남는 자리만큼 채우고 그 줄에서 쪼갠 뒤,
     //    같은 트랜잭션에서 뒷조각부터 다음 쪽으로 넘긴다.
@@ -400,7 +496,7 @@ function reflowOnce(view: EditorView, contentHeight: number): boolean {
       for (let c = 0; c < cutIndex; c++) childOffset += node.child(c).nodeSize
       const child = node.child(cutIndex) // 경계에 걸친 블록
       // 텍스트 문단·제목만 쪼갠다 (표·이미지·콜아웃은 블록 단위로 옮긴다)
-      const splitAt = findSplitPos(view, pos + 1 + childOffset, child, contentHeight - acc)
+      const splitAt = findSplitPos(view, pos + 1 + childOffset, child, capacity - acc, m.flow)
       if (splitAt > 0) {
         const tr = state.tr
         // 쪼갠 뒷조각에 "이어짐" 표시를 처음부터 붙인다 (저장 시 원래 한 문단으로 합침)
@@ -428,10 +524,11 @@ function reflowOnce(view: EditorView, contentHeight: number): boolean {
       cutIndex += 1
     }
 
-    // 제목은 뒤따르는 내용과 붙어 다닌다 — 제목만 쪽 바닥에 홀로 남으면(고아 제목)
-    // 워드·한글처럼 제목도 함께 다음 쪽으로 넘긴다. 단 그 제목이 쪽의 첫 블록이면
-    // 넘길 수 없다(쪽이 백지가 된다).
-    if (cutIndex >= 2 && node.child(cutIndex - 1).type.name === 'heading') cutIndex -= 1
+    // 제목·표 캡션은 뒤따르는 내용과 붙어 다닌다 — 쪽 바닥에 홀로 남으면 함께 넘긴다.
+    // 단 그것이 쪽의 첫 블록이면 넘길 수 없다(쪽이 백지가 된다).
+    for (let guard = 0; guard < 4 && cutIndex >= 2 && keepsWithNext(node.child(cutIndex - 1)); guard++) cutIndex -= 1
+    // 넘길 첫 블록이 그림 캡션이면 위의 그림도 함께 넘긴다 (캡션만 다음 쪽으로 가지 않게)
+    if (cutIndex >= 2 && keepsWithPrev(node.child(cutIndex))) cutIndex -= 1
 
     // cutIndex 이후 전부를 잘라 옮긴다
     let offset = 0
@@ -462,21 +559,20 @@ function reflowOnce(view: EditorView, contentHeight: number): boolean {
     const next = pages[i + 1]
     const first = next.node.firstChild
     if (!first || !first.isTextblock || first.content.size < 2) continue
-    const m = measure(view, pos)
+    const m = measure(view, pos, contentHeight)
     if (!m) continue
-    const room = contentHeight - m.used
+    const room = m.flow.capacity - m.used
     if (room < MIN_SPLIT_ROOM) continue
     const fragPos = next.pos + 1
     const fragDom = view.nodeDOM(fragPos)
     if (!(fragDom instanceof HTMLElement)) continue
-    const rect = fragDom.getBoundingClientRect()
-    const scale = fragDom.offsetWidth > 0 ? rect.width / fragDom.offsetWidth : 1
-    const line = firstLineHeight(fragDom) / (scale || 1)
+    const nextFlow = measure(view, next.pos, contentHeight)?.flow || m.flow
+    const line = firstLineHeight(fragDom) / (nextFlow.scale || 1)
     // 한 줄도 못 올릴 여유면 그대로 둔다 (올렸다 도로 내리는 왕복 방지)
     if (!line || room < line + 1) continue
     // 남는 자리에 들어가는 마지막 줄에서 자른다. -1 이면 전부 들어간다는 뜻이라
     // 아래 4단계(블록 통째로 당기기)에 맡긴다.
-    const splitAt = findSplitPos(view, fragPos, first, room)
+    const splitAt = findSplitPos(view, fragPos, first, room, nextFlow)
     if (splitAt <= 0) continue
 
     const tr = state.tr
@@ -498,23 +594,26 @@ function reflowOnce(view: EditorView, contentHeight: number): boolean {
   // 4) 여유 → 다음 쪽에서 들어갈 만큼 당겨오기 (내용을 지웠을 때 빈 쪽·구멍이 남지 않게)
   for (let i = 0; i < pages.length - 1; i++) {
     const { pos, node } = pages[i]
-    const m = measure(view, pos)
+    const m = measure(view, pos, contentHeight)
     const next = pages[i + 1]
-    const nm = measure(view, next.pos)
-    if (!m || !nm || nm.heights.length !== next.node.childCount) continue
-    let room = contentHeight - m.used
+    const nm = measure(view, next.pos, contentHeight)
+    if (!m || !nm || nm.ends.length !== next.node.childCount) continue
+    let room = m.flow.capacity - m.used
     if (room <= 2) continue
 
     // 다음 쪽 앞에서 몇 블록이 들어가는지 센다
     let take = 0
     for (let c = 0; c < next.node.childCount; c++) {
-      if (nm.heights[c] > room) break
-      room -= nm.heights[c]
+      const h = nm.ends[c] - nm.starts[c]
+      if (h > room) break
+      room -= h
       take++
     }
-    // 제목만 끌어올리면 제목이 쪽 바닥에 홀로 남는다 — 뒤따르는 내용이 함께 오지 못하면 제목도 두고 온다
-    // (다음 쪽을 통째로 가져오는 경우는 제목이 마지막이어도 홀로 남지 않으므로 그대로 둔다)
-    if (take > 0 && take < next.node.childCount && next.node.child(take - 1).type.name === 'heading') take -= 1
+    // 제목·표 캡션만 끌어올리면 쪽 바닥에 홀로 남는다 — 뒤따르는 내용이 함께 오지 못하면 두고 온다
+    // (다음 쪽을 통째로 가져오는 경우는 마지막이어도 홀로 남지 않으므로 그대로 둔다)
+    for (let guard = 0; guard < 4 && take > 0 && take < next.node.childCount && keepsWithNext(next.node.child(take - 1)); guard++) take -= 1
+    // 그림만 올리고 캡션을 두고 오는 것도 같은 잘못이다 — 그림도 두고 온다
+    if (take > 0 && take < next.node.childCount && keepsWithPrev(next.node.child(take))) take -= 1
     // 다음 쪽을 완전히 비우게 되면 그 쪽 자체가 사라진다 (takeFromPageStart 가 처리)
     if (take === 0) continue
 
@@ -543,8 +642,8 @@ function reflowOnce(view: EditorView, contentHeight: number): boolean {
 function markGrowPages(view: EditorView, contentHeight: number) {
   const marks: number[] = []
   collectPages(view.state.doc).forEach(({ pos }) => {
-    const m = measure(view, pos)
-    if (m && m.used > contentHeight + 1) marks.push(pos)
+    const m = measure(view, pos, contentHeight)
+    if (m && m.used > m.flow.capacity + 1) marks.push(pos)
   })
   const cur = (growKey.getState(view.state) || []) as number[]
   if (cur.length === marks.length && cur.every((p, i) => p === marks[i])) return

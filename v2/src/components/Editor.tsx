@@ -264,9 +264,11 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   }, [runningFooter, runningHeader])
   const hasRunningPreview = !!(runningHeaderPreview || runningFooterPreview)
   const shouldShowRulers = viewLayout === 'print' && showRulers
-  // 페이지 분할은 1단 + 인쇄 보기에서만 (다단 CSS column 과 float 페이지 기구는 공존 불가)
-  const paginationEnabled = viewLayout === 'print' && pageColumnCount === 1
   const pageModel = useUIStore((s) => s.pageModel)
+  /* 독립 페이지 모델은 다단도 쪽으로 나눈다 — 단을 용지 안에서 흘리고,
+     리플로우가 '단을 이어 붙인 좌표'로 재서 넘치는 만큼 다음 쪽으로 옮긴다.
+     옛 PaginationPlus 는 float 기반이라 CSS 다단과 공존할 수 없어 1단에서만 켠다. */
+  const paginationEnabled = viewLayout === 'print' && (pageModel === 'nodes' || pageColumnCount === 1)
   // 화면상 페이지 반복 주기 (페이지 높이 + 갭 32 + 머리/꼬리글 렌더 오차) — 워터마크 반복 배경용
   const pageRhythmPx = pagePx.pageHeight + 32 + 6
   // 쪽모음 패널 — 편집과 공존하는 페이지 축소판 (여러쪽보기 재설계: 오버레이 → 사이드 패널)
