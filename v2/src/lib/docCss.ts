@@ -25,4 +25,12 @@ export const DOC_EXPORT_CSS = `
   pre code { background: none; padding: 0; font: inherit; }
   code { background: #f0f0ee; padding: 1px 4px; border-radius: 3px; font-family: Consolas, 'D2Coding', 'Courier New', monospace; font-size: 0.92em; }
   hr { border: 0; border-top: 1px solid #ddd; margin: 1.2em 0; }
+  /* 논문 조판 — 내보낸 파일에서도 수식 번호·캡션·참고문헌이 제자리를 지키게 한다 */
+  p[data-paper-block="eq"] { display: flex; align-items: center; gap: 10px; margin: 0.7em 0; }
+  p[data-paper-block="eq"] > .jan-math-inline { flex: 1; text-align: center; }
+  p[data-paper-block="eq"] .jan-paper-tag-eqnum { margin-left: auto; flex-shrink: 0; }
+  p[data-paper-block="figcap"], p[data-paper-block="tabcap"] { text-align: center; font-size: 0.9em; color: #555; margin: 0.35em 0 1em; }
+  p[data-paper-block="ref"] { text-indent: -1.5em; padding-left: 1.5em; font-size: 0.9em; margin: 0.3em 0; }
+  .jan-paper-tag-figlabel, .jan-paper-tag-tablabel { font-weight: 700; }
+  sup.paper-fn-ref, sup.paper-cite { font-size: 0.75em; vertical-align: super; line-height: 0; }
 `

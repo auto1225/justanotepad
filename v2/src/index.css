@@ -5572,6 +5572,14 @@ html, body, #root {
   flex-shrink: 0;
 }
 
+/* 참고문헌 항목: 첫 줄만 내밀고 이어지는 줄은 들여쓴다 (내어쓰기) */
+.ProseMirror p[data-paper-block="ref"] {
+  text-indent: -1.5em;
+  padding-left: 1.5em;
+  font-size: 0.9em;
+  margin: 0.3em 0;
+}
+
 /* 그림/표 캡션: 가운데, 본문보다 작게 */
 .ProseMirror p[data-paper-block="figcap"],
 .ProseMirror p[data-paper-block="tabcap"] {

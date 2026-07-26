@@ -193,6 +193,7 @@ export function applyPaperFormat(editor: Editor | null, key: string, withSkeleto
   if (withSkeleton && editor && !editor.isDestroyed) {
     editor.chain().focus('start').insertContentAt(0, fmt.skeleton).run()
   }
+  useUIStore.getState().setPaperFormat(fmt.key)
   const typo = useTypographyStore.getState()
   typo.setFontFamily(fmt.typo.fontFamily)
   typo.setFontSize(fmt.typo.fontSize)

@@ -339,13 +339,22 @@ export function Toolbar(p: ToolbarProps) {
 <h2 style="font-size:1.1em;margin-top:1.5em;">Acknowledgments</h2>
 <p>본 연구는 [기관명/과제번호] 의 지원으로 수행되었습니다. ...</p>`)
   const insertFootnote = () => { insertFootnoteAt(editor) }
+  /* 인용 표기는 적용한 양식을 따른다 — IEEE·Vancouver 는 본문 줄에 [n], 나머지는 위 첨자 (저자, 연도) */
+  const numericCitation = ui.paperFormat === 'ieee' || ui.paperFormat === 'vancouver'
   const insertCitation = async () => {
+    if (numericCitation) {
+      const used = editor.view.dom.querySelectorAll('.paper-cite').length
+      const n = await askText('인용 번호:', String(used + 1))
+      if (n) insertHTML(`<span class="paper-cite">[${escHtml(n.replace(/[[\]]/g, ''))}]</span>`)
+      return
+    }
     const cite = await askText('인용 (예: Smith, 2024):', 'Author, 2024')
     if (cite) insertHTML(`<sup class="paper-cite">(${escHtml(cite)})</sup>`)
   }
   const insertReference = async () => {
     const ref = await askText('참고문헌 항목:', 'Author, A. (2024). Title. Journal, 1(1), 1-10.', { multiline: true })
-    if (ref) insertHTML(`<div class="paper-ref" style="text-indent:-1.5em;padding-left:1.5em;font-size:0.9em;margin:0.3em 0;">${escHtml(ref)}</div>`)
+    // div 도 class 도 스키마에 없어 통째로 벗겨진다 — 문단이 이미 허용하는 data-paper-block 을 쓴다
+    if (ref) insertHTML(`<p data-paper-block="ref">${escHtml(ref)}</p>`)
   }
   const cyclePageColumns = () => {
     const current = ui.pageColumnCount || 1

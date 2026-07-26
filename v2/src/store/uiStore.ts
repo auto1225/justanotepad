@@ -379,6 +379,9 @@ interface UIState {
   setPageColumnCount: (count: PageColumnCount) => void
   setRunningHeader: (value: string) => void
   setRunningFooter: (value: string) => void
+  /** 마지막으로 적용한 논문 양식 (인용 표기 등 뒤따르는 기능이 이걸 따른다) */
+  paperFormat: string
+  setPaperFormat: (key: string) => void
   applyPageSettings: (settings: Partial<MemoPageSettings>) => void
 }
 
@@ -455,6 +458,8 @@ export const useUIStore = create<UIState>()(
         })
       },
       setPageColumnCount: (count) => set({ pageColumnCount: normalizePageColumnCount(count) }),
+      paperFormat: '',
+      setPaperFormat: (key) => set({ paperFormat: key }),
       setRunningHeader: (value) => set({ runningHeader: value.trim() }),
       setRunningFooter: (value) => set({ runningFooter: value.trim() }),
       applyPageSettings: (settings) => {
