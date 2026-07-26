@@ -1,7 +1,6 @@
 ﻿import { useState, useRef, useEffect } from 'react'
 import type { Editor } from '@tiptap/react'
 import { useEditorState } from '@tiptap/react'
-import type { Mark as PMMark } from '@tiptap/pm/model'
 import { downloadHwpx } from '../lib/hwpxExport'
 import { downloadMd } from '../lib/markdownIO'
 import { exportToPdf } from '../lib/pdfExport'
@@ -28,6 +27,7 @@ import { askText, askConfirm } from '../lib/promptModal'
 import { computeDocHealth, showHealthReport, markBackupDone } from '../lib/docHealth'
 import { applyPaperFormat, PAPER_FORMATS } from '../lib/paperFormats'
 import { saveCurrentAsStyle, showMyStylesPicker } from '../lib/myStyles'
+import { insertFootnote as insertFootnoteAt, renumberFootnotes } from '../lib/footnotes'
 import { insertNumberedEquation, insertFigureCaption, insertTableCaption, insertCrossRef, paperTargetCount, renumberWithFeedback } from '../lib/paperRefs'
 import { pickMathTemplate, lintPaper, showLintReport, insertCreditBlock, insertCoiBlock, insertDataAvailabilityBlock, insertListOfFigures, insertListOfTables, insertAcronymList } from '../lib/paperTools'
 import { downloadLatex } from '../lib/latexExport'
@@ -338,22 +338,7 @@ export function Toolbar(p: ToolbarProps) {
   const insertAcknowledgments = () => insertHTML(`
 <h2 style="font-size:1.1em;margin-top:1.5em;">Acknowledgments</h2>
 <p>본 연구는 [기관명/과제번호] 의 지원으로 수행되었습니다. ...</p>`)
-  const countFootnoteRefs = () => {
-    let count = 0
-    editor.state.doc.descendants((node) => {
-      if (node.isText && node.marks.some((m) => m.type.name === 'superscript' && m.attrs.class === 'paper-fn-ref')) count++
-    })
-    return count
-  }
-  const insertFootnote = () => {
-    const n = countFootnoteRefs() + 1
-    // 커서 위치에 참조 삽입 (Superscript 마크가 등록돼 있어 sup+class 가 보존된다)
-    insertHTML(`<sup class="paper-fn-ref">[${n}]</sup>`)
-    // 문서 끝에 각주 본문 추가 — DOM 을 읽어 setContent 하면 페이지네이션
-    // 위젯까지 본문으로 재주입되므로 절대 하지 않는다
-    const end = editor.state.doc.content.size
-    editor.chain().insertContentAt(end, `<p><sup class="paper-fn-ref">[${n}]</sup> 각주 내용 — 클릭해서 편집</p>`).run()
-  }
+  const insertFootnote = () => { insertFootnoteAt(editor) }
   const insertCitation = async () => {
     const cite = await askText('인용 (예: Smith, 2024):', 'Author, 2024')
     if (cite) insertHTML(`<sup class="paper-cite">(${escHtml(cite)})</sup>`)
@@ -361,21 +346,6 @@ export function Toolbar(p: ToolbarProps) {
   const insertReference = async () => {
     const ref = await askText('참고문헌 항목:', 'Author, A. (2024). Title. Journal, 1(1), 1-10.', { multiline: true })
     if (ref) insertHTML(`<div class="paper-ref" style="text-indent:-1.5em;padding-left:1.5em;font-size:0.9em;margin:0.3em 0;">${escHtml(ref)}</div>`)
-  }
-  const renumberFootnotes = () => {
-    const { state } = editor
-    const refs: Array<{ from: number; to: number; marks: readonly PMMark[] }> = []
-    state.doc.descendants((node, pos) => {
-      if (node.isText && node.marks.some((m) => m.type.name === 'superscript' && m.attrs.class === 'paper-fn-ref')) {
-        refs.push({ from: pos, to: pos + node.nodeSize, marks: node.marks })
-      }
-    })
-    if (!refs.length) return
-    let tr = state.tr
-    for (let i = refs.length - 1; i >= 0; i--) {
-      tr = tr.replaceWith(refs[i].from, refs[i].to, state.schema.text(`[${i + 1}]`, refs[i].marks as PMMark[]))
-    }
-    editor.view.dispatch(tr)
   }
   const cyclePageColumns = () => {
     const current = ui.pageColumnCount || 1
@@ -407,7 +377,7 @@ export function Toolbar(p: ToolbarProps) {
     insertCrossRef(editor, refType, Math.round(Number(v)) || total)
   }
   const renumberAll = () => {
-    renumberFootnotes()
+    renumberFootnotes(editor)
     renumberWithFeedback(editor)
   }
   const eqFromTemplate = async () => {

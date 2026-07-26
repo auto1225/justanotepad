@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react'
+import { insertFootnote as insertFootnoteAt, renumberFootnotes } from '../lib/footnotes'
 import { askText } from '../lib/promptModal'
 import type { Editor } from '@tiptap/react'
-import type { Mark as PMMark } from '@tiptap/pm/model'
 import { useMemosStore } from '../store/memosStore'
 import { PAPER_STYLES, useUIStore } from '../store/uiStore'
 import { useThemeStore } from '../store/themeStore'
@@ -96,18 +96,7 @@ export function CommandPalette(p: CommandPaletteProps) {
       s.textContent = cur ? '.jan-2col .ProseMirror { column-count: 2; column-gap: 2em; column-rule: 1px solid #eee; }' : ''
     }
     const insertPageBreak = () => insertHTML(PAGE_BREAK_HTML)
-    const insertFootnote = () => {
-      if (!editor) return
-      let count = 0
-      editor.state.doc.descendants((node) => {
-        if (node.isText && node.marks.some((m) => m.type.name === 'superscript' && m.attrs.class === 'paper-fn-ref')) count++
-      })
-      const n = count + 1
-      insertHTML(`<sup class="paper-fn-ref">[${n}]</sup>`)
-      // DOM 을 읽어 setContent 하면 페이지네이션 위젯이 본문으로 재주입된다 — 트랜잭션으로만 추가
-      const end = editor.state.doc.content.size
-      editor.chain().insertContentAt(end, `<p><sup class="paper-fn-ref">[${n}]</sup> 각주 내용 — 클릭해서 편집</p>`).run()
-    }
+    const insertFootnote = () => { if (editor) insertFootnoteAt(editor) }
     const insertCitation = () => { const c = window.prompt('인용 (예: Smith, 2024):', 'Author, 2024'); if (c) insertHTML(`<sup>(${c})</sup>`) }
     const insertReference = () => { const r = window.prompt('참고문헌:', 'Author. (2024). Title.'); if (r) insertHTML(`<div class="paper-ref" style="text-indent:-1.5em;padding-left:1.5em;">${r}</div>`) }
     const currentPaperLabel = PAPER_STYLES.find((style) => style.value === ui.paperStyle)?.label.replace(' (기본)', '') || '줄노트'
@@ -242,22 +231,7 @@ export function CommandPalette(p: CommandPaletteProps) {
       }
       if (v && map[v]) insertHTML(map[v])
     }
-    const renumberFn = () => {
-      if (!editor) return
-      const { state } = editor
-      const refs: Array<{ from: number; to: number; marks: readonly PMMark[] }> = []
-      state.doc.descendants((node, pos) => {
-        if (node.isText && node.marks.some((m) => m.type.name === 'superscript' && m.attrs.class === 'paper-fn-ref')) {
-          refs.push({ from: pos, to: pos + node.nodeSize, marks: node.marks })
-        }
-      })
-      if (!refs.length) return
-      let tr = state.tr
-      for (let i = refs.length - 1; i >= 0; i--) {
-        tr = tr.replaceWith(refs[i].from, refs[i].to, state.schema.text(`[${i + 1}]`, refs[i].marks as PMMark[]))
-      }
-      editor.view.dispatch(tr)
-    }
+    const renumberFn = () => { if (editor) renumberFootnotes(editor) }
     const setRunHeader = () => {
       const cur = localStorage.getItem('jan-run-header') || ''
       const v = window.prompt('러닝 헤더:', cur); if (v === null) return

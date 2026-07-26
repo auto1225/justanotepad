@@ -159,11 +159,13 @@ export function computeDocHealth(editor: Editor): HealthReport {
   {
     const details: HealthDetail[] = []
     let score = 20
-    const imgs = [...dom.querySelectorAll('img')]
+    // ProseMirror 가 문단 끝에 넣는 빈 <img class="ProseMirror-separator"> 는 내용이 아니다
+    const imgs = [...dom.querySelectorAll('img')].filter((img) => img.getAttribute('src') && !img.classList.contains('ProseMirror-separator'))
     if (imgs.length) {
       let noCap = 0
       imgs.forEach((img) => {
-        const next = img.closest('p, figure')?.nextElementSibling
+        // 그림이 문단 안에 있으면 그 문단 다음을, 블록으로 놓였으면 그림 자신의 다음을 본다
+        const next = (img.closest('p, figure') || img).nextElementSibling
         const hasCaption = (next && next.getAttribute('data-paper-block') === 'figcap') || !!img.closest('figure')?.querySelector('figcaption')
         const hasAlt = !!(img.getAttribute('alt') || img.getAttribute('title'))
         if (!hasCaption && !hasAlt) noCap++

@@ -132,12 +132,25 @@ export function lintPaper(editor: Editor): LintItem[] {
   else items.push({ level: 'ok', text: '제목 확인' })
 
   // 2. Abstract 길이
-  const absMatch = fullText.match(/abstract[\s\S]{0,10}?\n([\s\S]*?)(\n\s*\n|keywords|index terms|I\. |1[.\s])/i)
-  if (absMatch) {
-    const words = absMatch[1].trim().split(/\s+/).filter(Boolean).length
-    if (words > 300) items.push({ level: 'warn', text: `Abstract ${words}단어 — 대부분 저널은 150~250단어 제한` })
-    else if (words < 40) items.push({ level: 'warn', text: `Abstract ${words}단어 — 너무 짧습니다` })
-    else items.push({ level: 'ok', text: `Abstract ${words}단어` })
+  // IEEE 계열은 "Abstract—본문…" 처럼 제목과 본문이 한 문단에 붙는다.
+  // 줄바꿈을 요구하면 그 형식을 통째로 놓치므로, 구분 기호(—, –, -, :) 뒤부터
+  // 다음 구획(빈 줄·Index Terms·Keywords·첫 절 번호)까지를 초록으로 본다.
+  const absMatch = fullText.match(/abstract\s*[-–—:.]?\s*([\s\S]*?)(?=\n\s*\n|keywords|index terms|\n\s*(?:I\.|1[.\s]))/i)
+  if (absMatch && absMatch[1].trim()) {
+    const body = absMatch[1].trim()
+    // 한글 초록은 단어가 아니라 글자 수로 센다 (국문 규정은 대개 400~1000자)
+    const hangul = (body.match(/[가-힣]/g) || []).length
+    if (hangul > body.replace(/\s/g, '').length * 0.3) {
+      const chars = body.replace(/\s/g, '').length
+      if (chars > 1200) items.push({ level: 'warn', text: `Abstract ${chars}자 — 국문 초록은 보통 400~1000자` })
+      else if (chars < 150) items.push({ level: 'warn', text: `Abstract ${chars}자 — 너무 짧습니다` })
+      else items.push({ level: 'ok', text: `Abstract ${chars}자` })
+    } else {
+      const words = body.split(/\s+/).filter(Boolean).length
+      if (words > 300) items.push({ level: 'warn', text: `Abstract ${words}단어 — 대부분 저널은 150~250단어 제한` })
+      else if (words < 40) items.push({ level: 'warn', text: `Abstract ${words}단어 — 너무 짧습니다` })
+      else items.push({ level: 'ok', text: `Abstract ${words}단어` })
+    }
   } else items.push({ level: 'warn', text: 'Abstract 를 찾지 못했습니다' })
 
   // 3. References 섹션
@@ -171,10 +184,14 @@ export function lintPaper(editor: Editor): LintItem[] {
   else if (dom.querySelector('span[data-paper-tag="ref"]')) items.push({ level: 'ok', text: '상호참조 대상 모두 유효' })
 
   // 8. 캡션 없는 이미지
-  const imgs = [...dom.querySelectorAll('.ProseMirror img, img')]
+  // ProseMirror 가 문단 끝에 넣는 빈 <img class="ProseMirror-separator"> 는 내용이 아니다 —
+  // 세면 수식 문단마다 "캡션 없는 이미지"가 하나씩 늘어난다.
+  const imgs = [...dom.querySelectorAll('img')].filter((img) => img.getAttribute('src') && !img.classList.contains('ProseMirror-separator'))
   let noCap = 0
   imgs.forEach((img) => {
-    const next = img.closest('p, figure')?.nextElementSibling
+    // 그림이 문단 안에 있으면 그 문단 다음을, 블록으로 놓였으면 그림 자신의 다음을 본다
+    const anchor = img.closest('p, figure') || img
+    const next = anchor.nextElementSibling
     if (!next || next.getAttribute('data-paper-block') !== 'figcap') noCap++
   })
   if (imgs.length && noCap > 0) items.push({ level: 'warn', text: `캡션 없는 이미지 ${noCap}/${imgs.length}개 — "그림 캡션"으로 번호를 부여하세요` })
