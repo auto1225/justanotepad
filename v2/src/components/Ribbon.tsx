@@ -31,6 +31,8 @@ export interface RibbonTab {
   context?: boolean
   /** 부가 묶음(AI·논문) — 코어 탭과 구분해 보여 준다 */
   extra?: boolean
+  /** 부가 탭 앞에 붙는 작은 아이콘 */
+  icon?: IconName
 }
 
 /** 묶음 오른쪽 아래 화살표 — 그 묶음의 전체 설정 창을 연다 (한글·워드의 대화상자 연결) */
@@ -169,6 +171,7 @@ export function Ribbon({
             }}
             onDoubleClick={() => onToggleCollapsed()} // 한글·워드처럼 탭 두 번 누르면 접기
           >
+            {t.icon && <Icon name={t.icon} size={13} />}
             {t.label}
           </button>
           </Fragment>

@@ -112,7 +112,7 @@ const SYMBOL_GROUPS: Array<{ label: string; chars: string[] }> = [
 ]
 
 interface MenuItem { label: string; short?: string; hint?: string; icon?: IconName; divider?: string; onClick?: () => void }
-interface MenuGroup { label: string; items: MenuItem[]; context?: boolean; /** 문서 작업이 아닌 부가 묶음 (AI·논문) — 탭 줄에서 구분해 보여 준다 */ extra?: boolean }
+interface MenuGroup { label: string; items: MenuItem[]; context?: boolean; /** 문서 작업이 아닌 부가 묶음 (AI·논문) — 탭 줄에서 구분해 보여 준다 */ extra?: boolean; icon?: IconName }
 
 /**
  * Phase 24 — v1 8개 카테고리 메뉴 모든 기능 실제 구현 (stub 제거).
@@ -1189,9 +1189,9 @@ export function Toolbar(p: ToolbarProps) {
     { label: '서식', items: drop(pick('서식'), ['엔터 표시']) },
     { label: '쪽', items: drop(pick('페이지'), ['엔터 표시']) },
     { label: '검토', items: reviewItems },
-    { label: 'AI', items: aiItems, extra: true },
+    { label: 'AI', items: aiItems, extra: true, icon: 'ai' },
     /* 논문 탭은 학술 문서 전용만 남긴다 — 개요·각주·쪽 나눔·단 같은 일반 기능은 코어 탭이 담당한다 */
-    { label: '논문', items: drop(pick('논문'), ['문서 개요 패널', '각주 삽입', '페이지 구분 삽입', '다단 레이아웃']), extra: true },
+    { label: '논문', items: drop(pick('논문'), ['문서 개요 패널', '각주 삽입', '페이지 구분 삽입', '다단 레이아웃']), extra: true, icon: 'file-text' },
     ...(inTable ? [{ label: '표', items: tableItems, context: true }] : []),
     ...(onImage ? [{ label: '그림', items: imageItems, context: true }] : []),
   ]
