@@ -11,8 +11,8 @@ import { TTSButton } from './TTSButton'
 import { VoiceButton } from './VoiceButton'
 import { Ribbon } from './Ribbon'
 import { aggregateColumn } from '../lib/tableUtils'
-import { TABLE_STYLES, distributeColumns, distributeRows, moveRow, resizeColumns, resizeRows, setCellPadding, setRowHeight, setTableStyle, splitTable, tableToText, toggleTableOption } from '../lib/tableWord'
-import { selectTableColumn, selectTableRow, selectWholeTable } from '../lib/tableSelect'
+import { TABLE_STYLES, blockCalc, copyTable, distributeColumns, distributeRows, moveRow, resizeColumns, resizeRows, setCellDiagonal, setCellPadding, setRowHeight, setTableStyle, setTableWrap, splitTable, tableToText, toggleTableOption } from '../lib/tableWord'
+import { moveTable, selectTableColumn, selectTableRow, selectWholeTable } from '../lib/tableSelect'
 import { currentCellFormula, setCellFormula, suggestFormula } from '../lib/tableCompute'
 import { FORMULA_FUNCTIONS, NUMBER_FORMATS } from '../lib/tableFormula'
 import { pickTableSize } from '../lib/tableInsert'
@@ -1247,8 +1247,25 @@ export function Toolbar(p: ToolbarProps) {
     { label: '단 안에 두기 (2단 문서)', short: '단 안', icon: 'columns', onClick: () => run(() => setTableAttr({ 'data-place': 'column' }, '표를 단 안에')) },
     { label: '단 걸치기 — 지면 전체 폭', short: '단 걸침', icon: 'table', onClick: () => run(() => setTableAttr({ 'data-place': 'page' }, '표를 지면 전체 폭으로')) },
     { label: '자리 자동 (열이 많으면 단 걸침)', short: '자리 자동', icon: 'wand', onClick: () => run(() => setTableAttr({ 'data-place': null }, '표 자리 자동')) },
+    { divider: '텍스트 배치', label: '' },
+    { label: '문단 사이 (감싸지 않음)', short: '문단 사이', icon: 'align-justify', onClick: () => run(() => { setTableWrap(editor, null) }) },
+    { label: '글자처럼 취급 (문장 안에)', short: '글자처럼', icon: 'file-text', onClick: () => run(() => { setTableWrap(editor, 'inline') }) },
+    { label: '왼쪽에 두고 글 흐르기', short: '왼쪽 감쌈', icon: 'align-left', onClick: () => run(() => { setTableWrap(editor, 'left') }) },
+    { label: '오른쪽에 두고 글 흐르기', short: '오른쪽 감쌈', icon: 'align-right', onClick: () => run(() => { setTableWrap(editor, 'right') }) },
+    { divider: '표 옮기기 · 복사', label: '' },
+    { label: '표를 위로 이동', short: '표 ↑', icon: 'chevron-up', onClick: () => run(() => { moveTable(editor, -1) }) },
+    { label: '표를 아래로 이동', short: '표 ↓', icon: 'chevron-down', onClick: () => run(() => { moveTable(editor, 1) }) },
+    { label: '표 복사', short: '복사', icon: 'file-plus', onClick: () => run(() => { copyTable(editor, false) }) },
+    { label: '표 잘라내기', short: '잘라내기', icon: 'trash', onClick: () => run(() => { copyTable(editor, true) }) },
+    { divider: '쪽 넘김', label: '' },
+    { label: '제목 행 반복 켬/끔', short: '제목 반복', icon: 'table', onClick: () => run(() => {
+      const on = editor.getAttributes('table')['data-repeat-header'] ? null : '1'
+      setTableAttr({ 'data-repeat-header': on }, on ? '쪽을 넘으면 제목 행을 반복합니다' : '제목 행 반복을 껐습니다')
+    }) },
     { divider: '데이터', label: '' },
     { label: '수식 (fx)...', short: '수식', icon: 'hash', onClick: () => run(() => { void askCellFormula() }) },
+    { label: '고른 칸 합계 (블록 계산)', short: '블록 합', icon: 'hash', onClick: () => run(() => { blockCalc(editor, 'sum') }) },
+    { label: '고른 칸 평균 (블록 계산)', short: '블록 평균', icon: 'hash', onClick: () => run(() => { blockCalc(editor, 'avg') }) },
     { label: '현재 열 합계', short: '합계', icon: 'hash', onClick: () => run(() => aggregateColumn(editor, 'sum')) },
     { label: '현재 열 평균', short: '평균', icon: 'hash', onClick: () => run(() => aggregateColumn(editor, 'avg')) },
     { label: '현재 열 개수', short: '개수', icon: 'hash', onClick: () => run(() => aggregateColumn(editor, 'count')) },
@@ -1287,6 +1304,11 @@ export function Toolbar(p: ToolbarProps) {
       onClick: () => run(() => editor.chain().focus().setCellAttribute('backgroundColor', shade.color).run()),
     })),
     { label: '음영 지우기', short: '지우기', icon: 'fill', onClick: () => run(() => editor.chain().focus().setCellAttribute('backgroundColor', null).run()) },
+    { divider: '셀 대각선', label: '' },
+    { label: '대각선 ＼ (왼위→오른아래)', short: '＼', icon: 'table', onClick: () => run(() => { setCellDiagonal(editor, 'down') }) },
+    { label: '대각선 ／ (왼아래→오른위)', short: '／', icon: 'table', onClick: () => run(() => { setCellDiagonal(editor, 'up') }) },
+    { label: '대각선 ✕ (둘 다)', short: '✕', icon: 'table', onClick: () => run(() => { setCellDiagonal(editor, 'both') }) },
+    { label: '대각선 지우기', short: '지움', icon: 'table', onClick: () => run(() => { setCellDiagonal(editor, null) }) },
   ]
 
   const imageItems: MenuItem[] = [

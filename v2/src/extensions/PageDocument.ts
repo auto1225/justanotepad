@@ -2,6 +2,7 @@ import { Node, Extension } from '@tiptap/core'
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { canJoin } from '@tiptap/pm/transform'
+import { mergeContinuedTables, rowsThatFit, splitTableAcrossPages } from './tableSplit'
 import type { Transaction } from '@tiptap/pm/state'
 import type { EditorView } from '@tiptap/pm/view'
 import type { Node as PMNode, NodeType } from '@tiptap/pm/model'
@@ -624,7 +625,31 @@ function reflowOnce(view: EditorView, contentHeight: number): boolean {
       }
     }
 
-    // 줄 단위로 쪼갤 수 없는 블록(표·이미지)만 남았다면 블록 단위로 옮긴다.
+    /* ── 표는 행 단위로 나눠 넘긴다 (워드·한글과 같다) ──
+       예전에는 표가 통째로 밀리거나, 밀 수 없으면 종이가 늘어났다.
+       경계에 걸린 것이 표라면 들어가는 행까지만 남기고 나머지를 다음 쪽으로 흘린다. */
+    {
+      let childOffset = 0
+      for (let c = 0; c < cutIndex; c++) childOffset += node.child(c).nodeSize
+      const child = node.child(cutIndex)
+      if (child.type.name === 'table' && child.childCount > 2) {
+        const room = m.rooms[cutIndex]
+        const fit = rowsThatFit(view, pos + 1 + childOffset, room, m.scale)
+        // 제목 행만 남기고 나누면 보기 흉하다 — 두 줄 이상 남을 때만 나눈다
+        if (fit >= 2 && fit < child.childCount) {
+          const tr = state.tr
+          if (splitTableAcrossPages(tr, pos + 1 + childOffset, child, fit)
+            && pushRestToNextPage(tr, i, cutIndex + 1, pageType)) {
+            tr.setMeta(reflowKey, true)
+            tr.setMeta('addToHistory', false)
+            view.dispatch(tr)
+            return true
+          }
+        }
+      }
+    }
+
+    // 줄 단위로 쪼갤 수 없는 블록(이미지 등)만 남았다면 블록 단위로 옮긴다.
     // 블록이 하나뿐이면 옮길 곳이 없으므로 넘침을 허용한다 (무한 루프 방지)
     if (node.childCount <= 1) continue
     // 첫 블록부터 넘치지만 쪼갤 수 없다면 그 블록만 이 쪽에 두고 나머지를 넘긴다
@@ -928,7 +953,8 @@ export const PageReflow = Extension.create<ReflowOptions>({
  */
 export function getSavableHtml(editor: { getHTML: () => string } | null | undefined): string {
   if (!editor) return ''
-  return mergeContinuedBlocks(stripPageWrappers(editor.getHTML()))
+  // 쪽 래퍼를 벗기고 → 쪼개진 문단을 합치고 → 나뉜 표를 도로 한 표로
+  return mergeContinuedTables(mergeContinuedBlocks(stripPageWrappers(editor.getHTML())))
 }
 
 /**

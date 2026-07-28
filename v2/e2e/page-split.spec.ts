@@ -34,6 +34,33 @@ async function savedHtml(page: import('@playwright/test').Page) {
       }
       target = wrap.querySelector('[data-jan-cont]')
     }
+    /* 쪽 경계에서 나뉜 표도 도로 한 표로 (앱의 mergeContinuedTables 와 같은 변환).
+       화면에서는 표 속성이 껍데기(.tableWrapper)에 얹혀 있으므로 먼저 표로 옮긴다 —
+       저장 경로(getHTML)는 문서에서 직접 뽑아 이 단계가 필요 없다. */
+    wrap.querySelectorAll('.tableWrapper[data-cont]').forEach((w) => {
+      const table = w.querySelector('table')
+      if (table) table.setAttribute('data-cont', '1')
+    })
+    wrap.querySelectorAll('.tableWrapper').forEach((w) => {
+      const parent = w.parentNode!
+      while (w.firstChild) parent.insertBefore(w.firstChild, w)
+      parent.removeChild(w)
+    })
+    let cont = wrap.querySelector('table[data-cont]')
+    let tableGuard = 0
+    while (cont && tableGuard++ < 500) {
+      let prev: Element | null = cont.previousElementSibling
+      while (prev && prev.tagName !== 'TABLE') prev = prev.previousElementSibling
+      if (prev) {
+        const body = prev.querySelector('tbody') || prev
+        cont.querySelectorAll('tr[data-repeated]').forEach((row) => row.remove())
+        cont.querySelectorAll('tr').forEach((row) => body.appendChild(row))
+        cont.remove()
+      } else {
+        cont.removeAttribute('data-cont')
+      }
+      cont = wrap.querySelector('table[data-cont]')
+    }
     return wrap.innerHTML
   })
 }
@@ -569,6 +596,84 @@ test.describe('줄 단위 문단 분할', () => {
     await expect(page.locator('.ProseMirror table tr')).toHaveCount(3)
   })
 
+  test('긴 표는 쪽 경계에서 행 단위로 나뉘고, 저장하면 한 표로 돌아온다', async ({ page }) => {
+    /* 예전에는 표가 통째로 밀리거나 밀 수 없으면 종이가 늘어났다.
+       워드·한글처럼 들어가는 행까지만 남기고 나머지를 다음 쪽으로 흘려야 한다. */
+    await page.evaluate(() => {
+      const pm = document.querySelector('.ProseMirror') as HTMLElement
+      pm.focus()
+      const rows = Array.from({ length: 40 }, (_, i) => `<tr><td><p>행 ${i + 1}</p></td><td><p>값 ${i + 1}</p></td></tr>`).join('')
+      const dt = new DataTransfer()
+      dt.setData('text/html',
+        '<p>표 앞</p><table data-repeat-header="1"><tbody>' +
+        '<tr><th><p>이름</p></th><th><p>값</p></th></tr>' + rows +
+        '</tbody></table><p>표 뒤</p>')
+      pm.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }))
+    })
+    await waitForReflow(page)
+
+    const state = await page.evaluate(() => ({
+      pages: document.querySelectorAll('.jan-page-node').length,
+      perPage: [...document.querySelectorAll('.jan-page-node')].map((p) => p.querySelectorAll('table tr').length),
+      grown: document.querySelectorAll('.jan-page-node[data-jan-grow]').length,
+      continued: document.querySelectorAll('.tableWrapper[data-cont]').length,
+      repeated: document.querySelectorAll('.ProseMirror tr[data-repeated]').length,
+    }))
+    expect(state.pages).toBeGreaterThan(1)
+    expect(state.perPage.filter((n) => n > 0).length).toBeGreaterThan(1) // 표가 두 쪽에 걸쳐 있다
+    expect(state.continued).toBe(1)   // 뒤 조각에 "이어짐" 표시
+    expect(state.repeated).toBe(1)    // 제목 행이 복제돼 얹혔다
+
+    // 저장본은 한 표로 합쳐진다 (조각이 남으면 문서가 영영 쪼개진다)
+    const saved = await savedHtml(page)
+    const merged = await page.evaluate((html) => {
+      const wrap = document.createElement('div')
+      wrap.innerHTML = html
+      return {
+        tables: wrap.querySelectorAll('table').length,
+        rows: wrap.querySelectorAll('tr').length,
+        cont: wrap.querySelectorAll('[data-cont]').length,
+        repeated: wrap.querySelectorAll('[data-repeated]').length,
+      }
+    }, saved)
+    expect(merged).toEqual({ tables: 1, rows: 41, cont: 0, repeated: 0 })
+  })
+
+  test('표를 글자처럼 두거나 옆으로 글이 흐르게 한다 (한글의 글자처럼 취급 · 워드의 텍스트 배치)', async ({ page }) => {
+    await page.evaluate(() => {
+      const pm = document.querySelector('.ProseMirror') as HTMLElement
+      pm.focus()
+      const dt = new DataTransfer()
+      dt.setData('text/html',
+        '<p>앞 문단</p>' +
+        '<table><tbody><tr><th><p>가</p></th><th><p>나</p></th></tr><tr><td><p>1</p></td><td><p>2</p></td></tr></tbody></table>' +
+        '<p>뒤 문단</p>')
+      pm.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }))
+    })
+    await waitForReflow(page)
+    await page.locator('.ProseMirror table td').first().click({ force: true })
+
+    const wrapState = () => page.evaluate(() => {
+      const w = document.querySelector('.ProseMirror .tableWrapper') as HTMLElement
+      return { attr: w.getAttribute('data-wrap'), float: getComputedStyle(w).float, display: getComputedStyle(w).display }
+    })
+    const use = async (name: RegExp) => {
+      const tab = page.getByRole('tab', { name: '레이아웃', exact: true })
+      if ((await tab.getAttribute('aria-selected')) !== 'true') await tab.dispatchEvent('click')
+      await page.getByRole('button', { name }).first().dispatchEvent('click')
+      await page.waitForTimeout(200)
+    }
+
+    await use(/왼쪽에 두고 글 흐르기/)
+    expect(await wrapState()).toMatchObject({ attr: 'left', float: 'left' })
+
+    await use(/글자처럼 취급/)
+    expect(await wrapState()).toMatchObject({ attr: 'inline', display: 'inline-block' })
+
+    await use(/문단 사이 \(감싸지 않음\)/)
+    expect(await wrapState()).toMatchObject({ attr: null, float: 'none' })
+  })
+
   test('표를 오른쪽 클릭하면 워드처럼 표 명령이 그 자리에 나온다', async ({ page }) => {
     await page.evaluate(() => {
       const pm = document.querySelector('.ProseMirror') as HTMLElement
@@ -743,8 +848,9 @@ test.describe('줄 단위 문단 분할', () => {
     expect(m.text.replace(/\s+/g, '')).toBe(SENTENCE.repeat(31).replace(/\s+/g, ''))
   })
 
-  test('쪼갤 수 없는 큰 표가 있는 쪽만 늘어나고, 표를 지우면 규격으로 돌아온다', async ({ page }) => {
-    // 슬래시 명령으로 표를 넣고 Tab 으로 행을 늘려 한 쪽보다 크게 만든다
+  test('한 쪽보다 긴 표는 쪽에 걸쳐 나뉜다 — 종이를 늘리지 않는다', async ({ page }) => {
+    /* 예전에는 이 경우 그 쪽만 예외로 늘어났다(표를 쪼갤 수 없었으므로).
+       이제는 워드·한글처럼 행 단위로 나뉘므로 종이는 규격을 지킨다. */
     await page.keyboard.type('/표')
     await page.waitForTimeout(600)
     await page.keyboard.press('Enter')
@@ -753,19 +859,16 @@ test.describe('줄 단위 문단 분할', () => {
     for (let i = 0; i < 160; i++) await page.keyboard.press('Tab')
     await waitForReflow(page)
 
-    const grown = await pageMetrics(page)
-    expect(grown.grown).toBe(1) // 이 쪽만 예외로 늘어난다
-    expect(grown.pages[0].height).toBeGreaterThan(grown.spec)
-    // 늘어난 덕분에 표가 잘리지 않고 전부 보인다
-    expect(
-      await page.evaluate(() => {
-        const p = document.querySelector('.jan-page-node') as HTMLElement
-        const t = p.querySelector('table') as HTMLElement
-        return t.getBoundingClientRect().bottom <= p.getBoundingClientRect().bottom + 1
-      })
-    ).toBe(true)
+    const m = await pageMetrics(page)
+    expect(m.count).toBeGreaterThan(1)  // 여러 쪽에 걸친다
+    expect(m.grown).toBe(0)             // 종이는 늘어나지 않는다
+    for (const p of m.pages) expect(p.overflow).toBeLessThanOrEqual(2)
+    // 표가 두 쪽 이상에 실제로 나뉘어 있다
+    const tablePages = await page.evaluate(() =>
+      [...document.querySelectorAll('.jan-page-node')].filter((p) => p.querySelector('table')).length)
+    expect(tablePages).toBeGreaterThan(1)
 
-    // 표를 지우면 다시 규격 높이로
+    // 표를 지우면 한 쪽으로 돌아온다
     await page.keyboard.press('Control+a')
     await page.keyboard.press('Delete')
     await page.keyboard.type('표를 지웠습니다.')

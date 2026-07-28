@@ -5,6 +5,37 @@ import { test, expect } from '@playwright/test'
  * 라이브 https://justanotepad.com/v2/ 또는 로컬 dev 서버.
  */
 
+/** 리본 명령 실행 — 묶음마다 큰 단추 수가 정해져 있어 뒤쪽 명령은 「…더보기」 안에 들어간다.
+ *  group 을 주면 그 묶음의 더보기를 열고 고른다. */
+async function useRibbonCommand(
+  page: import('@playwright/test').Page,
+  tab: string,
+  name: string,
+  group?: string
+) {
+  const tabButton = page.getByRole('tab', { name: tab, exact: true })
+  await expect(tabButton).toHaveCount(1)
+  if ((await tabButton.getAttribute('aria-selected')) !== 'true') await tabButton.dispatchEvent('click')
+  await page.waitForTimeout(150)
+
+  const body = page.locator('.jan-ribbon-body')
+  if (group) {
+    // 라벨 안의 공백이 줄바꿈 없는 공백일 수 있어 느슨하게 맞춘다
+    const loose = new RegExp(name.split(/\s+/).join('[\\s\\u00a0]*'))
+    const item = page.locator('.jan-ribbon-dropdown button').filter({ hasText: loose }).first()
+    const more = body.locator(`button[aria-label="${group} 더보기"]`)
+    // 누를 때마다 열리고 닫히므로, 열렸는지 보고 다시 누른다
+    for (let tries = 0; tries < 4 && (await item.count()) === 0; tries += 1) {
+      await more.dispatchEvent('click')
+      await page.waitForTimeout(250)
+    }
+    await expect(item).toHaveCount(1)
+    await item.dispatchEvent('click')
+    return
+  }
+  await body.getByRole('button', { name, exact: true }).first().dispatchEvent('click')
+}
+
 test.describe('v2 smoke', () => {
   test('app loads and renders editor', async ({ page }) => {
     await page.goto('./')
@@ -608,8 +639,7 @@ test.describe('v2 smoke', () => {
 
     for (let i = 0; i < 4; i += 1) await page.keyboard.press('Shift+Tab')
     // 표 조작은 워드처럼 리본의 「레이아웃」 탭에서 한다 (표 위 단추 막대는 칸을 가려서 없앴다)
-    await page.getByRole('tab', { name: '레이아웃', exact: true }).click()
-    await page.getByRole('button', { name: '오름차순 정렬' }).click()
+    await useRibbonCommand(page, '레이아웃', '오름차순 정렬', '데이터')
     const rows = page.locator('.ProseMirror table tr')
     await expect(rows.nth(0)).toContainText('Name')
     await expect(rows.nth(1)).toContainText('Alpha')
@@ -641,13 +671,11 @@ test.describe('v2 smoke', () => {
       if (i < values.length - 1) await page.keyboard.press('Tab')
     }
 
-    await page.getByRole('tab', { name: '레이아웃', exact: true }).click()
-    await page.getByRole('button', { name: '아래에 행 삽입' }).click()
+    await useRibbonCommand(page, '레이아웃', '아래에 행 삽입')
     await expect(cells).toHaveCount(12)
     await page.keyboard.press('Tab')
     await page.keyboard.press('Tab')
-    await page.getByRole('tab', { name: '레이아웃', exact: true }).click()
-    await page.getByRole('button', { name: '현재 열 합계' }).click()
+    await useRibbonCommand(page, '레이아웃', '현재 열 합계')
     await expect(cells.nth(10)).toContainText('합계: 12')
   })
 

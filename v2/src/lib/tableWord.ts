@@ -1,6 +1,7 @@
 import type { Editor } from '@tiptap/react'
 import type { Node as PMNode } from '@tiptap/pm/model'
 import { flash } from './flash'
+import { cellNumber, formatNumber } from './tableFormula'
 
 /**
  * 워드의 표 「레이아웃」 탭에 있는데 편집기에는 없던 기능들.
@@ -404,5 +405,89 @@ export function resizeRows(editor: Editor, delta: number): boolean {
   if (!tr.docChanged) return false
   editor.view.dispatch(tr)
   flash(`${target.length}개 행 높이 ${delta > 0 ? '+' : ''}${delta}px`)
+  return true
+}
+
+/* ── 텍스트 배치 (워드) · 글자처럼 취급 (한글) ──
+   한글의 「글자처럼 취급」은 표를 한 글자처럼 문장 안에 넣는 것이고,
+   워드의 「텍스트 배치」는 표 옆으로 글이 흐르게 하는 것이다. 둘 다 담는다. */
+
+export type TableWrap = 'inline' | 'left' | 'right' | null
+
+export function setTableWrap(editor: Editor, wrap: TableWrap): boolean {
+  const table = currentTable(editor)
+  if (!table) { flash('표 안에 커서를 두고 실행하세요'); return false }
+  editor.view.dispatch(
+    editor.state.tr.setNodeMarkup(table.pos, undefined, { ...table.node.attrs, 'data-wrap': wrap })
+  )
+  flash(
+    wrap === 'inline' ? '표를 글자처럼 다룹니다 (문장 안에 들어갑니다)'
+      : wrap === 'left' ? '표를 왼쪽에 두고 글이 오른쪽으로 흐릅니다'
+      : wrap === 'right' ? '표를 오른쪽에 두고 글이 왼쪽으로 흐릅니다'
+      : '표를 문단 사이에 둡니다 (글이 감싸지 않음)'
+  )
+  return true
+}
+
+/** 표를 잘라내거나 복사한다 (표 전체가 한 덩어리로) */
+export function copyTable(editor: Editor, cut: boolean): boolean {
+  const table = currentTable(editor)
+  if (!table) { flash('표 안에 커서를 두고 실행하세요'); return false }
+  const dom = editor.view.nodeDOM(table.pos)
+  const el = dom instanceof HTMLElement ? (dom.querySelector('table') || dom) : null
+  if (!el) return false
+
+  const html = el.outerHTML
+  const text = [...el.querySelectorAll('tr')]
+    .map((row) => [...row.children].map((c) => (c.textContent || '').trim()).join('\t'))
+    .join('\n')
+
+  const write = async () => {
+    try {
+      const item = new ClipboardItem({
+        'text/html': new Blob([html], { type: 'text/html' }),
+        'text/plain': new Blob([text], { type: 'text/plain' }),
+      })
+      await navigator.clipboard.write([item])
+    } catch {
+      // 권한이 없으면 글자만이라도 담는다
+      try { await navigator.clipboard.writeText(text) } catch { /* 그래도 안 되면 포기 */ }
+    }
+    if (cut) {
+      const fresh = currentTable(editor)
+      if (fresh) editor.view.dispatch(editor.state.tr.delete(fresh.pos, fresh.pos + fresh.node.nodeSize))
+    }
+    flash(cut ? '표를 잘라냈습니다' : '표를 복사했습니다')
+  }
+  void write()
+  return true
+}
+
+/** 셀 대각선 — 한글의 「셀 테두리 ▸ 대각선」 (워드에는 없다) */
+export function setCellDiagonal(editor: Editor, kind: 'down' | 'up' | 'both' | null): boolean {
+  if (!editor.isActive('table')) { flash('표 안에 커서를 두고 실행하세요'); return false }
+  const type = editor.isActive('tableHeader') ? 'tableHeader' : 'tableCell'
+  editor.chain().focus().updateAttributes(type, { 'data-diag': kind }).run()
+  flash(kind ? '셀에 대각선을 넣었습니다' : '셀 대각선을 지웠습니다')
+  return true
+}
+
+/** 고른 칸의 합계·평균을 바로 알려 준다 — 한글의 「블록 계산식」 */
+export function blockCalc(editor: Editor, kind: 'sum' | 'avg' | 'count'): boolean {
+  const table = currentTable(editor)
+  if (!table) { flash('표 안에 커서를 두고 실행하세요'); return false }
+  const cells = pickCells(table.node, table.pos)
+  const picked = selectedRowsCols(editor, cells)
+  const inside = picked
+    ? cells.filter((c) => picked.rows.includes(c.row) && picked.cols.includes(c.col))
+    : cells
+  const numbers = inside
+    .map((c) => cellNumber(c.node.textContent))
+    .filter((v): v is number => v !== null)
+  if (!numbers.length) { flash('고른 칸에 숫자가 없습니다'); return false }
+  const sum = numbers.reduce((a, b) => a + b, 0)
+  const value = kind === 'sum' ? sum : kind === 'avg' ? sum / numbers.length : numbers.length
+  const label = kind === 'sum' ? '합계' : kind === 'avg' ? '평균' : '개수'
+  flash(`${label} ${formatNumber(value, '#,##0.##')} (숫자 ${numbers.length}칸)`, 4000)
   return true
 }

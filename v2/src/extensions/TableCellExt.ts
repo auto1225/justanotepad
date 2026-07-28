@@ -27,6 +27,13 @@ const backgroundColorAttr = {
     renderHTML: (attrs: { formula?: string | null }) =>
       attrs.formula ? { 'data-formula': attrs.formula } : {},
   },
+  /** 셀 대각선 — 한글의 셀 테두리 대각선 (down · up · both) */
+  'data-diag': {
+    default: null as string | null,
+    parseHTML: (el: HTMLElement) => el.getAttribute('data-diag'),
+    renderHTML: (attrs: Record<string, unknown>) =>
+      attrs['data-diag'] ? { 'data-diag': attrs['data-diag'] } : {},
+  },
   /** 수식 결과의 번호 형식 (#,##0.00 등) */
   numFormat: {
     default: null as string | null,
@@ -57,7 +64,7 @@ export const JanTableHeader = TableHeader.extend({
  *  place  다단 문서에서의 자리: 'column' 단 안 | 'page' 단 걸치기(지면 전체 폭) | null 자동
  *         (워드에는 없는 항목이지만 2단 논문 조판에는 반드시 필요하다)
  */
-const TABLE_PROP_KEYS = ['data-fit', 'data-align', 'data-place', 'data-width', 'data-style', 'data-first-col', 'data-last-row', 'data-cell-pad'] as const
+const TABLE_PROP_KEYS = ['data-fit', 'data-align', 'data-place', 'data-width', 'data-style', 'data-first-col', 'data-last-row', 'data-cell-pad', 'data-cont', 'data-repeat-header', 'data-wrap'] as const
 
 /**
  * 칸 수식 자동 계산 — 표가 바뀔 때마다 결과를 다시 써넣는다.
@@ -136,7 +143,11 @@ export const TablePlacement = Extension.create({
     return [
       {
         types: ['tableRow'],
-        attributes: { 'data-height': attr('data-height') },
+        attributes: {
+          'data-height': attr('data-height'),
+          /* 쪽을 넘길 때 복제해 넣은 제목 행 (저장할 때 지운다) */
+          'data-repeated': attr('data-repeated'),
+        },
       },
       {
         types: ['table'],
@@ -148,6 +159,12 @@ export const TablePlacement = Extension.create({
           'data-first-col': attr('data-first-col'),
           'data-last-row': attr('data-last-row'),
           'data-cell-pad': attr('data-cell-pad'),
+          /* 쪽을 넘어 이어진 조각인가 (저장할 때 앞 표에 도로 붙는다) */
+          'data-cont': attr('data-cont'),
+          /* 제목 행 반복 — 쪽을 넘을 때 첫 행을 복제해 얹는다 */
+          'data-repeat-header': attr('data-repeat-header'),
+          /* 텍스트 배치(워드) · 글자처럼 취급(한글) */
+          'data-wrap': attr('data-wrap'),
           'data-width': {
             default: null,
             parseHTML: (el: HTMLElement) => el.getAttribute('data-width'),
