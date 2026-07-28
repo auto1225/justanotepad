@@ -12,6 +12,7 @@ import { TableKeymap } from '../extensions/TableKeymap'
 import { ImageObject as Image } from '../extensions/ImageObject'
 import { ImageKeymap } from '../extensions/ImageKeymap'
 import { ShapeObject } from '../extensions/ShapeObject'
+import { CharOverlap, DropCapAttr, EmphasisDot, RubyText } from '../extensions/TextObjects'
 import { PaginationPlus, PAGE_SIZES } from 'tiptap-pagination-plus'
 import { Collaboration } from '@tiptap/extension-collaboration'
 import { CollaborationCursor } from '@tiptap/extension-collaboration-cursor'
@@ -391,6 +392,10 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       Image.configure({ allowBase64: true }),
       ImageKeymap,
       ShapeObject,
+      DropCapAttr,
+      RubyText,
+      EmphasisDot,
+      CharOverlap,
       MathInline,
       Mermaid,
       MentionExt,

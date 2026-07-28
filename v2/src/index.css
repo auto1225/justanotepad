@@ -7022,3 +7022,40 @@ body.jan-split-dragging * { cursor: inherit !important; }
 .jan-shapedlg-grid button:focus-visible { outline: 2px solid var(--jan-accent, #3b82f6); outline-offset: 1px; }
 .jan-shapedlg-grid svg { width: 40px; height: 40px; }
 .jan-shapedlg-grid small { font-size: 10.5px; color: var(--jan-text-dim, #5b6270); text-align: center; line-height: 1.25; }
+
+/* ── 글자에 붙는 입력 것들 ──────────────────────────────────────────
+   드롭캡 · 덧말(루비) · 강조점 · 글자 겹치기 */
+.ProseMirror p[data-dropcap]::first-letter {
+  float: left;
+  margin: 0.02em 0.08em 0 0;
+  font-weight: 700;
+  line-height: 0.84;
+}
+.ProseMirror p[data-dropcap='2']::first-letter { font-size: 2.4em; }
+.ProseMirror p[data-dropcap='3']::first-letter { font-size: 3.5em; }
+.ProseMirror p[data-dropcap='4']::first-letter { font-size: 4.6em; }
+.ProseMirror p[data-dropcap='5']::first-letter { font-size: 5.7em; }
+
+.ProseMirror .jan-ruby { ruby-align: center; }
+.ProseMirror .jan-ruby rt { font-size: 0.5em; opacity: 0.85; }
+.ProseMirror .jan-ruby.ProseMirror-selectednode { outline: 2px solid var(--jan-accent, #3b82f6); }
+
+/* 글자 겹치기 — 같은 자리에 포개어 그린다 (한글의 「글자 겹치기」) */
+.ProseMirror .jan-overlap {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.1em;
+  min-height: 1.1em;
+  line-height: 1;
+  vertical-align: -0.12em;
+}
+.ProseMirror .jan-overlap-ch { grid-area: 1 / 1; }
+.ProseMirror .jan-overlap-circle { border: 1px solid currentColor; border-radius: 50%; padding: 0.08em; }
+.ProseMirror .jan-overlap-square { border: 1px solid currentColor; padding: 0.06em; }
+.ProseMirror .jan-overlap-double-circle {
+  border: 1px solid currentColor; border-radius: 50%; padding: 0.08em;
+  box-shadow: 0 0 0 2px var(--jan-bg, #fff), 0 0 0 3px currentColor;
+}
+.ProseMirror .jan-overlap-triangle { clip-path: polygon(50% 0%, 100% 100%, 0% 100%); border: 1px solid currentColor; padding: 0.2em 0.16em 0.04em; }
+.ProseMirror .jan-overlap-diamond { clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%); border: 1px solid currentColor; padding: 0.14em; }

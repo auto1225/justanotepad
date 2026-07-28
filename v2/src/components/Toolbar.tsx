@@ -15,6 +15,8 @@ import { TABLE_STYLES, blockCalc, copyTable, distributeColumns, distributeRows, 
 import { moveTable, selectTableColumn, selectTableRow, selectWholeTable } from '../lib/tableSelect'
 import { IMAGE_SHAPES, IMAGE_STYLES, IMAGE_WRAPS } from '../extensions/ImageObject'
 import { CLIPART, SHAPES, WORDART } from '../lib/shapeLibrary'
+import { EMPHASIS_MARKS, OVERLAP_FRAMES } from '../extensions/TextObjects'
+import { currentDropCap, insertOverlap, insertRuby, selectedText, setDropCap, setEmphasis } from '../lib/textObjects'
 import {
   SHAPE_STYLES, applyShapeStyle, changeShape, currentShape, cycleTextDirection, cycleVAlign,
   flipShape, insertShape, moveShape, rotateShape, setShapeAlign, setShapeAttrs, setShapeFill,
@@ -913,6 +915,32 @@ export function Toolbar(p: ToolbarProps) {
         { label: '도형 넣기 (갤러리)', short: '도형', icon: 'box', onClick: () => run(() => window.dispatchEvent(new CustomEvent('jan-shape-dialog', { detail: { mode: 'insert' } }))) },
         { label: '아이콘 · 그리기마당', short: '아이콘', icon: 'star', onClick: () => run(() => window.dispatchEvent(new CustomEvent('jan-shape-dialog', { detail: { mode: 'insert' } }))) },
         { label: '글맵시 (WordArt)', short: '글맵시', icon: 'sparkle', onClick: () => run(() => { insertShape(editor, 'wordart', 'arch-up') }) },
+        { divider: '글자 꾸밈', label: '' },
+        { label: '단락의 첫 문자 장식 (드롭캡 3줄)', short: '드롭캡', icon: 'h1', onClick: () => run(() => { setDropCap(editor, currentDropCap(editor) === 3 ? null : 3) }) },
+        { label: '드롭캡 2줄', short: '드롭캡 2', icon: 'h2', onClick: () => run(() => { setDropCap(editor, 2) }) },
+        { label: '드롭캡 4줄', short: '드롭캡 4', icon: 'h3', onClick: () => run(() => { setDropCap(editor, 4) }) },
+        { label: '드롭캡 없애기', short: '드롭캡 해제', icon: 'close', onClick: () => run(() => { setDropCap(editor, null) }) },
+        { label: '덧말 넣기 (루비 — 글자 위)', short: '덧말', icon: 'sup', onClick: () => run(async () => {
+          const base = selectedText(editor) || (await askText('본말 — 덧말을 달 글자', '')) || ''
+          if (!base) return
+          const note = (await askText('덧말 — 위에 작게 붙일 말', '')) || ''
+          if (note) insertRuby(editor, base, note, 'over')
+        }) },
+        { label: '덧말 넣기 (글자 아래)', short: '아래 덧말', icon: 'sup', onClick: () => run(async () => {
+          const base = selectedText(editor) || (await askText('본말 — 덧말을 달 글자', '')) || ''
+          if (!base) return
+          const note = (await askText('덧말 — 아래에 작게 붙일 말', '')) || ''
+          if (note) insertRuby(editor, base, note, 'under')
+        }) },
+        ...EMPHASIS_MARKS.map((m): MenuItem => ({ label: '강조점: ' + m.label, short: m.label, icon: 'dot', onClick: () => run(() => { setEmphasis(editor, m.key) }) })),
+        { label: '강조점 (글자 아래)', short: '아래 강조점', icon: 'dot', onClick: () => run(() => { setEmphasis(editor, 'dot', 'under') }) },
+        { label: '강조점 없애기', short: '강조점 해제', icon: 'close', onClick: () => run(() => { setEmphasis(editor, null) }) },
+        { label: '글자 겹치기 (최대 9자)', short: '글자 겹치기', icon: 'box', onClick: () => run(async () => {
+          const chars = (await askText('겹칠 글자 — 최대 9자 (예: 주)', selectedText(editor) || '주')) || ''
+          if (!chars) return
+          const frame = (await askText('테두리 — ' + OVERLAP_FRAMES.map((f) => f.key).join(' · '), 'circle')) || 'circle'
+          insertOverlap(editor, chars, frame)
+        }) },
         { label: '구분선 스타일', icon: 'minus', onClick: () => run(insertHrStyle) },
         { divider: '특수 노드', label: '' },
         { label: '수식 — 수식 스튜디오 (전 분야)', icon: 'hash', onClick: () => run(() => setMathStudio({ initial: '' })) },
