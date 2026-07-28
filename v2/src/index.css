@@ -6789,3 +6789,37 @@ body.jan-split-dragging * { cursor: inherit !important; }
 .jan-tg-opt { display: flex; align-items: center; gap: 6px; font-size: 13px; margin-bottom: 10px; }
 .jan-tg-actions { display: flex; justify-content: flex-end; }
 .jan-tg-custom { font-size: 12px; padding: 5px 10px; border: 1px solid var(--paper-edge, #ddd); border-radius: 6px; background: none; cursor: pointer; }
+
+/* 오른쪽 아래 크기 조절 손잡이 — 워드처럼 끌어서 표 너비를 바꾼다 */
+.jan-th-size {
+  width: 9px; height: 9px;
+  border: 1px solid var(--accent, #6b5bd6) !important;
+  background: var(--paper, #fff) !important;
+  border-radius: 2px;
+  cursor: nwse-resize;
+  opacity: 0; transition: opacity 0.12s ease;
+}
+.jan-table-handles:hover .jan-th-size { opacity: 0.8; }
+.jan-th-size:hover { opacity: 1 !important; }
+
+/* 표 오른쪽 클릭 메뉴 — 워드의 표 상황 메뉴 */
+.jan-table-ctx {
+  position: fixed;
+  z-index: 600;
+  padding: 5px;
+  background: var(--jan-bg, #fff);
+  border: 1px solid var(--paper-edge, #d8d8d8);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.16);
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+}
+.jan-table-ctx button {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  width: 100%; padding: 5px 9px;
+  border: 0; border-radius: 5px; background: none;
+  font-size: 13px; color: var(--jan-fg, #222); text-align: left; cursor: pointer;
+}
+.jan-table-ctx button:hover { background: var(--jan-bg-alt, #f2f0ff); }
+.jan-table-ctx button em { font-style: normal; font-size: 11px; color: #8a8a8a; }
+.jan-table-ctx-div { height: 1px; margin: 4px 6px; background: var(--paper-edge, #e6e6e6); }

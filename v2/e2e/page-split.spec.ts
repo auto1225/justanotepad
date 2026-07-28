@@ -315,6 +315,110 @@ test.describe('줄 단위 문단 분할', () => {
     expect(after[3][1]).toBe('2,800') // 1분기 총합
   })
 
+  test('표 손잡이 — 워드처럼 전체·행·열 선택, 크기 조절, 자리 옮기기', async ({ page }) => {
+    await page.evaluate(() => {
+      const pm = document.querySelector('.ProseMirror') as HTMLElement
+      pm.focus()
+      const dt = new DataTransfer()
+      dt.setData('text/html',
+        '<p>앞 문단</p><table><tbody>' +
+        '<tr><th><p>가</p></th><th><p>나</p></th><th><p>다</p></th></tr>' +
+        '<tr><td><p>1</p></td><td><p>2</p></td><td><p>3</p></td></tr>' +
+        '<tr><td><p>4</p></td><td><p>5</p></td><td><p>6</p></td></tr>' +
+        '</tbody></table><p>뒤 문단</p>')
+      pm.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }))
+    })
+    await waitForReflow(page)
+    await page.locator('.ProseMirror table td').first().click({ force: true })
+    await expect(page.locator('.jan-th-move')).toHaveCount(1)
+
+    const selected = () => page.evaluate(() =>
+      [...document.querySelectorAll('.ProseMirror .selectedCell')].map((c) => c.textContent?.trim() ?? ''))
+
+    // 이동 손잡이를 누르면 표 전체가 선택된다 (예전에는 문서 전체가 선택됐다)
+    // 누르면 표 전체가 선택된다 (누르기만 하고 떼면 자리는 그대로다)
+    await page.evaluate(() => {
+      const handle = document.querySelector('.jan-th-move') as HTMLElement
+      const r = handle.getBoundingClientRect()
+      handle.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, clientX: r.left, clientY: r.top }))
+      window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: r.left, clientY: r.top }))
+    })
+    expect((await selected()).length).toBe(9)
+
+    // 가장자리 띠를 누르면 그 행·열만 선택된다
+    await page.locator('.jan-th-row').nth(1).click()
+    expect(await selected()).toEqual(['1', '2', '3'])
+    await page.locator('.jan-th-col').nth(1).click()
+    expect(await selected()).toEqual(['나', '2', '5'])
+
+    // 오른쪽 아래 손잡이를 끌면 표 전체 너비가 바뀐다
+    const widthOf = () => page.evaluate(() =>
+      Math.round((document.querySelector('.ProseMirror table') as HTMLElement).getBoundingClientRect().width))
+    const before = await widthOf()
+    await page.evaluate(() => {
+      const table = document.querySelector('.ProseMirror table') as HTMLElement
+      const r = table.getBoundingClientRect()
+      const handle = document.querySelector('.jan-th-size') as HTMLElement
+      handle.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, clientX: r.right, clientY: r.bottom }))
+      window.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, buttons: 1, clientX: r.right - 150, clientY: r.bottom }))
+      window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: r.right - 150, clientY: r.bottom }))
+    })
+    expect(await widthOf()).toBeLessThan(before - 80)
+
+    // 이동 손잡이를 아래로 끌면 표가 다음 블록 뒤로 간다
+    const blocks = () => page.evaluate(() => {
+      const host = document.querySelector('.jan-page-node') || document.querySelector('.ProseMirror')!
+      return [...host.children].map((el) => (el.querySelector('table') || el.tagName === 'TABLE' ? '표' : (el.textContent || '').trim()))
+    })
+    expect(await blocks()).toEqual(['앞 문단', '표', '뒤 문단'])
+    await page.evaluate(() => {
+      const handle = document.querySelector('.jan-th-move') as HTMLElement
+      const r = handle.getBoundingClientRect()
+      handle.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, clientX: r.left, clientY: r.top }))
+      window.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, buttons: 1, clientX: r.left, clientY: r.top + 40 }))
+      window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: r.left, clientY: r.top + 60 }))
+    })
+    await page.waitForTimeout(300)
+    expect(await blocks()).toEqual(['앞 문단', '뒤 문단', '표'])
+  })
+
+  test('표를 오른쪽 클릭하면 워드처럼 표 명령이 그 자리에 나온다', async ({ page }) => {
+    await page.evaluate(() => {
+      const pm = document.querySelector('.ProseMirror') as HTMLElement
+      pm.focus()
+      const dt = new DataTransfer()
+      dt.setData('text/html', '<table><tbody><tr><th><p>가</p></th><th><p>나</p></th></tr><tr><td><p>1</p></td><td><p>2</p></td></tr></tbody></table>')
+      pm.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }))
+    })
+    await waitForReflow(page)
+    await page.locator('.ProseMirror table td').first().click({ force: true })
+    await page.locator('.ProseMirror table td').first().click({ button: 'right', force: true })
+
+    const menu = page.locator('.jan-table-ctx')
+    await expect(menu).toBeVisible()
+    const labels = await menu.getByRole('menuitem').allInnerTexts()
+    for (const name of ['위에 행 삽입', '열 삭제', '셀 병합', '표 전체 선택', '수식 (fx)']) {
+      expect(labels.some((l) => l.includes(name))).toBe(true)
+    }
+    // 눌러 보면 실제로 행이 늘어난다
+    await menu.getByRole('menuitem', { name: '위에 행 삽입' }).click()
+    await expect(page.locator('.ProseMirror table tr')).toHaveCount(3)
+  })
+
+  test('마지막 칸에서 Tab 을 누르면 새 행이 생긴다 (워드와 같다)', async ({ page }) => {
+    await page.evaluate(() => {
+      const pm = document.querySelector('.ProseMirror') as HTMLElement
+      pm.focus()
+      const dt = new DataTransfer()
+      dt.setData('text/html', '<table><tbody><tr><th><p>가</p></th><th><p>나</p></th></tr><tr><td><p>1</p></td><td><p>2</p></td></tr></tbody></table>')
+      pm.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }))
+    })
+    await waitForReflow(page)
+    await page.locator('.ProseMirror table td').last().click({ force: true })
+    await page.keyboard.press('Tab')
+    await expect(page.locator('.ProseMirror table tr')).toHaveCount(3)
+  })
+
   test('표 캡션은 표와, 그림 캡션은 그림과 붙어 다닌다', async ({ page }) => {
     await page.evaluate(() => {
       const pm = document.querySelector('.ProseMirror') as HTMLElement

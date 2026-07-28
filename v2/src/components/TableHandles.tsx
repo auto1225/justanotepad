@@ -1,5 +1,14 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Editor } from '@tiptap/react'
+import {
+  findTable,
+  moveTable,
+  selectTableColumn,
+  selectTableRow,
+  selectWholeTable,
+  setTableWidthPercent,
+} from '../lib/tableSelect'
+import { flash } from '../lib/flash'
 
 interface TableHandlesProps {
   editor: Editor | null
@@ -9,40 +18,40 @@ interface Rect { left: number; top: number; width: number; height: number }
 
 interface Layout {
   table: Rect
-  /** 각 열의 가로 구간 (화면 좌표) */
+  /** 표가 놓인 자리의 폭 (백분율 계산 기준) */
+  hostWidth: number
   cols: Array<{ left: number; width: number }>
-  /** 각 행의 세로 구간 */
   rows: Array<{ top: number; height: number }>
 }
 
 const HANDLE = 14
 
 /**
- * 표 손잡이 — 워드의 표 조작 방식.
+ * 표 손잡이 — 워드에서 표 둘레에 붙는 것들.
  *
- * 예전에는 표 위에 단추 막대가 떠서 칸을 가렸다. 워드는 그러지 않는다:
- *  · 왼쪽 위 ⊞ 이동 손잡이 (누르면 표 전체 선택)
- *  · 위·왼쪽 가장자리의 가느다란 띠 (누르면 열·행 선택)
- *  · 경계마다 ⊕ (누르면 그 자리에 열·행 삽입)
- * 모두 표 **바깥**에 놓여 칸을 가리지 않는다.
+ *  · 왼쪽 위 이동 손잡이: 누르면 표 전체 선택, 위아래로 끌면 표가 통째로 자리를 옮긴다
+ *  · 위·왼쪽 가장자리 띠: 누르면 그 열·행이 선택된다
+ *  · 경계마다 ⊕: 그 자리에 열·행을 넣는다
+ *  · 오른쪽 아래 모서리: 끌면 표 전체 너비가 바뀐다
+ *
+ * 모두 표 **바깥**에 놓여 칸을 가리지 않는다 (예전 단추 막대는 칸을 덮었다).
  */
 export function TableHandles({ editor }: TableHandlesProps) {
   const [layout, setLayout] = useState<Layout | null>(null)
+  const dragRef = useRef<{ kind: 'size' | 'move'; startX: number; startY: number; startWidth: number; hostWidth: number; moved: boolean } | null>(null)
 
   const measure = useCallback(() => {
-    if (!editor || editor.isDestroyed) { setLayout(null); return }
-    if (!editor.isActive('table')) { setLayout(null); return }
-    const dom = editor.view.dom.querySelector('table:has(.selectedCell), .ProseMirror-focused table') as HTMLTableElement | null
-    // 커서가 든 표를 DOM 에서 찾는다 (선택 표시가 없으면 커서 위치로)
-    let table = dom
-    if (!table) {
-      try {
-        const at = editor.view.domAtPos(editor.state.selection.from).node as HTMLElement
-        table = (at.nodeType === 1 ? at : at.parentElement)?.closest('table') || null
-      } catch { table = null }
-    }
+    if (!editor || editor.isDestroyed || !editor.isActive('table')) { setLayout(null); return }
+    // 커서가 든 표를 DOM 에서 찾는다
+    let table: HTMLTableElement | null
+    try {
+      const at = editor.view.domAtPos(editor.state.selection.from).node as HTMLElement
+      table = (at.nodeType === 1 ? at : at.parentElement)?.closest('table') || null
+    } catch { table = null }
     if (!table) { setLayout(null); return }
     const box = table.getBoundingClientRect()
+    const host = (table.closest('.tableWrapper') || table.parentElement) as HTMLElement | null
+    const hostWidth = host ? host.getBoundingClientRect().width : box.width
     const firstRow = table.querySelector('tr')
     const cols = firstRow
       ? [...firstRow.children].map((cell) => {
@@ -54,7 +63,12 @@ export function TableHandles({ editor }: TableHandlesProps) {
       const r = tr.getBoundingClientRect()
       return { top: r.top, height: r.height }
     })
-    setLayout({ table: { left: box.left, top: box.top, width: box.width, height: box.height }, cols, rows })
+    setLayout({
+      table: { left: box.left, top: box.top, width: box.width, height: box.height },
+      hostWidth,
+      cols,
+      rows,
+    })
   }, [editor])
 
   useEffect(() => {
@@ -78,42 +92,75 @@ export function TableHandles({ editor }: TableHandlesProps) {
     }
   }, [editor, measure])
 
+  /* 끌기 — 크기 조절과 자리 옮기기 */
+  useEffect(() => {
+    if (!editor) return
+    const onMove = (e: MouseEvent) => {
+      const drag = dragRef.current
+      if (!drag) return
+      // 단추에서 손을 뗀 뒤의 움직임은 끌기가 아니다 (누름이 어딘가에서 끊긴 경우)
+      if (e.buttons === 0) { dragRef.current = null; return }
+      drag.moved = true
+      if (drag.kind !== 'size') return
+      const next = ((drag.startWidth + (e.clientX - drag.startX)) / drag.hostWidth) * 100
+      setTableWidthPercent(editor, next)
+    }
+    const onUp = (e: MouseEvent) => {
+      const drag = dragRef.current
+      dragRef.current = null
+      if (!drag || drag.kind !== 'move') return
+      /* 실제로 끌었을 때만 옮긴다 — 누르기만 하고 손을 뗀 경우(표 전체 선택)에는
+         움직이면 안 된다. 예전에는 누른 뒤 아무 데서나 손을 떼면 표가 따라 움직였다. */
+      if (!drag.moved) return
+      const dy = e.clientY - drag.startY
+      if (Math.abs(dy) < 24) return
+      if (moveTable(editor, dy > 0 ? 1 : -1)) flash(dy > 0 ? '표를 아래로 옮겼습니다' : '표를 위로 옮겼습니다')
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+  }, [editor])
+
   if (!editor || !layout) return null
-  const { table, cols, rows } = layout
+  const { table, cols, rows, hostWidth } = layout
   const stop = (e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation() }
 
-  /* 열·행을 고른다 — 그 자리 첫 칸으로 커서를 옮긴다.
-     (prosemirror-tables 의 셀 선택은 명령으로 노출돼 있지 않아, 커서 이동으로 대신한다 —
-      이어지는 행·열 명령은 모두 "커서가 있는 행·열" 을 대상으로 하므로 결과는 같다) */
-  const placeCaret = (cell: HTMLElement) => {
-    try {
-      const pos = editor.view.posAtDOM(cell, 0)
-      editor.commands.focus(pos)
-    } catch { /* 못 옮기면 지금 자리를 쓴다 */ }
-  }
-  const tableEl = () => (editor.view.dom.querySelector('table') as HTMLTableElement | null)
-  const selectColumn = (index: number) => {
-    const cell = tableEl()?.querySelector('tr')?.children[index] as HTMLElement | undefined
-    if (cell) placeCaret(cell)
-  }
-  const selectRow = (index: number) => {
-    const row = tableEl()?.querySelectorAll('tr')[index] as HTMLElement | undefined
-    if (row?.firstElementChild) placeCaret(row.firstElementChild as HTMLElement)
-  }
+  /* 열·행 명령은 "커서가 있는 행·열" 을 대상으로 하므로, 먼저 그 행·열을 고른다 */
+  const withColumn = (index: number, fn: () => void) => { selectTableColumn(editor, index); fn() }
+  const withRow = (index: number, fn: () => void) => { selectTableRow(editor, index); fn() }
 
   return (
     <div className="jan-table-handles" aria-hidden="true">
-      {/* 왼쪽 위 이동 손잡이 — 누르면 표 전체 선택 */}
+      {/* 왼쪽 위 이동 손잡이 — 누르면 표 전체 선택, 위아래로 끌면 자리를 옮긴다 */}
       <button
         type="button"
         className="jan-th-move"
-        title="표 전체 선택"
+        title="표 전체 선택 (위아래로 끌면 표를 옮깁니다)"
         style={{ left: table.left - HANDLE - 3, top: table.top - HANDLE - 3, width: HANDLE, height: HANDLE }}
-        onMouseDown={stop}
-        onClick={() => editor.chain().focus().selectAll().run()}
+        onMouseDown={(e) => {
+          stop(e)
+          dragRef.current = { kind: 'move', startX: e.clientX, startY: e.clientY, startWidth: table.width, hostWidth, moved: false }
+          selectWholeTable(editor)
+        }}
       >
         <span />
       </button>
+
+      {/* 오른쪽 아래 크기 조절 손잡이 — 끌면 표 전체 너비가 바뀐다 */}
+      <button
+        type="button"
+        className="jan-th-size"
+        title="끌어서 표 너비 조절"
+        style={{ left: table.left + table.width - 4, top: table.top + table.height - 4 }}
+        onMouseDown={(e) => {
+          stop(e)
+          if (!findTable(editor)) return
+          dragRef.current = { kind: 'size', startX: e.clientX, startY: e.clientY, startWidth: table.width, hostWidth, moved: false }
+        }}
+      />
 
       {/* 열 띠 + 경계의 ⊕ */}
       {cols.map((c, i) => (
@@ -124,7 +171,7 @@ export function TableHandles({ editor }: TableHandlesProps) {
           title={`${i + 1}번째 열 선택`}
           style={{ left: c.left, top: table.top - 7, width: c.width, height: 5 }}
           onMouseDown={stop}
-          onClick={() => selectColumn(i)}
+          onClick={() => selectTableColumn(editor, i)}
         />
       ))}
       {cols.map((c, i) => (
@@ -135,7 +182,7 @@ export function TableHandles({ editor }: TableHandlesProps) {
           title={i === 0 ? '왼쪽에 열 추가' : '여기에 열 추가'}
           style={{ left: c.left - 7, top: table.top - 20 }}
           onMouseDown={stop}
-          onClick={() => { selectColumn(i); editor.chain().focus().addColumnBefore().run() }}
+          onClick={() => withColumn(i, () => editor.chain().focus().addColumnBefore().run())}
         >+</button>
       ))}
       {cols.length > 0 && (
@@ -145,7 +192,7 @@ export function TableHandles({ editor }: TableHandlesProps) {
           title="오른쪽에 열 추가"
           style={{ left: table.left + table.width - 7, top: table.top - 20 }}
           onMouseDown={stop}
-          onClick={() => { selectColumn(cols.length - 1); editor.chain().focus().addColumnAfter().run() }}
+          onClick={() => withColumn(cols.length - 1, () => editor.chain().focus().addColumnAfter().run())}
         >+</button>
       )}
 
@@ -158,7 +205,7 @@ export function TableHandles({ editor }: TableHandlesProps) {
           title={`${i + 1}번째 행 선택`}
           style={{ left: table.left - 7, top: r.top, width: 5, height: r.height }}
           onMouseDown={stop}
-          onClick={() => selectRow(i)}
+          onClick={() => selectTableRow(editor, i)}
         />
       ))}
       {rows.map((r, i) => (
@@ -169,7 +216,7 @@ export function TableHandles({ editor }: TableHandlesProps) {
           title={i === 0 ? '위에 행 추가' : '여기에 행 추가'}
           style={{ left: table.left - 20, top: r.top - 7 }}
           onMouseDown={stop}
-          onClick={() => { selectRow(i); editor.chain().focus().addRowBefore().run() }}
+          onClick={() => withRow(i, () => editor.chain().focus().addRowBefore().run())}
         >+</button>
       ))}
       {rows.length > 0 && (
@@ -179,7 +226,7 @@ export function TableHandles({ editor }: TableHandlesProps) {
           title="아래에 행 추가"
           style={{ left: table.left - 20, top: table.top + table.height - 7 }}
           onMouseDown={stop}
-          onClick={() => { selectRow(rows.length - 1); editor.chain().focus().addRowAfter().run() }}
+          onClick={() => withRow(rows.length - 1, () => editor.chain().focus().addRowAfter().run())}
         >+</button>
       )}
     </div>

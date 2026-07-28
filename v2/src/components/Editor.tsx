@@ -24,6 +24,7 @@ import { TagsBar } from './TagsBar'
 import { OutlinePanel } from './OutlinePanel'
 import { SlashMenu } from './SlashMenu'
 import { TableHandles } from './TableHandles'
+import { TableContextMenu } from './TableContextMenu'
 import { BubbleToolbar } from './BubbleToolbar'
 import { ImageMenu } from './ImageMenu'
 import { ModalSkeleton } from './ModalSkeleton'
@@ -1034,6 +1035,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       <CommandPalette editor={editor} onAi={() => setShowAi(true)} onChat={() => setShowChat(true)} onSearch={() => setShowSearch(true)} onFind={() => setShowFind(true)} onOcr={() => setShowOcr(true)} onPaint={() => setShowPaint(true)} onPostit={() => setShowPostit(true)} onPaper={() => setShowPaper(true)} onRoles={() => { setInitialRoleTool(null); setShowRoles(true) }} onTemplates={() => setShowTemplates(true)} onSnippets={() => setShowSnippets(true)} onMacros={() => setShowMacros(true)} onTypo={() => setShowTypo(true)} onCalendar={() => setShowQuick(true)} onQuick={() => setShowQuick(true)} onMd={() => setShowMd(true)} onPrintPreview={() => setShowPrint(true)} onShare={() => setShowShare(true)} onGist={() => setShowGist(true)} onAtt={() => setShowAtt(true)} onLock={() => setShowLock(true)} onSettings={() => setShowSettings(true)} onHelp={() => setShowHelp(true)} onAbout={() => setShowAbout(true)} onStats={() => setShowStats(true)} onMindMap={() => setShowMindMap(true)} onHeatmap={() => setShowHeatmap(true)} onInfo={() => setShowInfo(true)} onDiff={() => setShowDiff(true)} onLinkCheck={() => setShowLinkCheck(true)} onTranslate={() => setShowTranslate(true)} onVersions={() => setShowVersions(true)} onCards={() => setShowCards(true)} onPageSettings={() => setShowPageSettings(true)} onToggleOutline={() => setShowOutline((v) => !v)} onSave={handleSave} onOpen={handleOpen} />
       <SlashMenu editor={editor} />
       <TableHandles editor={editor} />
+      <TableContextMenu editor={editor} />
       <BubbleToolbar editor={editor} />
       <ImageMenu editor={editor} />
       <Suspense fallback={<ModalSkeleton />}>
