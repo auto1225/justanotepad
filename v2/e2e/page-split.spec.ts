@@ -351,6 +351,13 @@ test.describe('줄 단위 문단 분할', () => {
     await page.locator('.jan-th-col').nth(1).click()
     expect(await selected()).toEqual(['나', '2', '5'])
 
+    // 손잡이는 커서가 표에 있는 동안 눈에 보여야 한다 —
+    // 예전에는 pointer-events:none 인 층에 :hover 를 걸어 둬서 영영 나타나지 않았다
+    const visible = await page.evaluate(() =>
+      ['.jan-th-size', '.jan-th-add', '.jan-th-col'].map((sel) =>
+        Number(getComputedStyle(document.querySelector(sel) as HTMLElement).opacity)))
+    for (const opacity of visible) expect(opacity).toBeGreaterThan(0.3)
+
     // 오른쪽 아래 손잡이를 끌면 표 전체 너비가 바뀐다
     const widthOf = () => page.evaluate(() =>
       Math.round((document.querySelector('.ProseMirror table') as HTMLElement).getBoundingClientRect().width))

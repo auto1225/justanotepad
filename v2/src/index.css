@@ -6712,14 +6712,14 @@ body.jan-split-dragging * { cursor: inherit !important; }
     linear-gradient(var(--jan-table-line, #9aa1ab) 0 0) center / 1px 8px no-repeat;
 }
 
-/* 열·행 선택 띠 */
+/* 열·행 선택 띠 — 커서가 표에 있는 동안 늘 보인다.
+   (손잡이 층은 pointer-events:none 이라 층 자체에는 :hover 가 걸리지 않는다 —
+    예전에는 층에 hover 를 걸어 둬서 손잡이가 영영 나타나지 않았다) */
 .jan-th-col, .jan-th-row {
   background: color-mix(in srgb, var(--accent, #6b5bd6) 30%, transparent) !important;
   border-radius: 2px;
-  opacity: 0; transition: opacity 0.12s ease;
+  opacity: 0.5; transition: opacity 0.12s ease;
 }
-.jan-table-handles:hover .jan-th-col,
-.jan-table-handles:hover .jan-th-row { opacity: 0.55; }
 .jan-th-col:hover, .jan-th-row:hover { opacity: 1 !important; }
 
 /* 경계마다 뜨는 ⊕ — 그 자리에 열·행을 넣는다 */
@@ -6730,9 +6730,8 @@ body.jan-split-dragging * { cursor: inherit !important; }
   background: var(--paper, #fff) !important;
   border: 1px solid color-mix(in srgb, var(--accent, #6b5bd6) 45%, transparent) !important;
   border-radius: 50%;
-  opacity: 0; transition: opacity 0.12s ease, transform 0.12s ease;
+  opacity: 0.55; transition: opacity 0.12s ease, transform 0.12s ease;
 }
-.jan-table-handles:hover .jan-th-add { opacity: 0.75; }
 .jan-th-add:hover { opacity: 1 !important; transform: scale(1.15); }
 
 /* 셀 세로 맞춤 — 워드의 「셀 맞춤」 */
@@ -6797,10 +6796,9 @@ body.jan-split-dragging * { cursor: inherit !important; }
   background: var(--paper, #fff) !important;
   border-radius: 2px;
   cursor: nwse-resize;
-  opacity: 0; transition: opacity 0.12s ease;
+  opacity: 0.75; transition: opacity 0.12s ease, transform 0.12s ease;
 }
-.jan-table-handles:hover .jan-th-size { opacity: 0.8; }
-.jan-th-size:hover { opacity: 1 !important; }
+.jan-th-size:hover { opacity: 1 !important; transform: scale(1.25); }
 
 /* 표 오른쪽 클릭 메뉴 — 워드의 표 상황 메뉴 */
 .jan-table-ctx {
