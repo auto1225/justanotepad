@@ -508,6 +508,47 @@ test.describe('줄 단위 문단 분할', () => {
     expect(widths[0]).toMatch(/px$/)
   })
 
+  test('셀을 고른 뒤 방향키로 열 너비·행 높이를 늘이고 줄인다', async ({ page }) => {
+    await page.evaluate(() => {
+      const pm = document.querySelector('.ProseMirror') as HTMLElement
+      pm.focus()
+      const dt = new DataTransfer()
+      dt.setData('text/html', '<table><tbody>' +
+        '<tr><th><p>가</p></th><th><p>나</p></th><th><p>다</p></th></tr>' +
+        '<tr><td><p>1</p></td><td><p>2</p></td><td><p>3</p></td></tr>' +
+        '</tbody></table>')
+      pm.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }))
+    })
+    await waitForReflow(page)
+    await page.locator('.ProseMirror table td').first().click({ force: true })
+
+    const colWidths = () => page.evaluate(() =>
+      [...document.querySelectorAll('.ProseMirror table colgroup col')].map((c) => (c as HTMLElement).style.width))
+    const rowHeights = () => page.evaluate(() =>
+      [...document.querySelectorAll('.ProseMirror table tr')].map((r) => Math.round(r.getBoundingClientRect().height)))
+
+    // 첫 열을 고른다
+    await page.keyboard.press('Control+Alt+c')
+    expect(await page.evaluate(() =>
+      [...document.querySelectorAll('.ProseMirror .selectedCell')].map((c) => c.textContent?.trim())))
+      .toEqual(['가', '1'])
+
+    // 오른쪽 방향키로 넓히고, 왼쪽으로 좁힌다 (고른 열만)
+    await page.keyboard.press('Control+Alt+Shift+ArrowRight')
+    const wide = await colWidths()
+    expect(wide[0]).toMatch(/px$/)
+    expect(wide[1]).toBe('')      // 고르지 않은 열은 그대로
+    await page.keyboard.press('Control+Alt+Shift+ArrowLeft')
+    const narrow = await colWidths()
+    expect(parseFloat(narrow[0])).toBeLessThan(parseFloat(wide[0]))
+
+    // 아래 방향키로 행 높이를 키운다
+    const before = await rowHeights()
+    await page.keyboard.press('Control+Alt+Shift+ArrowDown')
+    const after = await rowHeights()
+    expect(after[0]).toBeGreaterThan(before[0])
+  })
+
   test('Shift+F10 으로 표 상황 메뉴를 열고 키보드로 고른다', async ({ page }) => {
     await page.evaluate(() => {
       const pm = document.querySelector('.ProseMirror') as HTMLElement

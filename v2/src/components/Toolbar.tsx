@@ -11,7 +11,7 @@ import { TTSButton } from './TTSButton'
 import { VoiceButton } from './VoiceButton'
 import { Ribbon } from './Ribbon'
 import { aggregateColumn } from '../lib/tableUtils'
-import { TABLE_STYLES, distributeColumns, distributeRows, moveRow, setCellPadding, setRowHeight, setTableStyle, splitTable, tableToText, toggleTableOption } from '../lib/tableWord'
+import { TABLE_STYLES, distributeColumns, distributeRows, moveRow, resizeColumns, resizeRows, setCellPadding, setRowHeight, setTableStyle, splitTable, tableToText, toggleTableOption } from '../lib/tableWord'
 import { selectTableColumn, selectTableRow, selectWholeTable } from '../lib/tableSelect'
 import { currentCellFormula, setCellFormula, suggestFormula } from '../lib/tableCompute'
 import { FORMULA_FUNCTIONS, NUMBER_FORMATS } from '../lib/tableFormula'
@@ -1228,6 +1228,10 @@ export function Toolbar(p: ToolbarProps) {
     { label: '고정 열 너비', short: '고정', icon: 'columns', onClick: () => run(() => setTableAttr({ 'data-fit': 'fixed' }, '열 너비를 고정')) },
     { label: '표 너비 지정...', short: '표 너비', icon: 'hash', onClick: () => run(() => { void askTableWidth() }) },
     { label: '행 높이 지정...', short: '행 높이', icon: 'hash', onClick: () => run(() => { void askRowHeight() }) },
+    { label: '고른 열 넓히기', short: '열 넓게', icon: 'chevron-right', hint: 'Ctrl+Alt+Shift+→', onClick: () => run(() => { resizeColumns(editor, 8) }) },
+    { label: '고른 열 좁히기', short: '열 좁게', icon: 'chevron-left', hint: 'Ctrl+Alt+Shift+←', onClick: () => run(() => { resizeColumns(editor, -8) }) },
+    { label: '고른 행 높이기', short: '행 높게', icon: 'chevron-down', hint: 'Ctrl+Alt+Shift+↓', onClick: () => run(() => { resizeRows(editor, 8) }) },
+    { label: '고른 행 낮추기', short: '행 낮게', icon: 'chevron-up', hint: 'Ctrl+Alt+Shift+↑', onClick: () => run(() => { resizeRows(editor, -8) }) },
     { label: '열 너비를 같게 (고른 열만)', short: '열 같게', icon: 'columns', hint: 'Ctrl+Alt+E', onClick: () => run(() => { distributeColumns(editor) }) },
     { label: '행 높이를 같게 (고른 행만)', short: '행 같게', icon: 'table', hint: 'Ctrl+Alt+Shift+E', onClick: () => run(() => { distributeRows(editor) }) },
     { label: '열 너비 지정 지우기 (내용에 맞게)', short: '열 초기화', icon: 'refresh-cw', onClick: () => run(evenColumnWidths) },

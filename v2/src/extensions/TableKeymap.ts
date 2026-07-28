@@ -1,6 +1,6 @@
 import { Extension } from '@tiptap/core'
 import { CellSelection } from 'prosemirror-tables'
-import { distributeColumns, distributeRows, moveRow } from '../lib/tableWord'
+import { distributeColumns, distributeRows, moveRow, resizeColumns, resizeRows } from '../lib/tableWord'
 import { selectTableColumn, selectTableRow, selectWholeTable } from '../lib/tableSelect'
 import { flash } from '../lib/flash'
 
@@ -87,6 +87,13 @@ export const TableKeymap = Extension.create({
         return isCol ? this.editor.chain().focus().deleteColumn().run() : this.editor.chain().focus().deleteRow().run()
       },
 
+      /* 고른 칸의 크기를 방향키로 — 한 번에 8px, Shift 없이 세밀하게는 리본의 지정 값으로.
+         (Shift+Alt+↑/↓ 은 워드의 행 옮기기라 크기 조절은 Ctrl 을 하나 더 쓴다) */
+      'Mod-Alt-Shift-ArrowRight': () => (inTable() ? resizeColumns(this.editor, 8) : false),
+      'Mod-Alt-Shift-ArrowLeft': () => (inTable() ? resizeColumns(this.editor, -8) : false),
+      'Mod-Alt-Shift-ArrowDown': () => (inTable() ? resizeRows(this.editor, 8) : false),
+      'Mod-Alt-Shift-ArrowUp': () => (inTable() ? resizeRows(this.editor, -8) : false),
+
       /* 균등 분배 — 고른 열·행만 (아무것도 안 골랐으면 표 전체)
          Shift 를 누르면 브라우저가 대문자 키 이름을 보내므로 두 가지로 모두 걸어 둔다 */
       'Mod-Alt-e': () => (inTable() ? distributeColumns(this.editor) : false),
@@ -101,7 +108,7 @@ export const TableKeymap = Extension.create({
       /* 무엇을 쓸 수 있는지 알려 주는 안내 */
       'Mod-Alt-slash': () => {
         if (!inTable()) return false
-        flash('표 단축키: Alt+Home/End 행 끝 · Alt+PgUp/PgDn 열 끝 · Ctrl+Alt+R/C/T 행·열·표 선택 · Ctrl+Alt+←↑↓→ 삽입 · Ctrl+Alt+⌫ 삭제 · Ctrl+Alt+M 병합 · Ctrl+Alt+E 열 너비 같게 · Shift+F10 메뉴', 6000)
+        flash('표 단축키: Alt+Home/End 행 끝 · Alt+PgUp/PgDn 열 끝 · Ctrl+Alt+R/C/T 행·열·표 선택 · Ctrl+Alt+←↑↓→ 삽입 · Ctrl+Alt+⌫ 삭제 · Ctrl+Alt+M 병합 · Ctrl+Alt+Shift+←→ 열 너비, ↑↓ 행 높이 · Ctrl+Alt+E 같게 · Shift+F10 메뉴', 7000)
         return true
       },
     }

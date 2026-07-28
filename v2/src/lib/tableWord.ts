@@ -314,3 +314,95 @@ export function moveRow(editor: Editor, dir: -1 | 1): boolean {
   flash(dir < 0 ? '행을 위로 옮겼습니다' : '행을 아래로 옮겼습니다')
   return true
 }
+
+/* ── 고른 칸의 크기를 키보드로 늘이고 줄이기 ──
+   워드에는 정해진 단축키가 없지만, 마우스 없이 표를 다루려면 반드시 있어야 한다.
+   고른 열·행이 있으면 그것만, 없으면 커서가 있는 열·행을 대상으로 한다. */
+
+/** 지금 대상이 되는 열 번호들 (선택 → 그 열들, 없으면 커서의 열) */
+function targetCols(editor: Editor, cells: CellPick[]): number[] {
+  const picked = selectedRowsCols(editor, cells)
+  if (picked?.cols.length) return picked.cols
+  const { $from } = editor.state.selection
+  for (let d = $from.depth; d > 0; d--) {
+    if (/^table(Cell|Header)$/.test($from.node(d).type.name)) {
+      const pos = $from.before(d)
+      const cell = cells.find((c) => c.pos === pos)
+      if (cell) return [cell.col]
+    }
+  }
+  return []
+}
+
+/** 지금 대상이 되는 행 번호들 */
+function targetRows(editor: Editor, cells: CellPick[]): number[] {
+  const picked = selectedRowsCols(editor, cells)
+  if (picked?.rows.length) return picked.rows
+  const { $from } = editor.state.selection
+  for (let d = $from.depth; d > 0; d--) {
+    if ($from.node(d).type.name === 'tableRow') return [$from.index(d - 1)]
+  }
+  return []
+}
+
+/** 고른 열의 너비를 delta 픽셀만큼 (음수면 줄인다) */
+export function resizeColumns(editor: Editor, delta: number): boolean {
+  const table = currentTable(editor)
+  if (!table) { flash('표 안에 커서를 두고 실행하세요'); return false }
+  const cells = pickCells(table.node, table.pos)
+  const target = targetCols(editor, cells)
+  if (!target.length) return false
+
+  // 지금 너비를 화면에서 읽어 기준으로 삼는다 (지정이 없던 열도 다룰 수 있게)
+  const dom = editor.view.nodeDOM(table.pos) as HTMLElement | null
+  const colEls = dom ? [...dom.querySelectorAll('colgroup col')] as HTMLElement[] : []
+  const measured = (col: number) =>
+    parseFloat(colEls[col]?.style.width || '') ||
+    (dom?.querySelectorAll('tr')[0]?.children[col] as HTMLElement | undefined)?.getBoundingClientRect().width ||
+    80
+
+  let tr = editor.state.tr
+  for (const cell of cells) {
+    const span = Number(cell.node.attrs.colspan) || 1
+    const covered = Array.from({ length: span }, (_, i) => cell.col + i)
+    if (!covered.some((c) => target.includes(c))) continue
+    const current = (cell.node.attrs.colwidth as number[] | null) ?? covered.map((c) => Math.round(measured(c)))
+    const next = current.map((w, i) => (target.includes(covered[i]) ? Math.max(24, Math.round(w + delta)) : w))
+    tr = tr.setNodeMarkup(cell.pos, undefined, { ...cell.node.attrs, colwidth: next })
+  }
+  if (!tr.docChanged) return false
+  editor.view.dispatch(tr)
+  flash(`${target.length}개 열 너비 ${delta > 0 ? '+' : ''}${delta}px`)
+  return true
+}
+
+/** 고른 행의 높이를 delta 픽셀만큼 (음수면 줄인다) */
+export function resizeRows(editor: Editor, delta: number): boolean {
+  const table = currentTable(editor)
+  if (!table) { flash('표 안에 커서를 두고 실행하세요'); return false }
+  const cells = pickCells(table.node, table.pos)
+  const target = targetRows(editor, cells)
+  if (!target.length) return false
+
+  const dom = editor.view.nodeDOM(table.pos) as HTMLElement | null
+  const rowEls = dom ? [...dom.querySelectorAll('tr')] : []
+
+  let tr = editor.state.tr
+  let offset = 0
+  let index = 0
+  table.node.forEach((row) => {
+    if (row.type.name === 'tableRow') {
+      if (target.includes(index)) {
+        const current = parseFloat(String(row.attrs['data-height'] || '')) || rowEls[index]?.getBoundingClientRect().height || 29
+        const next = Math.max(18, Math.round(current + delta))
+        tr = tr.setNodeMarkup(table.pos + 1 + offset, undefined, { ...row.attrs, 'data-height': `${next}px` })
+      }
+      index++
+    }
+    offset += row.nodeSize
+  })
+  if (!tr.docChanged) return false
+  editor.view.dispatch(tr)
+  flash(`${target.length}개 행 높이 ${delta > 0 ? '+' : ''}${delta}px`)
+  return true
+}
