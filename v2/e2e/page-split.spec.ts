@@ -480,17 +480,17 @@ test.describe('줄 단위 문단 분할', () => {
     }))
 
     // 행·열·표 선택
-    await page.keyboard.press('Control+Alt+r')
+    await page.keyboard.press('Alt+r')
     expect(await selected()).toEqual(['A', '1'])
-    await page.keyboard.press('Control+Alt+t')
+    await page.keyboard.press('Alt+a')
     expect((await selected()).length).toBe(6)
 
     // 커서를 되돌리고 행·열 삽입
     await page.locator('.ProseMirror table td').first().click({ force: true })
     const start = await shape()
-    await page.keyboard.press('Control+Alt+ArrowDown')
+    await page.keyboard.press('Alt+i')
     expect(await shape()).toMatchObject({ rows: start.rows + 1 })
-    await page.keyboard.press('Control+Alt+ArrowRight')
+    await page.keyboard.press('Alt+o')
     expect(await shape()).toMatchObject({ cols: start.cols + 1 })
 
     // 행 옮기기 (워드의 Shift+Alt+↑/↓)
@@ -501,7 +501,7 @@ test.describe('줄 단위 문단 분할', () => {
     expect(after[1]).not.toBe(before[1])
 
     // 열 너비를 같게
-    await page.keyboard.press('Control+Alt+e')
+    await page.keyboard.press('Alt+e')
     const widths = await page.evaluate(() =>
       [...document.querySelectorAll('.ProseMirror table colgroup col')].map((c) => (c as HTMLElement).style.width))
     expect(new Set(widths).size).toBe(1) // 모두 같은 너비
@@ -528,23 +528,23 @@ test.describe('줄 단위 문단 분할', () => {
       [...document.querySelectorAll('.ProseMirror table tr')].map((r) => Math.round(r.getBoundingClientRect().height)))
 
     // 첫 열을 고른다
-    await page.keyboard.press('Control+Alt+c')
+    await page.keyboard.press('Alt+c')
     expect(await page.evaluate(() =>
       [...document.querySelectorAll('.ProseMirror .selectedCell')].map((c) => c.textContent?.trim())))
       .toEqual(['가', '1'])
 
     // 오른쪽 방향키로 넓히고, 왼쪽으로 좁힌다 (고른 열만)
-    await page.keyboard.press('Control+Alt+Shift+ArrowRight')
+    await page.keyboard.press('Alt+ArrowRight')
     const wide = await colWidths()
     expect(wide[0]).toMatch(/px$/)
     expect(wide[1]).toBe('')      // 고르지 않은 열은 그대로
-    await page.keyboard.press('Control+Alt+Shift+ArrowLeft')
+    await page.keyboard.press('Alt+ArrowLeft')
     const narrow = await colWidths()
     expect(parseFloat(narrow[0])).toBeLessThan(parseFloat(wide[0]))
 
     // 아래 방향키로 행 높이를 키운다
     const before = await rowHeights()
-    await page.keyboard.press('Control+Alt+Shift+ArrowDown')
+    await page.keyboard.press('Alt+ArrowDown')
     const after = await rowHeights()
     expect(after[0]).toBeGreaterThan(before[0])
   })

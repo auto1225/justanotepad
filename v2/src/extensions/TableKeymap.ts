@@ -7,9 +7,11 @@ import { flash } from '../lib/flash'
 /**
  * 표 키보드 조작 — 마우스 없이도 표를 다 다룰 수 있게.
  *
- * 워드가 정해 둔 것은 그대로 따르고(Alt+Home/End, Alt+PageUp/Down, Shift+Alt+↑/↓),
- * 워드가 마우스로만 하던 것(행·열·표 선택, 균등 분배)은 같은 결의 단축키를 새로 둔다.
- * 상황 메뉴는 Shift+F10 으로 열린다 (브라우저가 contextmenu 이벤트를 보내 준다).
+ * 수식어(Ctrl·Shift·Alt)는 **하나만** 쓴다. 셋을 함께 누르는 조합은 손이 꼬여
+ * 실제로는 아무도 쓰지 않는다. 그래서 표 안에서는 Alt 를 표 전용 수식어로 삼았다 —
+ * 워드가 이미 Alt+Home/End, Shift+Alt+↑↓ 를 표에 쓰고 있어 결도 맞는다.
+ *
+ * 표 밖에서는 아무것도 가로채지 않는다 (inTable 로 막는다).
  */
 export const TableKeymap = Extension.create({
   name: 'janTableKeymap',
@@ -30,7 +32,7 @@ export const TableKeymap = Extension.create({
       return { row, col }
     }
 
-    /** 행 안에서 첫/마지막 칸으로 (워드의 Alt+Home / Alt+End) */
+    /** 행·열의 처음·끝 칸으로 (워드의 Alt+Home / Alt+End / Alt+PgUp / Alt+PgDn) */
     const toEdgeCell = (where: 'rowStart' | 'rowEnd' | 'colStart' | 'colEnd') => () => {
       if (!inTable()) return false
       const { $from } = this.editor.state.selection
@@ -58,59 +60,65 @@ export const TableKeymap = Extension.create({
       return true
     }
 
+    /** 지금 고른 것이 열이면 열을, 아니면 행을 지운다 */
+    const deleteHere = () => {
+      if (!inTable()) return false
+      const sel = this.editor.state.selection
+      const isCol = sel instanceof CellSelection && sel.isColSelection()
+      return isCol ? this.editor.chain().focus().deleteColumn().run() : this.editor.chain().focus().deleteRow().run()
+    }
+
+    const guard = (fn: () => boolean) => () => (inTable() ? fn() : false)
+
     return {
-      /* 칸 사이 건너뛰기 — 워드와 같은 자리 */
+      /* ── 크기: Alt + 방향키 (수식어 하나) ── */
+      'Alt-ArrowRight': guard(() => resizeColumns(this.editor, 8)),
+      'Alt-ArrowLeft': guard(() => resizeColumns(this.editor, -8)),
+      'Alt-ArrowDown': guard(() => resizeRows(this.editor, 8)),
+      'Alt-ArrowUp': guard(() => resizeRows(this.editor, -8)),
+
+      /* ── 칸 사이 건너뛰기 — 워드와 같은 자리 ── */
       'Alt-Home': toEdgeCell('rowStart'),
       'Alt-End': toEdgeCell('rowEnd'),
       'Alt-PageUp': toEdgeCell('colStart'),
       'Alt-PageDown': toEdgeCell('colEnd'),
 
-      /* 행 옮기기 — 워드의 Shift+Alt+↑/↓ */
-      'Shift-Alt-ArrowUp': () => (inTable() ? moveRow(this.editor, -1) : false),
-      'Shift-Alt-ArrowDown': () => (inTable() ? moveRow(this.editor, 1) : false),
+      /* ── 행 옮기기 — 워드의 Shift+Alt+↑/↓ ── */
+      'Shift-Alt-ArrowUp': guard(() => moveRow(this.editor, -1)),
+      'Shift-Alt-ArrowDown': guard(() => moveRow(this.editor, 1)),
 
-      /* 선택 — 워드는 마우스로만 하던 것 */
-      'Mod-Alt-r': () => { if (!inTable()) return false; const { row } = here(); return row >= 0 && selectTableRow(this.editor, row) },
-      'Mod-Alt-c': () => { if (!inTable()) return false; const { col } = here(); return col >= 0 && selectTableColumn(this.editor, col) },
-      'Mod-Alt-t': () => (inTable() ? selectWholeTable(this.editor) : false),
+      /* ── 선택: Alt + 글자 ── */
+      'Alt-r': guard(() => { const { row } = here(); return row >= 0 && selectTableRow(this.editor, row) }),
+      'Alt-c': guard(() => { const { col } = here(); return col >= 0 && selectTableColumn(this.editor, col) }),
+      'Alt-a': guard(() => selectWholeTable(this.editor)),
 
-      /* 행·열 넣고 빼기 */
-      'Mod-Alt-ArrowUp': () => (inTable() ? this.editor.chain().focus().addRowBefore().run() : false),
-      'Mod-Alt-ArrowDown': () => (inTable() ? this.editor.chain().focus().addRowAfter().run() : false),
-      'Mod-Alt-ArrowLeft': () => (inTable() ? this.editor.chain().focus().addColumnBefore().run() : false),
-      'Mod-Alt-ArrowRight': () => (inTable() ? this.editor.chain().focus().addColumnAfter().run() : false),
-      'Mod-Alt-Backspace': () => {
-        if (!inTable()) return false
-        // 고른 것이 열이면 열을, 아니면 행을 지운다
-        const sel = this.editor.state.selection
-        const isCol = sel instanceof CellSelection && sel.isColSelection()
-        return isCol ? this.editor.chain().focus().deleteColumn().run() : this.editor.chain().focus().deleteRow().run()
-      },
+      /* ── 넣고 빼기 (Shift 를 더하면 반대쪽) ── */
+      'Alt-i': guard(() => this.editor.chain().focus().addRowAfter().run()),
+      'Alt-I': guard(() => this.editor.chain().focus().addRowBefore().run()),
+      'Alt-o': guard(() => this.editor.chain().focus().addColumnAfter().run()),
+      'Alt-O': guard(() => this.editor.chain().focus().addColumnBefore().run()),
+      'Alt-Backspace': deleteHere,
+      'Alt-Delete': deleteHere,
 
-      /* 고른 칸의 크기를 방향키로 — 한 번에 8px, Shift 없이 세밀하게는 리본의 지정 값으로.
-         (Shift+Alt+↑/↓ 은 워드의 행 옮기기라 크기 조절은 Ctrl 을 하나 더 쓴다) */
-      'Mod-Alt-Shift-ArrowRight': () => (inTable() ? resizeColumns(this.editor, 8) : false),
-      'Mod-Alt-Shift-ArrowLeft': () => (inTable() ? resizeColumns(this.editor, -8) : false),
-      'Mod-Alt-Shift-ArrowDown': () => (inTable() ? resizeRows(this.editor, 8) : false),
-      'Mod-Alt-Shift-ArrowUp': () => (inTable() ? resizeRows(this.editor, -8) : false),
+      /* ── 병합·분할 ── */
+      'Alt-m': guard(() => this.editor.chain().focus().mergeCells().run()),
+      'Alt-M': guard(() => this.editor.chain().focus().splitCell().run()),
 
-      /* 균등 분배 — 고른 열·행만 (아무것도 안 골랐으면 표 전체)
-         Shift 를 누르면 브라우저가 대문자 키 이름을 보내므로 두 가지로 모두 걸어 둔다 */
-      'Mod-Alt-e': () => (inTable() ? distributeColumns(this.editor) : false),
-      'Mod-Alt-Shift-e': () => (inTable() ? distributeRows(this.editor) : false),
-      'Mod-Alt-Shift-E': () => (inTable() ? distributeRows(this.editor) : false),
+      /* ── 크기 같게 (고른 열·행만) ── */
+      'Alt-e': guard(() => distributeColumns(this.editor)),
+      'Alt-E': guard(() => distributeRows(this.editor)),
 
-      /* 셀 병합·분할 */
-      'Mod-Alt-m': () => (inTable() ? this.editor.chain().focus().mergeCells().run() : false),
-      'Mod-Alt-Shift-m': () => (inTable() ? this.editor.chain().focus().splitCell().run() : false),
-      'Mod-Alt-Shift-M': () => (inTable() ? this.editor.chain().focus().splitCell().run() : false),
-
-      /* 무엇을 쓸 수 있는지 알려 주는 안내 */
-      'Mod-Alt-slash': () => {
-        if (!inTable()) return false
-        flash('표 단축키: Alt+Home/End 행 끝 · Alt+PgUp/PgDn 열 끝 · Ctrl+Alt+R/C/T 행·열·표 선택 · Ctrl+Alt+←↑↓→ 삽입 · Ctrl+Alt+⌫ 삭제 · Ctrl+Alt+M 병합 · Ctrl+Alt+Shift+←→ 열 너비, ↑↓ 행 높이 · Ctrl+Alt+E 같게 · Shift+F10 메뉴', 7000)
+      /* ── 무엇을 쓸 수 있는지 ── */
+      'Alt-/': guard(() => {
+        flash(
+          '표 단축키 (모두 Alt 하나) — ' +
+          '←→ 열 너비 · ↑↓ 행 높이 · R/C/A 행·열·표 선택 · I 행 추가(Shift+I 위) · O 열 추가(Shift+O 왼쪽) · ' +
+          '⌫ 삭제 · M 병합(Shift+M 분할) · E 열 같게(Shift+E 행 같게) · Home/End·PgUp/PgDn 칸 끝 · ' +
+          'Shift+↑↓ 행 이동 · Shift+F10 메뉴',
+          8000
+        )
         return true
-      },
+      }),
     }
   },
 })
