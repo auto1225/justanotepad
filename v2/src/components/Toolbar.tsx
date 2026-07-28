@@ -17,6 +17,7 @@ import { IMAGE_SHAPES, IMAGE_STYLES, IMAGE_WRAPS } from '../extensions/ImageObje
 import { CLIPART, SHAPES, WORDART } from '../lib/shapeLibrary'
 import { EMPHASIS_MARKS, OVERLAP_FRAMES } from '../extensions/TextObjects'
 import { currentDropCap, insertOverlap, insertRuby, selectedText, setDropCap, setEmphasis } from '../lib/textObjects'
+import { COVER_STYLES, insertBlankPage, insertCover, todayLabel } from '../lib/coverPage'
 import {
   SHAPE_STYLES, applyShapeStyle, changeShape, currentShape, cycleTextDirection, cycleVAlign,
   flipShape, insertShape, moveShape, rotateShape, setShapeAlign, setShapeAttrs, setShapeFill,
@@ -915,6 +916,18 @@ export function Toolbar(p: ToolbarProps) {
         { label: '도형 넣기 (갤러리)', short: '도형', icon: 'box', onClick: () => run(() => window.dispatchEvent(new CustomEvent('jan-shape-dialog', { detail: { mode: 'insert' } }))) },
         { label: '아이콘 · 그리기마당', short: '아이콘', icon: 'star', onClick: () => run(() => window.dispatchEvent(new CustomEvent('jan-shape-dialog', { detail: { mode: 'insert' } }))) },
         { label: '글맵시 (WordArt)', short: '글맵시', icon: 'sparkle', onClick: () => run(() => { insertShape(editor, 'wordart', 'arch-up') }) },
+        { divider: '쪽', label: '' },
+        ...COVER_STYLES.map((c): MenuItem => ({
+          label: '표지: ' + c.label + ' — ' + c.hint, short: c.label, icon: 'page',
+          onClick: () => run(async () => {
+            const title = (await askText('표지 제목', '')) || ''
+            if (!title) return
+            const subtitle = (await askText('부제 (없으면 비워 둔다)', '')) || ''
+            const author = (await askText('글쓴이', '')) || ''
+            insertCover(editor, c.key, { title, subtitle, author, date: todayLabel() })
+          }),
+        })),
+        { label: '빈 쪽 넣기', short: '빈 쪽', icon: 'page', onClick: () => run(() => { insertBlankPage(editor) }) },
         { divider: '글자 꾸밈', label: '' },
         { label: '단락의 첫 문자 장식 (드롭캡 3줄)', short: '드롭캡', icon: 'h1', onClick: () => run(() => { setDropCap(editor, currentDropCap(editor) === 3 ? null : 3) }) },
         { label: '드롭캡 2줄', short: '드롭캡 2', icon: 'h2', onClick: () => run(() => { setDropCap(editor, 2) }) },
@@ -950,6 +963,8 @@ export function Toolbar(p: ToolbarProps) {
         { label: '임베드 URL', icon: 'globe', onClick: () => run(async () => { const u = await askText('임베드 URL (YouTube/Vimeo 등):'); if (u) editor.chain().focus().setEmbed(u).run() }) },
         { divider: '빠른 입력', label: '' },
         { label: '날짜/시간', icon: 'clock', onClick: () => run(insertDateTime) },
+        { label: '문자표 (이름으로 찾기 · 최근 문자)', short: '문자표', icon: 'hash', hint: 'Ctrl+F10', onClick: () => run(() => window.dispatchEvent(new Event('jan-symbol-panel'))) },
+        { label: '개체 목록 (겹친 개체 고르기)', short: '개체 목록', icon: 'menu', hint: 'Alt+F10', onClick: () => run(() => window.dispatchEvent(new Event('jan-object-pane'))) },
         { label: '특수 문자', icon: 'sparkle', onClick: () => run(insertSymbol) },
         { label: '빠른 메모', hint: 'Ctrl+Shift+J', icon: 'plus', onClick: () => run(p.onQuick) },
       ],

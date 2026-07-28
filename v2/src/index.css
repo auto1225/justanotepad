@@ -7059,3 +7059,41 @@ body.jan-split-dragging * { cursor: inherit !important; }
 }
 .ProseMirror .jan-overlap-triangle { clip-path: polygon(50% 0%, 100% 100%, 0% 100%); border: 1px solid currentColor; padding: 0.2em 0.16em 0.04em; }
 .ProseMirror .jan-overlap-diamond { clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%); border: 1px solid currentColor; padding: 0.14em; }
+
+/* ── 문자표 ─────────────────────────────────────────────────────── */
+.jan-symdlg { width: min(600px, 94vw); }
+.jan-symdlg-cap { margin: 10px 0 4px; font-size: 12px; color: var(--jan-text-dim, #5b6270); }
+.jan-symdlg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(38px, 1fr)); gap: 3px; }
+.jan-symdlg-main { max-height: 40vh; overflow: auto; margin-top: 8px; }
+.jan-symdlg-grid button {
+  padding: 6px 0; font-size: 17px; line-height: 1.2; border-radius: 5px; cursor: pointer;
+}
+.jan-symdlg-grid button:focus-visible { outline: 2px solid var(--jan-accent, #3b82f6); outline-offset: 1px; }
+
+/* ── 개체 목록 (워드의 선택 창) ─────────────────────────────────── */
+.jan-objpane {
+  position: fixed; right: 16px; top: 140px; width: 250px; max-height: 62vh;
+  display: flex; flex-direction: column;
+  background: var(--jan-surface, #fff);
+  border: 1px solid var(--jan-border, #d8dce3);
+  border-radius: 8px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .18);
+  z-index: 520;
+  font-size: 13px;
+}
+.jan-objpane-head { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--jan-border, #d8dce3); }
+.jan-objpane-count { margin-left: auto; color: var(--jan-text-dim, #5b6270); }
+.jan-objpane-head button { padding: 2px 8px; font-size: 12px; border-radius: 5px; cursor: pointer; }
+.jan-objpane-list { flex: 1; overflow: auto; margin: 0; padding: 4px; list-style: none; }
+.jan-objpane-row { display: flex; align-items: center; gap: 2px; }
+.jan-objpane-row > button:first-child {
+  flex: 1; display: flex; align-items: center; gap: 6px; min-width: 0;
+  padding: 5px 7px; text-align: left; border: 0; background: none; border-radius: 5px; cursor: pointer;
+}
+.jan-objpane-row > button:first-child:hover,
+.jan-objpane-row > button:first-child:focus-visible { background: rgba(59, 130, 246, .12); outline: none; }
+.jan-objpane-kind { flex: none; font-size: 11px; padding: 1px 5px; border-radius: 999px; background: rgba(59, 130, 246, .14); color: var(--jan-accent, #3b82f6); }
+.jan-objpane-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jan-objpane-row > button:not(:first-child) { flex: none; padding: 3px 6px; font-size: 11px; border-radius: 5px; cursor: pointer; }
+.jan-objpane-empty, .jan-objpane-hint { margin: 10px; font-size: 12px; color: var(--jan-text-dim, #5b6270); }
+.jan-objpane-hint { margin-top: auto; border-top: 1px solid var(--jan-border, #d8dce3); padding-top: 8px; }

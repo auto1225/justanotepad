@@ -35,6 +35,8 @@ import { ImageHandles } from './ImageHandles'
 import { ImageContextMenu } from './ImageContextMenu'
 import { ImageDialog } from './ImageDialog'
 import { ShapePanel } from './ShapePanel'
+import { SymbolPanel } from './SymbolPanel'
+import { ObjectPane } from './ObjectPane'
 import { ModalSkeleton } from './ModalSkeleton'
 import { useDocStore } from '../store/docStore'
 import { useMemosStore } from '../store/memosStore'
@@ -180,6 +182,9 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   const [imgDialog, setImgDialog] = useState<string | null>(null)
   /* 도형 갤러리·도형 서식 — 넣을 때와 고칠 때 같은 창을 쓴다 */
   const [shapePanel, setShapePanel] = useState<'insert' | 'format' | null>(null)
+  /* 문자표와 개체 목록 — 워드의 「기호」 대화상자와 「선택 창(Alt+F10)」 */
+  const [showSymbols, setShowSymbols] = useState(false)
+  const [showObjects, setShowObjects] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
   const [showOutline, setShowOutline] = useState(false)
   const [showAbout, setShowAbout] = useState(false)
@@ -542,6 +547,15 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       input.click()
     }
     const onShape = (e: Event) => setShapePanel((e as CustomEvent<{ mode?: 'insert' | 'format' }>).detail?.mode || 'insert')
+    const onSymbols = () => setShowSymbols(true)
+    const onObjects = () => setShowObjects((v) => !v)
+    /* 개체 목록은 워드와 같은 자리(Alt+F10)에서 열고 닫는다 */
+    const onKey = (e: KeyboardEvent) => {
+      if (e.altKey && e.key === 'F10') { e.preventDefault(); setShowObjects((v) => !v) }
+    }
+    window.addEventListener('jan-symbol-panel', onSymbols)
+    window.addEventListener('jan-object-pane', onObjects)
+    document.addEventListener('keydown', onKey, true)
     window.addEventListener('jan-image-dialog', onDialog)
     window.addEventListener('jan-image-replace', onReplace)
     window.addEventListener('jan-shape-dialog', onShape)
@@ -549,6 +563,9 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       window.removeEventListener('jan-image-dialog', onDialog)
       window.removeEventListener('jan-image-replace', onReplace)
       window.removeEventListener('jan-shape-dialog', onShape)
+      window.removeEventListener('jan-symbol-panel', onSymbols)
+      window.removeEventListener('jan-object-pane', onObjects)
+      document.removeEventListener('keydown', onKey, true)
     }
   }, [editor])
 
@@ -1091,6 +1108,8 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       <ImageContextMenu editor={editor} />
       {imgDialog && <ImageDialog editor={editor} tab={imgDialog} onClose={() => setImgDialog(null)} />}
       {shapePanel && <ShapePanel editor={editor} mode={shapePanel} onClose={() => setShapePanel(null)} />}
+      {showSymbols && <SymbolPanel editor={editor} onClose={() => setShowSymbols(false)} />}
+      {showObjects && <ObjectPane editor={editor} onClose={() => setShowObjects(false)} />}
       <Suspense fallback={<ModalSkeleton />}>
         {showAi && <AiHelper editor={editor} onClose={() => setShowAi(false)} />}
         {showSettings && <SettingsModal onClose={() => setShowSettings(false)} focusSection={settingsFocus} />}
