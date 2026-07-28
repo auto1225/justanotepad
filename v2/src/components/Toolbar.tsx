@@ -11,6 +11,10 @@ import { TTSButton } from './TTSButton'
 import { VoiceButton } from './VoiceButton'
 import { Ribbon } from './Ribbon'
 import { aggregateColumn } from '../lib/tableUtils'
+import { TABLE_STYLES, evenRowHeights, setCellPadding, setRowHeight, setTableStyle, splitTable, tableToText, toggleTableOption } from '../lib/tableWord'
+import { currentCellFormula, setCellFormula, suggestFormula } from '../lib/tableCompute'
+import { FORMULA_FUNCTIONS, NUMBER_FORMATS } from '../lib/tableFormula'
+import { pickTableSize } from '../lib/tableInsert'
 import { sortTableByCurrentColumn } from '../lib/tableSort'
 import { Icon } from './Icons'
 import type { IconName } from './Icons'
@@ -276,7 +280,13 @@ export function Toolbar(p: ToolbarProps) {
     document.body.classList.toggle('jan-show-pilcrow')
     try { localStorage.setItem('jan-show-pilcrow', document.body.classList.contains('jan-show-pilcrow') ? '1' : '0') } catch { /* 실패해도 진행 — 부가 기능이라 무시한다 */ }
   }
-  const insertTable = () => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
+  /* 워드처럼 격자에서 크기를 골라 넣는다 (「삽입 ▸ 표」) */
+  const insertTable = async () => {
+    const size = await pickTableSize()
+    if (!size) return
+    editor.chain().focus().insertTable(size).run()
+    flash(`${size.rows}행 ${size.cols}열 표를 넣었습니다`)
+  }
   const insertImageURL = async () => { const url = await askText('이미지 URL:', '', { placeholder: 'https://...' }); if (url) editor.chain().focus().setImage({ src: url }).run() }
   const uploadImage = () => {
     const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*'
@@ -861,7 +871,7 @@ export function Toolbar(p: ToolbarProps) {
     /* 3. 삽입 */
     {
       label: '삽입', items: [
-        { short: '표', label: '표 (3×3)', icon: 'table', onClick: () => run(insertTable) },
+        { short: '표', label: '표 삽입 (격자에서 크기 고르기)', icon: 'table', onClick: () => run(() => { void insertTable() }) },
         { short: '표 붙이기', label: '표로 붙여넣기 (CSV·엑셀 데이터)', icon: 'table', onClick: () => run(() => { void insertTableFromCsv() }) },
         { label: '이미지 URL', icon: 'image', onClick: () => run(insertImageURL) },
         { short: '그림 넣기', label: '이미지 업로드', icon: 'image', onClick: () => run(uploadImage) },
@@ -1115,6 +1125,50 @@ export function Toolbar(p: ToolbarProps) {
     if (value && !/^\d+(\.\d+)?(%|mm|cm|px|em)$/.test(value)) { flash('60% · 80mm 처럼 단위를 붙여 적으세요'); return }
     setTableAttr({ 'data-width': value || null, 'data-fit': value ? 'fixed' : null }, value ? `표 너비 ${value}` : '표 너비 자동')
   }
+  const askRowHeight = async () => {
+    if (!editor.isActive('table')) { flash('표 안에 커서를 두고 실행하세요'); return }
+    const v = await askText('행 높이 — 길이(예: 12mm) 또는 비우면 자동', '')
+    if (v === null) return
+    const value = v.trim()
+    if (value && !/^\d+(\.\d+)?(mm|cm|px|em)$/.test(value)) { flash('12mm · 40px 처럼 단위를 붙여 적으세요'); return }
+    setRowHeight(editor, value || null)
+    flash(value ? '행 높이 ' + value : '행 높이 자동')
+  }
+  const askCellPadding = async () => {
+    if (!editor.isActive('table')) { flash('표 안에 커서를 두고 실행하세요'); return }
+    const v = await askText('셀 여백 (px) — 표 전체에 적용', '5')
+    if (v === null) return
+    const n = Number(v)
+    if (!Number.isFinite(n) || n < 0 || n > 40) { flash('0 ~ 40 사이 숫자를 적으세요'); return }
+    setCellPadding(editor, n)
+    flash('셀 여백 ' + n + 'px')
+  }
+  const askTableToText = async () => {
+    if (!editor.isActive('table')) { flash('표 안에 커서를 두고 실행하세요'); return }
+    const sep = await askText('칸을 무엇으로 구분할까요? (탭은 비워 두세요)', ',')
+    if (sep === null) return
+    tableToText(editor, sep || '\t')
+  }
+  /* 워드의 「수식」 대화상자 — 수식 + 번호 형식 + 함수 안내 */
+  const askCellFormula = async () => {
+    if (!editor.isActive('table')) { flash('표 안에 커서를 두고 실행하세요'); return }
+    const cur = currentCellFormula(editor)
+    const hint = FORMULA_FUNCTIONS.slice(0, 8).map((f) => f.hint).join('\n')
+    const formula = await askText(
+      '수식 (워드와 같은 문법)\n' + hint + '\n방향 낱말: ABOVE · BELOW · LEFT · RIGHT / 셀 주소: A1, B2:B9',
+      cur.formula || suggestFormula(editor),
+      { multiline: true }
+    )
+    if (formula === null) return
+    if (!formula.trim()) { setCellFormula(editor, '', ''); flash('수식을 지웠습니다'); return }
+    const fmtList = NUMBER_FORMATS.map((f, i) => (i + 1) + '. ' + f.label).join('  ')
+    const pick = await askText('번호 형식 번호를 고르세요\n' + fmtList, cur.numFormat ? String(NUMBER_FORMATS.findIndex((f) => f.value === cur.numFormat) + 1) : '1')
+    if (pick === null) return
+    const index = Math.max(1, Math.min(NUMBER_FORMATS.length, Number(pick) || 1)) - 1
+    setCellFormula(editor, formula, NUMBER_FORMATS[index].value)
+    flash('수식 적용 — 값이 바뀌면 다시 계산됩니다')
+  }
+
   /* 끌어서 바꾼 열 너비를 지우고 고르게 되돌린다 (워드의 「열 너비를 같게」) */
   const evenColumnWidths = () => {
     const { state, view } = editor
@@ -1136,41 +1190,81 @@ export function Toolbar(p: ToolbarProps) {
     }
     flash('표 안에 커서를 두고 실행하세요')
   }
+  /* ── 표: 워드의 「레이아웃」 탭 ── */
   const tableItems: MenuItem[] = [
-    { divider: '행', label: '' },
-    { label: '위에 행 추가', short: '위 행', icon: 'plus', onClick: () => run(() => editor.chain().focus().addRowBefore().run()) },
-    { label: '아래에 행 추가', short: '아래 행', icon: 'plus', onClick: () => run(() => editor.chain().focus().addRowAfter().run()) },
-    { label: '현재 행 삭제', short: '행 삭제', icon: 'minus', onClick: () => run(() => editor.chain().focus().deleteRow().run()) },
-    { divider: '열', label: '' },
-    { label: '왼쪽에 열 추가', short: '왼쪽 열', icon: 'plus', onClick: () => run(() => editor.chain().focus().addColumnBefore().run()) },
-    { label: '오른쪽에 열 추가', short: '오른쪽 열', icon: 'plus', onClick: () => run(() => editor.chain().focus().addColumnAfter().run()) },
-    { label: '현재 열 삭제', short: '열 삭제', icon: 'minus', onClick: () => run(() => editor.chain().focus().deleteColumn().run()) },
-    { divider: '셀', label: '' },
-    { label: '제목 행 토글', short: '제목 행', icon: 'table', onClick: () => run(() => editor.chain().focus().toggleHeaderRow().run()) },
-    { label: '셀 합치기 / 나누기', short: '셀 합치기', icon: 'columns', onClick: () => run(() => editor.chain().focus().mergeOrSplit().run()) },
-    { label: '셀 배경색 지우기', short: '배경 지움', icon: 'fill', onClick: () => run(() => editor.chain().focus().setCellAttribute('backgroundColor', null).run()) },
-    { divider: '계산 · 정렬', label: '' },
-    { label: '현재 열 합계', short: '합계', icon: 'hash', onClick: () => run(() => aggregateColumn(editor, 'sum')) },
-    { label: '현재 열 평균', short: '평균', icon: 'hash', onClick: () => run(() => aggregateColumn(editor, 'avg')) },
-    { label: '현재 열 개수', short: '개수', icon: 'hash', onClick: () => run(() => aggregateColumn(editor, 'count')) },
-    { label: '현재 열 오름차순 정렬', short: '오름차순', icon: 'chevron-up', onClick: () => run(() => sortTableByCurrentColumn(editor, 'asc')) },
-    { label: '현재 열 내림차순 정렬', short: '내림차순', icon: 'chevron-down', onClick: () => run(() => sortTableByCurrentColumn(editor, 'desc')) },
-    { divider: '자동 맞춤', label: '' },
+    { divider: '행 및 열', label: '' },
+    { label: '위에 행 삽입', short: '위 행', icon: 'plus', onClick: () => run(() => editor.chain().focus().addRowBefore().run()) },
+    { label: '아래에 행 삽입', short: '아래 행', icon: 'plus', onClick: () => run(() => editor.chain().focus().addRowAfter().run()) },
+    { label: '왼쪽에 열 삽입', short: '왼쪽 열', icon: 'plus', onClick: () => run(() => editor.chain().focus().addColumnBefore().run()) },
+    { label: '오른쪽에 열 삽입', short: '오른쪽 열', icon: 'plus', onClick: () => run(() => editor.chain().focus().addColumnAfter().run()) },
+    { label: '행 삭제', short: '행 삭제', icon: 'minus', onClick: () => run(() => editor.chain().focus().deleteRow().run()) },
+    { label: '열 삭제', short: '열 삭제', icon: 'minus', onClick: () => run(() => editor.chain().focus().deleteColumn().run()) },
+    { divider: '병합', label: '' },
+    { label: '셀 병합', short: '병합', icon: 'columns', onClick: () => run(() => editor.chain().focus().mergeCells().run()) },
+    { label: '셀 분할', short: '분할', icon: 'columns', onClick: () => run(() => editor.chain().focus().splitCell().run()) },
+    { label: '표 분할 (커서 행에서 둘로)', short: '표 분할', icon: 'page-break', onClick: () => run(() => { splitTable(editor) }) },
+    { divider: '셀 크기', label: '' },
     { label: '창에 자동 맞춤', short: '창 맞춤', icon: 'maximize', onClick: () => run(() => setTableAttr({ 'data-fit': null, 'data-width': null }, '창(단) 너비에 맞춤')) },
     { label: '내용에 자동 맞춤', short: '내용 맞춤', icon: 'minimize', onClick: () => run(() => setTableAttr({ 'data-fit': 'contents', 'data-width': null }, '내용 너비에 맞춤')) },
     { label: '고정 열 너비', short: '고정', icon: 'columns', onClick: () => run(() => setTableAttr({ 'data-fit': 'fixed' }, '열 너비를 고정')) },
-    { label: '표 너비 지정...', short: '너비', icon: 'hash', onClick: () => run(() => { void askTableWidth() }) },
+    { label: '표 너비 지정...', short: '표 너비', icon: 'hash', onClick: () => run(() => { void askTableWidth() }) },
+    { label: '행 높이 지정...', short: '행 높이', icon: 'hash', onClick: () => run(() => { void askRowHeight() }) },
     { label: '열 너비를 같게', short: '열 같게', icon: 'columns', onClick: () => run(evenColumnWidths) },
-    { divider: '표 정렬 · 자리', label: '' },
+    { label: '행 높이를 같게', short: '행 같게', icon: 'table', onClick: () => run(() => { evenRowHeights(editor) }) },
+    { divider: '맞춤', label: '' },
+    { label: '셀 안 위쪽 맞춤', short: '위', icon: 'align-left', onClick: () => run(() => editor.chain().focus().setCellAttribute('valign', null).run()) },
+    { label: '셀 안 가운데 맞춤', short: '가운데', icon: 'align-center', onClick: () => run(() => editor.chain().focus().setCellAttribute('valign', 'middle').run()) },
+    { label: '셀 안 아래쪽 맞춤', short: '아래', icon: 'align-right', onClick: () => run(() => editor.chain().focus().setCellAttribute('valign', 'bottom').run()) },
+    { label: '셀 여백...', short: '셀 여백', icon: 'hash', onClick: () => run(() => { void askCellPadding() }) },
+    { divider: '표 자리', label: '' },
     { label: '왼쪽 맞춤', short: '왼쪽', icon: 'align-left', onClick: () => run(() => setTableAttr({ 'data-align': null }, '표를 왼쪽에')) },
     { label: '가운데 맞춤', short: '가운데', icon: 'align-center', onClick: () => run(() => setTableAttr({ 'data-align': 'center' }, '표를 가운데에')) },
     { label: '오른쪽 맞춤', short: '오른쪽', icon: 'align-right', onClick: () => run(() => setTableAttr({ 'data-align': 'right' }, '표를 오른쪽에')) },
     { label: '단 안에 두기 (2단 문서)', short: '단 안', icon: 'columns', onClick: () => run(() => setTableAttr({ 'data-place': 'column' }, '표를 단 안에')) },
     { label: '단 걸치기 — 지면 전체 폭', short: '단 걸침', icon: 'table', onClick: () => run(() => setTableAttr({ 'data-place': 'page' }, '표를 지면 전체 폭으로')) },
     { label: '자리 자동 (열이 많으면 단 걸침)', short: '자리 자동', icon: 'wand', onClick: () => run(() => setTableAttr({ 'data-place': null }, '표 자리 자동')) },
+    { divider: '데이터', label: '' },
+    { label: '수식 (fx)...', short: '수식', icon: 'hash', onClick: () => run(() => { void askCellFormula() }) },
+    { label: '현재 열 합계', short: '합계', icon: 'hash', onClick: () => run(() => aggregateColumn(editor, 'sum')) },
+    { label: '현재 열 평균', short: '평균', icon: 'hash', onClick: () => run(() => aggregateColumn(editor, 'avg')) },
+    { label: '현재 열 개수', short: '개수', icon: 'hash', onClick: () => run(() => aggregateColumn(editor, 'count')) },
+    { label: '오름차순 정렬', short: '오름차순', icon: 'chevron-up', onClick: () => run(() => sortTableByCurrentColumn(editor, 'asc')) },
+    { label: '내림차순 정렬', short: '내림차순', icon: 'chevron-down', onClick: () => run(() => sortTableByCurrentColumn(editor, 'desc')) },
+    { label: '표를 텍스트로 변환...', short: '텍스트로', icon: 'file-text', onClick: () => run(() => { void askTableToText() }) },
     { divider: '표', label: '' },
     { label: '표 삭제', short: '표 삭제', icon: 'trash', onClick: () => run(() => { if (confirm('표 전체를 삭제할까요?')) editor.chain().focus().deleteTable().run() }) },
   ]
+
+  /* ── 표: 워드의 「표 디자인」 탭 ── */
+  const tableDesignItems: MenuItem[] = [
+    { divider: '표 스타일', label: '' },
+    ...TABLE_STYLES.map((style) => ({
+      label: style.label + ' — ' + style.desc,
+      short: style.label,
+      icon: 'table' as IconName,
+      onClick: () => run(() => { setTableStyle(editor, style.value); flash(style.label + ' 적용') }),
+    })),
+    { divider: '표 스타일 옵션', label: '' },
+    { label: '머리글 행 켬/끔', short: '머리글 행', icon: 'table', onClick: () => run(() => editor.chain().focus().toggleHeaderRow().run()) },
+    { label: '첫째 열 강조 켬/끔', short: '첫째 열', icon: 'columns', onClick: () => run(() => { toggleTableOption(editor, 'data-first-col') }) },
+    { label: '마지막 행 강조 켬/끔', short: '마지막 행', icon: 'table', onClick: () => run(() => { toggleTableOption(editor, 'data-last-row') }) },
+    { divider: '음영', label: '' },
+    ...[
+      { color: '#FFF4CE', name: '노랑' },
+      { color: '#FDE7E9', name: '분홍' },
+      { color: '#E5F1FB', name: '파랑' },
+      { color: '#E8F5E9', name: '초록' },
+      { color: '#F3E8FD', name: '보라' },
+      { color: '#F2F2F2', name: '회색' },
+    ].map((shade) => ({
+      label: '셀 음영 ' + shade.name,
+      short: shade.name,
+      icon: 'fill' as IconName,
+      onClick: () => run(() => editor.chain().focus().setCellAttribute('backgroundColor', shade.color).run()),
+    })),
+    { label: '음영 지우기', short: '지우기', icon: 'fill', onClick: () => run(() => editor.chain().focus().setCellAttribute('backgroundColor', null).run()) },
+  ]
+
   const imageItems: MenuItem[] = [
     { divider: '크기', label: '' },
     { label: '작게 (200px)', short: '작게', icon: 'image', onClick: () => run(() => setImgWidth('200px')) },
@@ -1238,7 +1332,9 @@ export function Toolbar(p: ToolbarProps) {
     { label: 'AI', items: aiItems, extra: true },
     /* 논문 탭은 학술 문서 전용만 남긴다 — 개요·각주·쪽 나눔·단 같은 일반 기능은 코어 탭이 담당한다 */
     { label: '논문', items: drop(pick('논문'), ['문서 개요 패널', '각주 삽입', '페이지 구분 삽입', '다단 레이아웃']), extra: true },
-    ...(inTable ? [{ label: '표', items: tableItems, context: true }] : []),
+    /* 워드처럼 표 안에서는 상황별 탭이 두 개 열린다 — 「표 디자인」(모양)과 「레이아웃」(구조) */
+    ...(inTable ? [{ label: '표 디자인', items: tableDesignItems, context: true }] : []),
+    ...(inTable ? [{ label: '레이아웃', items: tableItems, context: true }] : []),
     ...(onImage ? [{ label: '그림', items: imageItems, context: true }] : []),
   ]
 

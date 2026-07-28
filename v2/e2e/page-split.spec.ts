@@ -269,6 +269,52 @@ test.describe('줄 단위 문단 분할', () => {
     expect(tables[2].width).toBeLessThanOrEqual(tables[1].width)
   })
 
+  test('셀 수식은 워드 문법으로 계산하고, 값이 바뀌면 다시 계산한다', async ({ page }) => {
+    await page.evaluate(() => {
+      const pm = document.querySelector('.ProseMirror') as HTMLElement
+      pm.focus()
+      const cell = (text: string, formula?: string) =>
+        `<td${formula ? ` data-formula="${formula}" data-num-format="#,##0"` : ''}><p>${text}</p></td>`
+      const dt = new DataTransfer()
+      dt.setData('text/html',
+        '<table><tbody>' +
+        '<tr><th><p>지점</p></th><th><p>1분기</p></th><th><p>합계</p></th></tr>' +
+        '<tr>' + cell('서울') + cell('1,200') + cell('', '=SUM(LEFT)') + '</tr>' +
+        '<tr>' + cell('부산') + cell('800') + cell('', '=SUM(LEFT)') + '</tr>' +
+        '<tr>' + cell('합계') + cell('', '=SUM(ABOVE)') + cell('', '=SUM(ABOVE)') + '</tr>' +
+        '</tbody></table>')
+      pm.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }))
+    })
+    await page.waitForTimeout(600)
+
+    const readRows = () => page.evaluate(() =>
+      [...document.querySelectorAll('.ProseMirror table tr')].map((tr) =>
+        [...tr.children].map((c) => (c as HTMLElement).textContent?.trim() ?? '')))
+
+    expect(await readRows()).toEqual([
+      ['지점', '1분기', '합계'],
+      ['서울', '1,200', '1,200'],
+      ['부산', '800', '800'],
+      ['합계', '2,000', '2,000'],
+    ])
+
+    // 값을 고치면 스스로 다시 계산한다 (워드는 F9 를 눌러야 한다)
+    await page.evaluate(() => {
+      const cell = document.querySelectorAll('.ProseMirror table tr')[1].children[1] as HTMLElement
+      const range = document.createRange()
+      range.selectNodeContents(cell)
+      const sel = window.getSelection()!
+      sel.removeAllRanges()
+      sel.addRange(range)
+    })
+    await page.keyboard.type('2000')
+    await page.waitForTimeout(600)
+
+    const after = await readRows()
+    expect(after[1][2]).toBe('2,000') // 서울 합계
+    expect(after[3][1]).toBe('2,800') // 1분기 총합
+  })
+
   test('표 캡션은 표와, 그림 캡션은 그림과 붙어 다닌다', async ({ page }) => {
     await page.evaluate(() => {
       const pm = document.querySelector('.ProseMirror') as HTMLElement

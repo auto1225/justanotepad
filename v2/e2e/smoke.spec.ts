@@ -594,7 +594,9 @@ test.describe('v2 smoke', () => {
     await page.keyboard.press('Control+A')
 
     await page.getByRole('tab', { name: '입력', exact: true }).click()
-    await page.getByRole('button', { name: '표 (3×3)' }).click()
+    // 워드처럼 격자에서 크기를 고른다 (3행 3열)
+    await page.getByRole('button', { name: /표 삽입/ }).click()
+    await page.locator('.jan-tg-cell[data-r="3"][data-c="3"]').click()
 
     const cells = page.locator('.ProseMirror table th, .ProseMirror table td')
     await expect(cells).toHaveCount(9)
@@ -605,7 +607,9 @@ test.describe('v2 smoke', () => {
     }
 
     for (let i = 0; i < 4; i += 1) await page.keyboard.press('Shift+Tab')
-    await page.locator('.jan-table-menu').getByTitle('현재 열 오름차순').click()
+    // 표 조작은 워드처럼 리본의 「레이아웃」 탭에서 한다 (표 위 단추 막대는 칸을 가려서 없앴다)
+    await page.getByRole('tab', { name: '레이아웃', exact: true }).click()
+    await page.getByRole('button', { name: '오름차순 정렬' }).click()
     const rows = page.locator('.ProseMirror table tr')
     await expect(rows.nth(0)).toContainText('Name')
     await expect(rows.nth(1)).toContainText('Alpha')
@@ -625,7 +629,9 @@ test.describe('v2 smoke', () => {
     await page.keyboard.press('Control+A')
 
     await page.getByRole('tab', { name: '입력', exact: true }).click()
-    await page.getByRole('button', { name: '표 (3×3)' }).click()
+    // 워드처럼 격자에서 크기를 고른다 (3행 3열)
+    await page.getByRole('button', { name: /표 삽입/ }).click()
+    await page.locator('.jan-tg-cell[data-r="3"][data-c="3"]').click()
 
     const cells = page.locator('.ProseMirror table th, .ProseMirror table td')
     await expect(cells).toHaveCount(9)
@@ -635,11 +641,13 @@ test.describe('v2 smoke', () => {
       if (i < values.length - 1) await page.keyboard.press('Tab')
     }
 
-    await page.locator('.jan-table-menu').getByTitle('아래 행 추가').click()
+    await page.getByRole('tab', { name: '레이아웃', exact: true }).click()
+    await page.getByRole('button', { name: '아래에 행 삽입' }).click()
     await expect(cells).toHaveCount(12)
     await page.keyboard.press('Tab')
     await page.keyboard.press('Tab')
-    await page.locator('.jan-table-menu').getByTitle('현재 열 합계').click()
+    await page.getByRole('tab', { name: '레이아웃', exact: true }).click()
+    await page.getByRole('button', { name: '현재 열 합계' }).click()
     await expect(cells.nth(10)).toContainText('합계: 12')
   })
 

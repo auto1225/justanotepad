@@ -6688,3 +6688,104 @@ body.jan-split-dragging * { cursor: inherit !important; }
   background: none; border: 0; border-left: 1px solid rgba(255,255,255,0.28);
   border-radius: 0;
 }
+
+/* ============================================================
+   표 손잡이 — 워드식. 모두 표 바깥에 놓여 칸을 가리지 않는다.
+   (예전에는 단추 막대가 표 위에 떠서 다른 칸을 고를 수 없었다)
+   ============================================================ */
+.jan-table-handles { position: fixed; inset: 0; pointer-events: none; z-index: 60; }
+.jan-table-handles > button { position: fixed; pointer-events: auto; padding: 0; border: 0; background: none; cursor: pointer; }
+
+/* 왼쪽 위 이동 손잡이 (워드의 ⊹ 표시) */
+.jan-th-move {
+  display: grid; place-items: center;
+  border: 1px solid var(--jan-table-line, #9aa1ab) !important;
+  background: var(--paper, #fff) !important;
+  border-radius: 3px;
+  opacity: 0.55; transition: opacity 0.12s ease;
+}
+.jan-th-move:hover { opacity: 1; }
+.jan-th-move > span {
+  width: 8px; height: 8px;
+  background:
+    linear-gradient(var(--jan-table-line, #9aa1ab) 0 0) center / 8px 1px no-repeat,
+    linear-gradient(var(--jan-table-line, #9aa1ab) 0 0) center / 1px 8px no-repeat;
+}
+
+/* 열·행 선택 띠 */
+.jan-th-col, .jan-th-row {
+  background: color-mix(in srgb, var(--accent, #6b5bd6) 30%, transparent) !important;
+  border-radius: 2px;
+  opacity: 0; transition: opacity 0.12s ease;
+}
+.jan-table-handles:hover .jan-th-col,
+.jan-table-handles:hover .jan-th-row { opacity: 0.55; }
+.jan-th-col:hover, .jan-th-row:hover { opacity: 1 !important; }
+
+/* 경계마다 뜨는 ⊕ — 그 자리에 열·행을 넣는다 */
+.jan-th-add {
+  width: 14px; height: 14px; line-height: 12px; text-align: center;
+  font-size: 12px; font-weight: 700;
+  color: var(--accent, #6b5bd6) !important;
+  background: var(--paper, #fff) !important;
+  border: 1px solid color-mix(in srgb, var(--accent, #6b5bd6) 45%, transparent) !important;
+  border-radius: 50%;
+  opacity: 0; transition: opacity 0.12s ease, transform 0.12s ease;
+}
+.jan-table-handles:hover .jan-th-add { opacity: 0.75; }
+.jan-th-add:hover { opacity: 1 !important; transform: scale(1.15); }
+
+/* 셀 세로 맞춤 — 워드의 「셀 맞춤」 */
+.ProseMirror :is(th, td)[data-valign="middle"] { vertical-align: middle; }
+.ProseMirror :is(th, td)[data-valign="bottom"] { vertical-align: bottom; }
+/* 수식이 걸린 칸은 옅은 바탕으로 표시한다 (워드의 필드 음영과 같은 뜻) */
+.ProseMirror :is(th, td)[data-formula] { background-image: linear-gradient(color-mix(in srgb, var(--accent, #6b5bd6) 7%, transparent) 0 0); }
+
+/* ============================================================
+   표 스타일 — 워드의 「표 디자인 ▸ 표 스타일」 갤러리
+   ============================================================ */
+/* 굵은 격자 */
+.ProseMirror .tableWrapper[data-style="grid"] :is(th, td) { border-color: var(--ink, #191919); }
+/* 선 없는 표 — 여백으로만 나눈다 */
+.ProseMirror .tableWrapper[data-style="plain"] :is(th, td) { border-color: transparent; }
+/* 가로선만 (학술 논문에서 흔한 모양) */
+.ProseMirror .tableWrapper[data-style="lines"] :is(th, td) { border-left: 0; border-right: 0; }
+.ProseMirror .tableWrapper[data-style="lines"] thead th,
+.ProseMirror .tableWrapper[data-style="lines"] tr:first-child :is(th, td) { border-top-width: 2px; }
+.ProseMirror .tableWrapper[data-style="lines"] tr:last-child :is(th, td) { border-bottom-width: 2px; }
+/* 줄무늬 행 */
+.ProseMirror .tableWrapper[data-style="banded"] tr:nth-child(even) td {
+  background-color: color-mix(in srgb, var(--ink, #191919) 4%, transparent);
+}
+/* 강조 머리글 */
+.ProseMirror .tableWrapper[data-style="accent"] tr:first-child :is(th, td) {
+  background-color: color-mix(in srgb, var(--accent, #6b5bd6) 16%, transparent);
+  font-weight: 700;
+}
+
+/* 표 스타일 옵션 — 첫째 열·마지막 행 강조 */
+.ProseMirror .tableWrapper[data-first-col] tr > :is(th, td):first-child { font-weight: 700; }
+.ProseMirror .tableWrapper[data-last-row] tr:last-child :is(th, td) {
+  font-weight: 700;
+  border-top: 2px solid var(--jan-table-line, #9aa1ab);
+}
+
+/* 셀 여백 — 워드의 「셀 여백」 */
+.ProseMirror .tableWrapper[style*="--jan-cell-pad"] :is(th, td) { padding: var(--jan-cell-pad, 5px) calc(var(--jan-cell-pad, 5px) + 3px); }
+
+/* 표 삽입 격자 — 워드의 「삽입 ▸ 표」 */
+.jan-table-grid-modal { width: min(360px, 92vw); }
+.jan-tg-grid { display: grid; gap: 2px; margin-bottom: 10px; }
+.jan-tg-cell {
+  aspect-ratio: 1;
+  border: 1px solid var(--jan-table-line, #9aa1ab);
+  background: var(--paper, #fff);
+  border-radius: 2px;
+  padding: 0;
+  cursor: pointer;
+}
+.jan-tg-cell.is-on { background: color-mix(in srgb, var(--accent, #6b5bd6) 35%, transparent); border-color: var(--accent, #6b5bd6); }
+.jan-tg-label { margin: 0 0 8px; font-size: 13px; color: var(--jan-fg, #333); text-align: center; min-height: 18px; }
+.jan-tg-opt { display: flex; align-items: center; gap: 6px; font-size: 13px; margin-bottom: 10px; }
+.jan-tg-actions { display: flex; justify-content: flex-end; }
+.jan-tg-custom { font-size: 12px; padding: 5px 10px; border: 1px solid var(--paper-edge, #ddd); border-radius: 6px; background: none; cursor: pointer; }

@@ -1,16 +1,38 @@
 import { Extension } from '@tiptap/core'
+import { applyFormulas } from '../lib/tableCompute'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { TableCell } from '@tiptap/extension-table-cell'
 import { TableHeader } from '@tiptap/extension-table-header'
 
-/** 셀 배경색 속성 — 워드식 표 음영. setCellAttribute('backgroundColor', ...) 로 적용 */
+/** 셀 속성 — 워드식 표 음영·세로 맞춤·수식. setCellAttribute(...) 로 적용 */
 const backgroundColorAttr = {
   backgroundColor: {
     default: null as string | null,
     parseHTML: (el: HTMLElement) => el.style.backgroundColor || null,
     renderHTML: (attrs: { backgroundColor?: string | null }) =>
       attrs.backgroundColor ? { style: `background-color: ${attrs.backgroundColor}` } : {},
+  },
+  /** 세로 맞춤 — 워드의 「셀 맞춤」 위·가운데·아래 */
+  valign: {
+    default: null as string | null,
+    parseHTML: (el: HTMLElement) => el.getAttribute('data-valign'),
+    renderHTML: (attrs: { valign?: string | null }) =>
+      attrs.valign ? { 'data-valign': attrs.valign } : {},
+  },
+  /** 칸 수식 — 워드의 「수식(fx)」. 값은 계산해서 칸 글자로 넣는다 */
+  formula: {
+    default: null as string | null,
+    parseHTML: (el: HTMLElement) => el.getAttribute('data-formula'),
+    renderHTML: (attrs: { formula?: string | null }) =>
+      attrs.formula ? { 'data-formula': attrs.formula } : {},
+  },
+  /** 수식 결과의 번호 형식 (#,##0.00 등) */
+  numFormat: {
+    default: null as string | null,
+    parseHTML: (el: HTMLElement) => el.getAttribute('data-num-format'),
+    renderHTML: (attrs: { numFormat?: string | null }) =>
+      attrs.numFormat ? { 'data-num-format': attrs.numFormat } : {},
   },
 }
 
@@ -35,7 +57,34 @@ export const JanTableHeader = TableHeader.extend({
  *  place  다단 문서에서의 자리: 'column' 단 안 | 'page' 단 걸치기(지면 전체 폭) | null 자동
  *         (워드에는 없는 항목이지만 2단 논문 조판에는 반드시 필요하다)
  */
-const TABLE_PROP_KEYS = ['data-fit', 'data-align', 'data-place', 'data-width'] as const
+const TABLE_PROP_KEYS = ['data-fit', 'data-align', 'data-place', 'data-width', 'data-style', 'data-first-col', 'data-last-row', 'data-cell-pad'] as const
+
+/**
+ * 칸 수식 자동 계산 — 표가 바뀔 때마다 결과를 다시 써넣는다.
+ * (워드는 F9 를 눌러야 하지만, 고치는 동안 바로 보이는 편이 낫다)
+ */
+export const TableFormulaAuto = Extension.create({
+  name: 'janTableFormulaAuto',
+  addProseMirrorPlugins() {
+    const key = new PluginKey('janTableFormulaAuto')
+    return [
+      new Plugin({
+        key,
+        appendTransaction(trs, _oldState, newState) {
+          if (!trs.some((tr) => tr.docChanged)) return null
+          // 계산이 만든 트랜잭션에 다시 반응하면 끝없이 돈다
+          if (trs.some((tr) => tr.getMeta(key))) return null
+          const tr = newState.tr
+          const changed = applyFormulas(tr)
+          if (!changed) return null
+          tr.setMeta(key, true)
+          tr.setMeta('addToHistory', false)
+          return tr
+        },
+      }),
+    ]
+  },
+})
 
 export const TablePlacement = Extension.create({
   name: 'janTableProps',
@@ -51,6 +100,13 @@ export const TablePlacement = Extension.create({
           decorations(state) {
             const decos: Decoration[] = []
             state.doc.descendants((node, pos) => {
+              if (node.type.name === 'tableRow' && node.attrs['data-height']) {
+                decos.push(Decoration.node(pos, pos + node.nodeSize, {
+                  'data-height': String(node.attrs['data-height']),
+                  style: `height:${node.attrs['data-height']}`,
+                }))
+                return false
+              }
               if (node.type.name !== 'table') return true
               const attrs: Record<string, string> = {}
               for (const key of TABLE_PROP_KEYS) {
@@ -58,9 +114,12 @@ export const TablePlacement = Extension.create({
                 if (value) attrs[key] = String(value)
               }
               // 너비는 CSS 변수로 넘긴다 — 껍데기가 아니라 안쪽 표에 물려야 하기 때문이다
-              if (attrs['data-width']) attrs.style = `--jan-table-w:${attrs['data-width']}`
+              const styles: string[] = []
+              if (attrs['data-width']) styles.push(`--jan-table-w:${attrs['data-width']}`)
+              if (attrs['data-cell-pad']) styles.push(`--jan-cell-pad:${attrs['data-cell-pad']}px`)
+              if (styles.length) attrs.style = styles.join(';')
               if (Object.keys(attrs).length) decos.push(Decoration.node(pos, pos + node.nodeSize, attrs))
-              return false
+              return true // 표 안의 행도 살펴야 한다 (행 높이)
             })
             return decos.length ? DecorationSet.create(state.doc, decos) : null
           },
@@ -76,11 +135,19 @@ export const TablePlacement = Extension.create({
     })
     return [
       {
+        types: ['tableRow'],
+        attributes: { 'data-height': attr('data-height') },
+      },
+      {
         types: ['table'],
         attributes: {
           'data-fit': attr('data-fit'),
           'data-align': attr('data-align'),
           'data-place': attr('data-place'),
+          'data-style': attr('data-style'),
+          'data-first-col': attr('data-first-col'),
+          'data-last-row': attr('data-last-row'),
+          'data-cell-pad': attr('data-cell-pad'),
           'data-width': {
             default: null,
             parseHTML: (el: HTMLElement) => el.getAttribute('data-width'),

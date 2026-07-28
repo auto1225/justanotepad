@@ -7,7 +7,7 @@ import Underline from '@tiptap/extension-underline'
 import Link from '@tiptap/extension-link'
 import { Table } from '@tiptap/extension-table'
 import { TableRow } from '@tiptap/extension-table-row'
-import { JanTableCell, JanTableHeader, TablePlacement } from '../extensions/TableCellExt'
+import { JanTableCell, JanTableHeader, TablePlacement, TableFormulaAuto } from '../extensions/TableCellExt'
 import { ImageWithWidth as Image } from '../extensions/ImageWithWidth'
 import { PaginationPlus, PAGE_SIZES } from 'tiptap-pagination-plus'
 import { Collaboration } from '@tiptap/extension-collaboration'
@@ -23,7 +23,7 @@ import { CommandPalette } from './CommandPalette'
 import { TagsBar } from './TagsBar'
 import { OutlinePanel } from './OutlinePanel'
 import { SlashMenu } from './SlashMenu'
-import { TableMenu } from './TableMenu'
+import { TableHandles } from './TableHandles'
 import { BubbleToolbar } from './BubbleToolbar'
 import { ImageMenu } from './ImageMenu'
 import { ModalSkeleton } from './ModalSkeleton'
@@ -369,6 +369,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       Link.configure({ openOnClick: false }),
       Table.configure({ resizable: true }),
       TablePlacement,
+      TableFormulaAuto,
       TableRow,
       JanTableHeader,
       JanTableCell,
@@ -1032,7 +1033,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       <StatusBar editor={editor} onPageSettings={() => setShowPageSettings(true)} onSettings={() => setShowSettings(true)} />
       <CommandPalette editor={editor} onAi={() => setShowAi(true)} onChat={() => setShowChat(true)} onSearch={() => setShowSearch(true)} onFind={() => setShowFind(true)} onOcr={() => setShowOcr(true)} onPaint={() => setShowPaint(true)} onPostit={() => setShowPostit(true)} onPaper={() => setShowPaper(true)} onRoles={() => { setInitialRoleTool(null); setShowRoles(true) }} onTemplates={() => setShowTemplates(true)} onSnippets={() => setShowSnippets(true)} onMacros={() => setShowMacros(true)} onTypo={() => setShowTypo(true)} onCalendar={() => setShowQuick(true)} onQuick={() => setShowQuick(true)} onMd={() => setShowMd(true)} onPrintPreview={() => setShowPrint(true)} onShare={() => setShowShare(true)} onGist={() => setShowGist(true)} onAtt={() => setShowAtt(true)} onLock={() => setShowLock(true)} onSettings={() => setShowSettings(true)} onHelp={() => setShowHelp(true)} onAbout={() => setShowAbout(true)} onStats={() => setShowStats(true)} onMindMap={() => setShowMindMap(true)} onHeatmap={() => setShowHeatmap(true)} onInfo={() => setShowInfo(true)} onDiff={() => setShowDiff(true)} onLinkCheck={() => setShowLinkCheck(true)} onTranslate={() => setShowTranslate(true)} onVersions={() => setShowVersions(true)} onCards={() => setShowCards(true)} onPageSettings={() => setShowPageSettings(true)} onToggleOutline={() => setShowOutline((v) => !v)} onSave={handleSave} onOpen={handleOpen} />
       <SlashMenu editor={editor} />
-      <TableMenu editor={editor} />
+      <TableHandles editor={editor} />
       <BubbleToolbar editor={editor} />
       <ImageMenu editor={editor} />
       <Suspense fallback={<ModalSkeleton />}>
