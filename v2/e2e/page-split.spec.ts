@@ -223,6 +223,52 @@ test.describe('줄 단위 문단 분할', () => {
     expect(await count()).toEqual({ marks: 1, tables: 2 })
   })
 
+  test('표 자리·너비를 지정하면 그대로 조판된다 (단 안 / 단 걸치기 / 내용 맞춤)', async ({ page }) => {
+    /* 표는 열 너비 조절용 노드뷰가 제 DOM 을 만들어서, 표에 건 속성이 화면에 닿지 않았다.
+       속성 → 껍데기(.tableWrapper) → CSS 로 이어지는 길이 살아 있는지 본다. */
+    await page.getByRole('tab', { name: '논문' }).click()
+    await page.getByRole('button', { name: /IEEE/ }).first().click()
+    await page.waitForTimeout(1200)
+    await page.locator('.jan-page-node').first().click()
+    await page.keyboard.press('Control+a')
+    await page.keyboard.press('Delete')
+    await page.evaluate(() => {
+      const pm = document.querySelector('.ProseMirror') as HTMLElement
+      pm.focus()
+      const row = (n: number) => '<tr>' + Array.from({ length: 5 }, (_, c) => `<td><p>칸 ${n}-${c}</p></td>`).join('') + '</tr>'
+      const table = (attr: string) => `<table ${attr}><tbody>${row(0)}${row(1)}</tbody></table>`
+      const dt = new DataTransfer()
+      dt.setData('text/html',
+        '<p>자리를 고르지 않은 표</p>' + table('') +
+        '<p>단 안에 두기</p>' + table('data-place="column"') +
+        '<p>내용에 맞춤</p>' + table('data-place="column" data-fit="contents"'))
+      pm.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }))
+    })
+    await waitForReflow(page)
+
+    const tables = await page.evaluate(() =>
+      [...document.querySelectorAll('.ProseMirror .tableWrapper')].map((el) => {
+        const wrap = el as HTMLElement
+        const table = wrap.querySelector('table') as HTMLElement
+        return {
+          place: wrap.getAttribute('data-place'),
+          fit: wrap.getAttribute('data-fit'),
+          span: getComputedStyle(wrap).columnSpan,
+          width: Math.round(table.getBoundingClientRect().width),
+        }
+      })
+    )
+    expect(tables).toHaveLength(3)
+    // 자리를 고르지 않은 표는 열이 5개라 자동으로 단을 걸친다
+    expect(tables[0]).toMatchObject({ place: null, span: 'all' })
+    // 단 안에 두기를 고른 표는 단 폭으로 줄어든다
+    expect(tables[1]).toMatchObject({ place: 'column', span: 'none' })
+    expect(tables[1].width).toBeLessThan(tables[0].width)
+    // 내용에 맞춤은 단 폭보다도 좁아진다
+    expect(tables[2]).toMatchObject({ fit: 'contents', span: 'none' })
+    expect(tables[2].width).toBeLessThanOrEqual(tables[1].width)
+  })
+
   test('표 캡션은 표와, 그림 캡션은 그림과 붙어 다닌다', async ({ page }) => {
     await page.evaluate(() => {
       const pm = document.querySelector('.ProseMirror') as HTMLElement

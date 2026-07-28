@@ -7,7 +7,7 @@ import Underline from '@tiptap/extension-underline'
 import Link from '@tiptap/extension-link'
 import { Table } from '@tiptap/extension-table'
 import { TableRow } from '@tiptap/extension-table-row'
-import { JanTableCell, JanTableHeader } from '../extensions/TableCellExt'
+import { JanTableCell, JanTableHeader, TablePlacement } from '../extensions/TableCellExt'
 import { ImageWithWidth as Image } from '../extensions/ImageWithWidth'
 import { PaginationPlus, PAGE_SIZES } from 'tiptap-pagination-plus'
 import { Collaboration } from '@tiptap/extension-collaboration'
@@ -368,6 +368,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       Underline,
       Link.configure({ openOnClick: false }),
       Table.configure({ resizable: true }),
+      TablePlacement,
       TableRow,
       JanTableHeader,
       JanTableCell,

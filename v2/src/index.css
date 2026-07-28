@@ -1084,7 +1084,12 @@ mark{padding:1px 2px;border-radius:2px;}
 /* 제목 바로 다음 문단은 들여쓰지 않는다 (논문·단행본의 관례) */
 .ProseMirror :where(h1,h2,h3,h4,h5,h6) + p:not([style*="text-align"]) { text-indent: 0; }
 /* 양쪽 정렬일 때 한글은 낱말 단위로 늘리면 틈이 벌어진다 — 글자 사이도 함께 늘린다 */
-.ProseMirror { text-justify: inter-character; word-break: keep-all; overflow-wrap: break-word; }
+/* 한글은 낱말 단위로만 끊고(keep-all), 양쪽 정렬에서 글자 사이도 함께 늘려
+   낱말 사이만 벌어져 강물처럼 흰 줄이 생기는 것을 막는다 */
+.ProseMirror { text-justify: inter-character; word-break: keep-all; overflow-wrap: break-word; hanging-punctuation: allow-end; }
+/* 좁은 단에서는 하이픈 없이 양쪽 정렬하면 틈이 크게 벌어진다 — 영문은 하이픈을 허용한다 */
+.jan-editor-pages[data-page-columns="2"] .ProseMirror,
+.jan-editor-pages[data-page-columns="3"] .ProseMirror { hyphens: auto; }
 
 /* 장평 — 글자를 가로로 늘이고 줄인다. 문단을 그만큼 넓게 잡고 다시 눌러 그리므로
    줄바꿈 위치도 한글의 장평과 같아진다. 100% 면 이 규칙 자체가 걸리지 않는다. */
@@ -4062,6 +4067,43 @@ html, body, #root {
   column-gap: 5mm;
 }
 
+/* ── 표 자리·너비 (워드의 「표 속성」) ──
+   표 속성은 편집기가 감싸는 껍데기(.tableWrapper)에 얹힌다 —
+   표가 열 너비 조절용 노드뷰를 써서 제 DOM 을 스스로 만들기 때문이다.
+   그래서 규칙도 껍데기 기준으로 쓴다. */
+
+/* 자리 자동: 따로 고르지 않은 표는 열이 4개 이상일 때만 단을 걸친다
+   (좁은 단에 넣으면 글자가 한 자씩 끊겨 읽을 수 없다) */
+.jan-editor-pages[data-page-columns="2"][data-page-model="nodes"] .jan-page-node > .tableWrapper:not([data-place]):has(table :is(th, td):nth-child(4)),
+.jan-editor-pages[data-page-columns="2"][data-page-model="nodes"] .jan-page-node > p[data-paper-block="tabcap"]:has(+ .tableWrapper:not([data-place]) table :is(th, td):nth-child(4)) {
+  column-span: all;
+}
+/* 사용자가 고른 자리가 자동보다 우선한다 (캡션도 표를 따라간다) */
+.jan-editor-pages[data-page-model="nodes"] .jan-page-node > .tableWrapper[data-place="page"],
+.jan-editor-pages[data-page-model="nodes"] .jan-page-node > p[data-paper-block="tabcap"]:has(+ .tableWrapper[data-place="page"]) {
+  column-span: all;
+}
+.jan-editor-pages[data-page-model="nodes"] .jan-page-node > .tableWrapper[data-place="column"],
+.jan-editor-pages[data-page-model="nodes"] .jan-page-node > p[data-paper-block="tabcap"]:has(+ .tableWrapper[data-place="column"]) {
+  column-span: none;
+}
+
+/* 자동 맞춤 — 워드의 세 갈래. 기본(창에 맞춤)은 단 폭을 가득 채운다 */
+.jan-editor-pages .ProseMirror .tableWrapper[data-fit="contents"] table {
+  width: auto;
+  table-layout: auto;
+  min-width: 0;
+}
+.jan-editor-pages .ProseMirror .tableWrapper[data-fit="contents"] :is(th, td) { white-space: nowrap; width: auto; }
+.jan-editor-pages .ProseMirror .tableWrapper[data-fit="fixed"] table { table-layout: fixed; }
+
+/* 표 정렬 — 표가 단·지면보다 좁을 때만 눈에 보인다 (워드와 같다) */
+.jan-editor-pages .ProseMirror .tableWrapper[data-align="center"] table { margin-left: auto; margin-right: auto; }
+.jan-editor-pages .ProseMirror .tableWrapper[data-align="right"] table { margin-left: auto; margin-right: 0; }
+
+/* 표 너비 지정 — 껍데기가 넘겨 준 값을 안쪽 표에 물린다 */
+.jan-editor-pages .ProseMirror .tableWrapper[data-width] table { width: var(--jan-table-w, 100%); min-width: 0; }
+
 /* 제목과 저자 줄은 단을 가로질러 지면 전체 폭을 쓴다 — 2단 저널의 표준 첫 장 모양 */
 .jan-editor-pages[data-page-model="nodes"] .jan-page-node > h1,
 .jan-editor-pages[data-page-model="nodes"] .jan-page-node > [data-paper-block="titleblock"] {
@@ -4069,15 +4111,6 @@ html, body, #root {
   text-indent: 0;
 }
 
-/* 열이 많은 표는 좁은 단에 넣으면 글자가 한 자씩 끊겨 읽을 수 없다 —
-   저널의 관행대로 지면 전체 폭을 쓰게 하고 캡션도 함께 가로지른다. */
-/* (표는 편집기가 .tableWrapper 로 감싸므로 그 껍데기에 걸어야 한다) */
-.jan-editor-pages[data-page-columns="2"][data-page-model="nodes"] .jan-page-node > .tableWrapper:has(table :is(th, td):nth-child(4)),
-.jan-editor-pages[data-page-columns="2"][data-page-model="nodes"] .jan-page-node > table:has(:is(th, td):nth-child(4)),
-.jan-editor-pages[data-page-columns="2"][data-page-model="nodes"] .jan-page-node > p[data-paper-block="tabcap"]:has(+ .tableWrapper table :is(th, td):nth-child(4)),
-.jan-editor-pages[data-page-columns="2"][data-page-model="nodes"] .jan-page-node > p[data-paper-block="tabcap"]:has(+ table :is(th, td):nth-child(4)) {
-  column-span: all;
-}
 /* 단 안에 들어가는 표는 글자를 조금 줄이고 낱말 단위로만 끊는다 */
 .jan-editor-pages[data-page-columns="2"] .jan-page-node table,
 .jan-editor-pages[data-page-columns="3"] .jan-page-node table { font-size: 0.88em; }
@@ -5634,6 +5667,21 @@ html, body, #root {
   font-size: 0.9em;
   margin: 0.3em 0;
 }
+
+/* 수식은 문서의 줄간격·자간·들여쓰기·양쪽정렬을 따르지 않는다 —
+   KaTeX 는 제 안에서 기호 간격을 스스로 잡는데, 본문 값이 스며들면
+   분수선에 글자가 닿고 기호가 서로 붙어 버린다. */
+.ProseMirror .katex,
+.ProseMirror .katex * {
+  letter-spacing: normal;
+  word-spacing: normal;
+  text-indent: 0;
+}
+.ProseMirror .katex { line-height: 1.2; text-align: initial; }
+/* 표시 조판 수식은 한 줄을 차지한다 — 번호 수식 문단 안에서는 바깥 여백을 없앤다 */
+.ProseMirror .katex-display { margin: 0.15em 0; }
+.ProseMirror p[data-paper-block="eq"] .katex-display { margin: 0; }
+.ProseMirror p[data-paper-block="eq"] .katex-display > .katex { text-align: center; }
 
 /* 그림/표 캡션: 가운데, 본문보다 작게 */
 .ProseMirror p[data-paper-block="figcap"],

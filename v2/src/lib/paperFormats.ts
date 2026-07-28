@@ -117,14 +117,14 @@ export const PAPER_FORMATS: PaperFormatDef[] = [
   {
     key: 'ieee',
     label: 'IEEE 컨퍼런스 (2단)',
-    desc: 'A4 · 여백 19mm · 2단 · Times 10pt · 제목 24pt',
+    desc: 'A4 · 여백 19mm · 2단 · 명조 10pt · 양쪽 정렬 · 첫 줄 들여쓰기',
     page: {
       pageSize: 'A4', pageOrientation: 'portrait',
       pageMarginsMm: { top: 19, right: 19, bottom: 19, left: 19 }, pageMarginMm: 19,
       pageColumnCount: 2, paperStyle: 'blank',
       runningFooter: '', runningHeader: '',
     },
-    typo: { fontFamily: 'serif', fontSize: 13, lineHeight: 1.15, paragraphSpacing: 0, letterSpacing: -1, charScale: 100, textIndent: 1, align: 'justify' },
+    typo: { fontFamily: 'serif', fontSize: 13, lineHeight: 1.42, paragraphSpacing: 3, letterSpacing: 0, charScale: 100, textIndent: 1, align: 'justify' },
     skeleton: ieeeSkeleton(),
   },
   {
@@ -151,7 +151,7 @@ export const PAPER_FORMATS: PaperFormatDef[] = [
       pageColumnCount: 1, paperStyle: 'blank',
       runningHeader: '', runningFooter: '',
     },
-    typo: { fontFamily: 'serif', fontSize: 13, lineHeight: 1.35, paragraphSpacing: 0, letterSpacing: -0.5, charScale: 100, textIndent: 1, align: 'justify' },
+    typo: { fontFamily: 'serif', fontSize: 13, lineHeight: 1.45, paragraphSpacing: 4, letterSpacing: 0, charScale: 100, textIndent: 1, align: 'justify' },
     skeleton: lncsSkeleton(),
   },
   {

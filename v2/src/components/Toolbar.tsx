@@ -1099,6 +1099,43 @@ export function Toolbar(p: ToolbarProps) {
     const pos = editor.state.selection.from
     editor.chain().focus().setTextSelection(pos).setTextAlign(side).setNodeSelection(pos).run()
   }
+  /* 표 속성 — 워드의 「표 속성」과 같은 갈래로 다룬다.
+     updateAttributes 는 선택 안의 표를 스스로 찾아 준다 (커서가 셀 어디에 있든). */
+  const setTableAttr = (attrs: Record<string, string | null>, note: string) => {
+    if (!editor.isActive('table')) { flash('표 안에 커서를 두고 실행하세요'); return }
+    editor.chain().focus().updateAttributes('table', attrs).run()
+    flash(note)
+  }
+  const askTableWidth = async () => {
+    if (!editor.isActive('table')) { flash('표 안에 커서를 두고 실행하세요'); return }
+    const cur = (editor.getAttributes('table')['data-width'] as string) || '100%'
+    const v = await askText('표 너비 — 백분율(예: 60%) 또는 길이(예: 80mm)', cur)
+    if (v === null) return
+    const value = v.trim()
+    if (value && !/^\d+(\.\d+)?(%|mm|cm|px|em)$/.test(value)) { flash('60% · 80mm 처럼 단위를 붙여 적으세요'); return }
+    setTableAttr({ 'data-width': value || null, 'data-fit': value ? 'fixed' : null }, value ? `표 너비 ${value}` : '표 너비 자동')
+  }
+  /* 끌어서 바꾼 열 너비를 지우고 고르게 되돌린다 (워드의 「열 너비를 같게」) */
+  const evenColumnWidths = () => {
+    const { state, view } = editor
+    const { $from } = state.selection
+    for (let d = $from.depth; d > 0; d--) {
+      const table = $from.node(d)
+      if (table.type.name !== 'table') continue
+      const tablePos = $from.before(d)
+      let tr = state.tr
+      table.descendants((cell, offset) => {
+        if (!/^table(Cell|Header)$/.test(cell.type.name)) return true
+        if (cell.attrs.colwidth == null) return false
+        tr = tr.setNodeMarkup(tablePos + 1 + offset, undefined, { ...cell.attrs, colwidth: null })
+        return false
+      })
+      if (tr.docChanged) view.dispatch(tr)
+      flash('열 너비를 같게 맞췄습니다')
+      return
+    }
+    flash('표 안에 커서를 두고 실행하세요')
+  }
   const tableItems: MenuItem[] = [
     { divider: '행', label: '' },
     { label: '위에 행 추가', short: '위 행', icon: 'plus', onClick: () => run(() => editor.chain().focus().addRowBefore().run()) },
@@ -1118,6 +1155,19 @@ export function Toolbar(p: ToolbarProps) {
     { label: '현재 열 개수', short: '개수', icon: 'hash', onClick: () => run(() => aggregateColumn(editor, 'count')) },
     { label: '현재 열 오름차순 정렬', short: '오름차순', icon: 'chevron-up', onClick: () => run(() => sortTableByCurrentColumn(editor, 'asc')) },
     { label: '현재 열 내림차순 정렬', short: '내림차순', icon: 'chevron-down', onClick: () => run(() => sortTableByCurrentColumn(editor, 'desc')) },
+    { divider: '자동 맞춤', label: '' },
+    { label: '창에 자동 맞춤', short: '창 맞춤', icon: 'maximize', onClick: () => run(() => setTableAttr({ 'data-fit': null, 'data-width': null }, '창(단) 너비에 맞춤')) },
+    { label: '내용에 자동 맞춤', short: '내용 맞춤', icon: 'minimize', onClick: () => run(() => setTableAttr({ 'data-fit': 'contents', 'data-width': null }, '내용 너비에 맞춤')) },
+    { label: '고정 열 너비', short: '고정', icon: 'columns', onClick: () => run(() => setTableAttr({ 'data-fit': 'fixed' }, '열 너비를 고정')) },
+    { label: '표 너비 지정...', short: '너비', icon: 'hash', onClick: () => run(() => { void askTableWidth() }) },
+    { label: '열 너비를 같게', short: '열 같게', icon: 'columns', onClick: () => run(evenColumnWidths) },
+    { divider: '표 정렬 · 자리', label: '' },
+    { label: '왼쪽 맞춤', short: '왼쪽', icon: 'align-left', onClick: () => run(() => setTableAttr({ 'data-align': null }, '표를 왼쪽에')) },
+    { label: '가운데 맞춤', short: '가운데', icon: 'align-center', onClick: () => run(() => setTableAttr({ 'data-align': 'center' }, '표를 가운데에')) },
+    { label: '오른쪽 맞춤', short: '오른쪽', icon: 'align-right', onClick: () => run(() => setTableAttr({ 'data-align': 'right' }, '표를 오른쪽에')) },
+    { label: '단 안에 두기 (2단 문서)', short: '단 안', icon: 'columns', onClick: () => run(() => setTableAttr({ 'data-place': 'column' }, '표를 단 안에')) },
+    { label: '단 걸치기 — 지면 전체 폭', short: '단 걸침', icon: 'table', onClick: () => run(() => setTableAttr({ 'data-place': 'page' }, '표를 지면 전체 폭으로')) },
+    { label: '자리 자동 (열이 많으면 단 걸침)', short: '자리 자동', icon: 'wand', onClick: () => run(() => setTableAttr({ 'data-place': null }, '표 자리 자동')) },
     { divider: '표', label: '' },
     { label: '표 삭제', short: '표 삭제', icon: 'trash', onClick: () => run(() => { if (confirm('표 전체를 삭제할까요?')) editor.chain().focus().deleteTable().run() }) },
   ]

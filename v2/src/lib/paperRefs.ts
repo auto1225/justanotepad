@@ -46,7 +46,7 @@ export function insertNumberedEquation(editor: Editor, latex: string): void {
   const key = newKey('eq')
   const html =
     `<p data-paper-block="eq" data-paper-key="${key}">` +
-    `<span data-math="inline" latex="${escAttr(latex)}"></span>` +
+    `<span data-math="block" latex="${escAttr(latex)}"></span>` +
     `<span data-paper-tag="eqnum" data-key="${key}" data-n="${n}"></span>` +
     `</p><p></p>`
   editor.chain().focus().insertContent(html).run()

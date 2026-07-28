@@ -31,6 +31,18 @@ export const MathInline = Node.create<MathOptions>({
   addAttributes() {
     return {
       latex: { default: '' },
+      /* 표시(display) 조판인가 — 번호 수식처럼 한 줄을 차지하는 수식은 여기에 해당한다.
+         KaTeX 는 본문 속 수식(text style)에서 분수를 작게·바짝 붙여 그린다.
+         그대로 두면 분수선에 글자가 닿고 기호 사이가 답답해 읽기 어렵다. */
+      display: {
+        default: false,
+        parseHTML: (el) => {
+          if (el.getAttribute('data-math') === 'block') return true
+          // 예전 문서: 번호 수식 문단 안에 있으면 표시 조판으로 올려 준다
+          return !!el.parentElement?.closest?.('[data-paper-block="eq"]')
+        },
+        renderHTML: () => ({}),
+      },
     }
   },
 
@@ -45,16 +57,16 @@ export const MathInline = Node.create<MathOptions>({
   renderHTML({ node, HTMLAttributes }) {
     let html: string
     try {
-      html = katex.renderToString(node.attrs.latex || '', { throwOnError: false, output: 'html' })
+      html = katex.renderToString(node.attrs.latex || '', { throwOnError: false, output: 'html', displayMode: !!node.attrs.display })
     } catch {
       html = `<span style="color:red">${node.attrs.latex}</span>`
     }
     return [
       'span',
       mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, {
-        'data-math': 'inline',
+        'data-math': node.attrs.display ? 'block' : 'inline',
         'data-latex': node.attrs.latex,
-        class: 'jan-math-inline',
+        class: node.attrs.display ? 'jan-math-inline is-display' : 'jan-math-inline',
       }),
       ['span', { class: 'jan-math-rendered', innerHTML: html } as unknown as Record<string, string>],
     ]
@@ -63,11 +75,11 @@ export const MathInline = Node.create<MathOptions>({
   addNodeView() {
     return ({ node, getPos }) => {
       const dom = document.createElement('span')
-      dom.className = 'jan-math-inline'
-      dom.dataset.math = 'inline'
+      dom.className = node.attrs.display ? 'jan-math-inline is-display' : 'jan-math-inline'
+      dom.dataset.math = node.attrs.display ? 'block' : 'inline'
       dom.dataset.latex = node.attrs.latex
       try {
-        dom.innerHTML = katex.renderToString(node.attrs.latex || '', { throwOnError: false })
+        dom.innerHTML = katex.renderToString(node.attrs.latex || '', { throwOnError: false, displayMode: !!node.attrs.display })
       } catch {
         dom.textContent = node.attrs.latex
       }
