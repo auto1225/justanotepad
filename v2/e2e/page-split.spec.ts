@@ -522,10 +522,13 @@ test.describe('줄 단위 문단 분할', () => {
 
     // 행 옮기기 (워드의 Shift+Alt+↑/↓)
     await page.locator('.ProseMirror table td').first().click({ force: true })
-    const before = await rows()
+    /* 커서를 'A' 칸에 두고 그 행이 한 칸 내려가는지 본다.
+       (몇 번째 행인지로만 확인하면 앞서 넣은 빈 행 때문에 자리가 흔들린다) */
+    await page.locator('.ProseMirror table td').filter({ hasText: /^A$/ }).first().click()
+    const rowOfA = async () => (await rows()).findIndex((t) => t.startsWith('A'))
+    const beforeIndex = await rowOfA()
     await page.keyboard.press('Shift+Alt+ArrowDown')
-    const after = await rows()
-    expect(after[1]).not.toBe(before[1])
+    await expect.poll(rowOfA).toBe(beforeIndex + 1)
 
     // 열 너비를 같게
     await page.keyboard.press('Alt+e')

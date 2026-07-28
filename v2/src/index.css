@@ -6990,3 +6990,35 @@ body.jan-split-dragging * { cursor: inherit !important; }
 
 /* 오른쪽 클릭 메뉴 — 표 메뉴와 같은 모양을 쓴다 */
 .jan-img-ctx button small { margin-left: auto; opacity: .6; font-size: 11px; }
+
+/* ── 그리기 개체 (도형·글상자·아이콘·글맵시) ────────────────────────
+   크기와 배치는 노드가 인라인 스타일로 내보낸다. 여기서는 겉모습만. */
+.ProseMirror .jan-shape { max-width: 100%; }
+.ProseMirror .jan-shape-svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.ProseMirror .jan-shape-text { pointer-events: none; white-space: pre-wrap; }
+.ProseMirror .jan-shape.ProseMirror-selectednode { outline: 2px solid var(--jan-accent, #3b82f6); outline-offset: 3px; }
+.ProseMirror .jan-shape[data-align='center'] { display: block; margin-left: auto; margin-right: auto; }
+.ProseMirror .jan-shape[data-align='right'] { display: block; margin-left: auto; margin-right: 0; }
+.ProseMirror .jan-shape[data-align='left'] { display: block; margin-right: auto; margin-left: 0; }
+.ProseMirror .jan-shape-cap {
+  position: absolute; left: 0; right: 0; bottom: -1.5em;
+  font-size: 0.86em; text-align: center; color: var(--jan-text-dim, #5b6270);
+}
+.ProseMirror .jan-shape-cap[data-cap-pos='top'] { top: -1.5em; bottom: auto; }
+
+/* 도형 갤러리 */
+.jan-shapedlg { width: min(760px, 95vw); }
+.jan-shapedlg-body { max-height: 62vh; overflow: auto; }
+.jan-shapedlg-groups { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0; }
+.jan-shapedlg-groups button {
+  padding: 4px 10px; font-size: 12.5px; border-radius: 999px; cursor: pointer;
+}
+.jan-shapedlg-groups button.is-active { background: var(--jan-accent, #3b82f6); color: #fff; border-color: transparent; }
+.jan-shapedlg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; margin: 8px 0; }
+.jan-shapedlg-grid button {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 8px 4px; border-radius: 7px; cursor: pointer; color: var(--jan-accent, #3b82f6);
+}
+.jan-shapedlg-grid button:focus-visible { outline: 2px solid var(--jan-accent, #3b82f6); outline-offset: 1px; }
+.jan-shapedlg-grid svg { width: 40px; height: 40px; }
+.jan-shapedlg-grid small { font-size: 10.5px; color: var(--jan-text-dim, #5b6270); text-align: center; line-height: 1.25; }

@@ -11,6 +11,7 @@ import { JanTableCell, JanTableHeader, TablePlacement, TableFormulaAuto } from '
 import { TableKeymap } from '../extensions/TableKeymap'
 import { ImageObject as Image } from '../extensions/ImageObject'
 import { ImageKeymap } from '../extensions/ImageKeymap'
+import { ShapeObject } from '../extensions/ShapeObject'
 import { PaginationPlus, PAGE_SIZES } from 'tiptap-pagination-plus'
 import { Collaboration } from '@tiptap/extension-collaboration'
 import { CollaborationCursor } from '@tiptap/extension-collaboration-cursor'
@@ -32,6 +33,7 @@ import { ImageMenu } from './ImageMenu'
 import { ImageHandles } from './ImageHandles'
 import { ImageContextMenu } from './ImageContextMenu'
 import { ImageDialog } from './ImageDialog'
+import { ShapePanel } from './ShapePanel'
 import { ModalSkeleton } from './ModalSkeleton'
 import { useDocStore } from '../store/docStore'
 import { useMemosStore } from '../store/memosStore'
@@ -175,6 +177,8 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   const [paintEdit, setPaintEdit] = useState<{ src: string; pos: number } | null>(null)
   /* 그림 속성 대화상자 — 단축키(Alt+P 등)와 상황 메뉴가 어느 갈피를 열지 알려 준다 */
   const [imgDialog, setImgDialog] = useState<string | null>(null)
+  /* 도형 갤러리·도형 서식 — 넣을 때와 고칠 때 같은 창을 쓴다 */
+  const [shapePanel, setShapePanel] = useState<'insert' | 'format' | null>(null)
   const [showHelp, setShowHelp] = useState(false)
   const [showOutline, setShowOutline] = useState(false)
   const [showAbout, setShowAbout] = useState(false)
@@ -386,6 +390,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
          data: 그림이 통째로 사라진다. 큰 그림만 blob 참조로 빠지고 작은 그림은 data: 로 남기 때문. */
       Image.configure({ allowBase64: true }),
       ImageKeymap,
+      ShapeObject,
       MathInline,
       Mermaid,
       MentionExt,
@@ -531,11 +536,14 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       }
       input.click()
     }
+    const onShape = (e: Event) => setShapePanel((e as CustomEvent<{ mode?: 'insert' | 'format' }>).detail?.mode || 'insert')
     window.addEventListener('jan-image-dialog', onDialog)
     window.addEventListener('jan-image-replace', onReplace)
+    window.addEventListener('jan-shape-dialog', onShape)
     return () => {
       window.removeEventListener('jan-image-dialog', onDialog)
       window.removeEventListener('jan-image-replace', onReplace)
+      window.removeEventListener('jan-shape-dialog', onShape)
     }
   }, [editor])
 
@@ -1077,6 +1085,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       <ImageHandles editor={editor} />
       <ImageContextMenu editor={editor} />
       {imgDialog && <ImageDialog editor={editor} tab={imgDialog} onClose={() => setImgDialog(null)} />}
+      {shapePanel && <ShapePanel editor={editor} mode={shapePanel} onClose={() => setShapePanel(null)} />}
       <Suspense fallback={<ModalSkeleton />}>
         {showAi && <AiHelper editor={editor} onClose={() => setShowAi(false)} />}
         {showSettings && <SettingsModal onClose={() => setShowSettings(false)} focusSection={settingsFocus} />}

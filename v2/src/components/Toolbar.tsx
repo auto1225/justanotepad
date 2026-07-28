@@ -14,6 +14,12 @@ import { aggregateColumn } from '../lib/tableUtils'
 import { TABLE_STYLES, blockCalc, copyTable, distributeColumns, distributeRows, moveRow, resizeColumns, resizeRows, setCellDiagonal, setCellPadding, setRowHeight, setTableStyle, setTableWrap, splitTable, tableToText, toggleTableOption } from '../lib/tableWord'
 import { moveTable, selectTableColumn, selectTableRow, selectWholeTable } from '../lib/tableSelect'
 import { IMAGE_SHAPES, IMAGE_STYLES, IMAGE_WRAPS } from '../extensions/ImageObject'
+import { CLIPART, SHAPES, WORDART } from '../lib/shapeLibrary'
+import {
+  SHAPE_STYLES, applyShapeStyle, changeShape, currentShape, cycleTextDirection, cycleVAlign,
+  flipShape, insertShape, moveShape, rotateShape, setShapeAlign, setShapeAttrs, setShapeFill,
+  setShapeStroke, setShapeText, setShapeWrap, toggleShapeLock,
+} from '../lib/shapeWord'
 import {
   RECOLORS, applyRecolor, clearCrop, compressImage, copyImageFormat, cropToRatio, downloadImage,
   fitImageToBody, fitImageToCell, flipImage, moveImage, numberImageCaptions, pasteImageFormat,
@@ -149,10 +155,15 @@ export function Toolbar(p: ToolbarProps) {
   useEffect(() => { try { localStorage.setItem('jan-v2-ribbon-collapsed', ribbonCollapsed ? '1' : '0') } catch { /* 무시 */ } }, [ribbonCollapsed])
   /* 커서가 표·그림 안에 있는지 — TipTap v3 는 트랜잭션마다 부모를 다시 그리지 않으므로
      직접 구독한다. (툴바의 굵게·정렬 같은 상태 표시도 이 구독으로 함께 최신이 된다) */
-  const [contextTab, setContextTab] = useState<'표' | '그림' | null>(null)
+  const [contextTab, setContextTab] = useState<'표' | '그림' | '도형' | null>(null)
   useEffect(() => {
     if (!editor) return
-    const read = () => setContextTab(editor.isActive('table') ? '표' : editor.isActive('image') ? '그림' : null)
+    const read = () => setContextTab(
+      editor.isActive('table') ? '표'
+        : editor.isActive('image') ? '그림'
+          : editor.isActive('janShape') ? '도형'
+            : null
+    )
     read()
     editor.on('selectionUpdate', read)
     editor.on('transaction', read)
@@ -167,7 +178,7 @@ export function Toolbar(p: ToolbarProps) {
   useEffect(() => {
     if (contextTab) {
       setRibbonTab((prev) => {
-        if (prev !== contextTab && prev !== '표' && prev !== '그림') beforeContextTab.current = prev
+        if (prev !== contextTab && prev !== '표' && prev !== '그림' && prev !== '도형') beforeContextTab.current = prev
         return contextTab
       })
     } else if (beforeContextTab.current) {
@@ -449,7 +460,6 @@ export function Toolbar(p: ToolbarProps) {
     insertHTML(`<span data-bookmark="${safe}" style="background:rgba(217,119,87,0.15);border-radius:3px;padding:0 4px;font-size:0.85em;">[${safe}]</span>&nbsp;`)
     flash(`책갈피 "${safe}" 를 삽입했습니다`)
   }
-  const insertTextBox = () => insertHTML('<div data-callout data-kind="info"><p>여기에 텍스트를 입력하세요.</p></div>')
   const insertHrStyle = async () => {
     const s = await askText('구분선 스타일 — 1: 실선 · 2: 점선 · 3: 이중선 · 4: 별표', '1')
     const styles: Record<string, string> = {
@@ -898,7 +908,11 @@ export function Toolbar(p: ToolbarProps) {
         { label: '각주 삽입', icon: 'sup', onClick: () => run(insertFootnote) },
         { label: '인용 번호 삽입', icon: 'quote', onClick: () => run(insertCitation) },
         { label: '책갈피 삽입', icon: 'pin', onClick: () => run(insertBookmark) },
-        { label: '텍스트 상자', icon: 'box', onClick: () => run(insertTextBox) },
+        { label: '글상자 (텍스트 상자)', short: '글상자', icon: 'box', onClick: () => run(() => { insertShape(editor, 'textbox', 'rect') }) },
+        { label: '세로쓰기 글상자', short: '세로 글상자', icon: 'box', onClick: () => run(() => { insertShape(editor, 'textbox', 'rect', { textDir: 'vertical', width: 140, height: 260 }) }) },
+        { label: '도형 넣기 (갤러리)', short: '도형', icon: 'box', onClick: () => run(() => window.dispatchEvent(new CustomEvent('jan-shape-dialog', { detail: { mode: 'insert' } }))) },
+        { label: '아이콘 · 그리기마당', short: '아이콘', icon: 'star', onClick: () => run(() => window.dispatchEvent(new CustomEvent('jan-shape-dialog', { detail: { mode: 'insert' } }))) },
+        { label: '글맵시 (WordArt)', short: '글맵시', icon: 'sparkle', onClick: () => run(() => { insertShape(editor, 'wordart', 'arch-up') }) },
         { label: '구분선 스타일', icon: 'minus', onClick: () => run(insertHrStyle) },
         { divider: '특수 노드', label: '' },
         { label: '수식 — 수식 스튜디오 (전 분야)', icon: 'hash', onClick: () => run(() => setMathStudio({ initial: '' })) },
@@ -1113,6 +1127,7 @@ export function Toolbar(p: ToolbarProps) {
   /* 표·그림을 고르면 나타나는 개체 탭 (한글의 맥락 탭) */
   const inTable = contextTab === '표'
   const onImage = contextTab === '그림'
+  const onShape = contextTab === '도형'
   /* 커서가 든 행·열 번호 (선택 명령이 쓴다) */
   const currentRowIndex = () => {
     const { $from } = editor.state.selection
@@ -1317,6 +1332,84 @@ export function Toolbar(p: ToolbarProps) {
   /* 그림 — 워드의 「그림 서식」 탭을 그대로 옮겼다.
      크기·자르기·회전·배치·스타일·테두리·효과·보정·접근성, 그리고 한글의 캡션·개체 보호까지. */
   const imgDialog = (tab: string) => window.dispatchEvent(new CustomEvent('jan-image-dialog', { detail: { tab } }))
+  /* 도형 — 워드의 「도형 서식」 탭. 그림과 같은 배치·회전 규칙을 쓴다. */
+  const shapeItems: MenuItem[] = [
+    { divider: '도형 넣기', label: '' },
+    { label: '도형 갤러리 열기', short: '갤러리', icon: 'box', onClick: () => run(() => window.dispatchEvent(new CustomEvent('jan-shape-dialog', { detail: { mode: 'insert' } }))) },
+    { label: '도형 바꾸기 (크기·서식은 그대로)', short: '도형 변경', icon: 'refresh-cw', onClick: () => run(() => window.dispatchEvent(new CustomEvent('jan-shape-dialog', { detail: { mode: 'format' } }))) },
+    ...SHAPES.slice(0, 10).map((sh): MenuItem => ({ label: sh.label + ' 넣기', short: sh.label, icon: 'box', onClick: () => run(() => { insertShape(editor, 'shape', sh.key) }) })),
+
+    { divider: '도형 스타일', label: '' },
+    ...SHAPE_STYLES.map((st): MenuItem => ({ label: '스타일: ' + st.label, short: st.label, icon: 'palette', onClick: () => run(() => { applyShapeStyle(editor, st.key) }) })),
+    { label: '채우기 색 고르기', short: '채우기', icon: 'fill', onClick: () => run(() => {
+      const color = window.prompt('채우기 색 (#RRGGBB · 빈 칸이면 채우기 없음)', '#dbeafe')
+      if (color !== null) setShapeFill(editor, color || null)
+    }) },
+    { label: '선 색·두께·모양', short: '윤곽선', icon: 'box', onClick: () => run(() => {
+      const color = window.prompt('선 색 (#RRGGBB · 빈 칸이면 선 없음)', '#2563eb')
+      if (color === null) return
+      const width = Number(window.prompt('선 두께 (px)', '2') || 2)
+      const style = window.prompt('선 모양 — solid · dashed · dotted', 'solid') || 'solid'
+      setShapeStroke(editor, { color: color || null, width, style })
+    }) },
+    { label: '그림자 켬/끔', short: '그림자', icon: 'box', onClick: () => run(() => {
+      const hit = currentShape(editor)
+      if (hit) setShapeAttrs(editor, { shadow: !hit.node.attrs.shadow }, '그림자를 바꿨다')
+    }) },
+    { label: '투명도 정하기', short: '투명도', icon: 'sliders', onClick: () => run(() => {
+      const v = window.prompt('투명도 (10~100)', '100')
+      if (v !== null) setShapeAttrs(editor, { opacity: Number(v) || 100 })
+    }) },
+
+    { divider: '글자', label: '' },
+    { label: '도형 안 글 고치기', short: '글 넣기', icon: 'file-text', onClick: () => run(() => {
+      const hit = currentShape(editor)
+      const value = window.prompt('도형 안에 넣을 글', String(hit?.node.attrs.text || ''))
+      if (value !== null) setShapeText(editor, value)
+    }) },
+    { label: '글자 방향 (가로 · 세로쓰기 · 90° · 270°)', short: '글자 방향', icon: 'paragraph', hint: 'Alt+D', onClick: () => run(() => { cycleTextDirection(editor) }) },
+    { label: '글자 세로 맞춤 (위 · 가운데 · 아래)', short: '세로 맞춤', icon: 'align-center', hint: 'Alt+Shift+D', onClick: () => run(() => { cycleVAlign(editor) }) },
+    { label: '글자 색·크기', short: '글자 꾸밈', icon: 'palette', onClick: () => run(() => {
+      const color = window.prompt('글자 색 (#RRGGBB)', '#1c1f26')
+      if (color === null) return
+      const size = Number(window.prompt('글자 크기 (px)', '15') || 15)
+      setShapeAttrs(editor, { textColor: color, fontSize: size })
+    }) },
+    ...([['left', '왼쪽'], ['center', '가운데'], ['right', '오른쪽']] as [string, string][]).map(
+      ([key, label]): MenuItem => ({ label: '글자 ' + label + ' 맞춤', short: label, icon: 'align-left', onClick: () => run(() => { setShapeAttrs(editor, { textAlign: key }) }) })
+    ),
+
+    { divider: '배치', label: '' },
+    ...IMAGE_WRAPS.map((w): MenuItem => ({
+      label: w.label + ' — ' + w.hint, short: w.label, icon: 'align-justify',
+      onClick: () => run(() => { setShapeWrap(editor, w.key === 'topbottom' ? null : w.key, '배치: ' + w.label) }),
+    })),
+    { label: '왼쪽 맞춤', short: '왼쪽', icon: 'align-left', onClick: () => run(() => { setShapeAlign(editor, 'left') }) },
+    { label: '가운데 맞춤', short: '가운데', icon: 'align-center', onClick: () => run(() => { setShapeAlign(editor, 'center') }) },
+    { label: '오른쪽 맞춤', short: '오른쪽', icon: 'align-right', onClick: () => run(() => { setShapeAlign(editor, 'right') }) },
+    { label: '앞 문단으로 옮기기', short: '위로', icon: 'chevron-up', hint: 'Alt+Home', onClick: () => run(() => { moveShape(editor, -1) }) },
+    { label: '뒤 문단으로 옮기기', short: '아래로', icon: 'chevron-down', hint: 'Alt+End', onClick: () => run(() => { moveShape(editor, 1) }) },
+    { label: '개체 보호 켬/끔', short: '개체 보호', icon: 'lock', hint: 'Alt+L', onClick: () => run(() => { toggleShapeLock(editor) }) },
+
+    { divider: '크기와 돌리기', label: '' },
+    { label: '크기·서식 대화상자', short: '속성', icon: 'maximize', hint: 'Alt+P', onClick: () => run(() => window.dispatchEvent(new CustomEvent('jan-shape-dialog', { detail: { mode: 'format' } }))) },
+    { label: '오른쪽으로 90° 회전', short: '오른쪽 90°', icon: 'refresh-cw', hint: 'Alt+R', onClick: () => run(() => { rotateShape(editor, 90) }) },
+    { label: '왼쪽으로 90° 회전', short: '왼쪽 90°', icon: 'refresh-cw', onClick: () => run(() => { rotateShape(editor, -90) }) },
+    { label: '좌우 대칭', short: '좌우 대칭', icon: 'refresh-cw', hint: 'Alt+H', onClick: () => run(() => { flipShape(editor, 'h') }) },
+    { label: '상하 대칭', short: '상하 대칭', icon: 'refresh-cw', hint: 'Alt+V', onClick: () => run(() => { flipShape(editor, 'v') }) },
+
+    { divider: '글맵시와 아이콘', label: '' },
+    ...WORDART.slice(0, 8).map((w): MenuItem => ({ label: '글맵시: ' + w.label, short: w.label, icon: 'sparkle', onClick: () => run(() => {
+      const hit = currentShape(editor)
+      if (hit && hit.node.attrs.kind === 'wordart') changeShape(editor, w.key)
+      else insertShape(editor, 'wordart', w.key)
+    }) })),
+    ...CLIPART.slice(0, 8).map((c): MenuItem => ({ label: '아이콘: ' + c.label, short: c.label, icon: 'star', onClick: () => run(() => { insertShape(editor, 'icon', c.key) }) })),
+
+    { divider: '지우기', label: '' },
+    { label: '개체 삭제', short: '삭제', icon: 'trash', onClick: () => run(() => editor.chain().focus().deleteSelection().run()) },
+  ]
+
   const imageItems: MenuItem[] = [
     { divider: '조정', label: '' },
     { label: '색 보정 (밝기·대비·채도·색조)', short: '색 보정', icon: 'settings', hint: 'Alt+T', onClick: () => run(() => imgDialog('adjust')) },
@@ -1455,6 +1548,7 @@ export function Toolbar(p: ToolbarProps) {
     ...(inTable ? [{ label: '표 디자인', items: tableDesignItems, context: true }] : []),
     ...(inTable ? [{ label: '레이아웃', items: tableItems, context: true }] : []),
     ...(onImage ? [{ label: '그림', items: imageItems, context: true }] : []),
+    ...(onShape ? [{ label: '도형', items: shapeItems, context: true }] : []),
   ]
 
   /* 묶음 오른쪽 아래 화살표 → 그 묶음의 전체 설정 창 (한글·워드의 대화상자 연결) */
