@@ -6821,3 +6821,11 @@ body.jan-split-dragging * { cursor: inherit !important; }
 .jan-table-ctx button:hover { background: var(--jan-bg-alt, #f2f0ff); }
 .jan-table-ctx button em { font-style: normal; font-size: 11px; color: #8a8a8a; }
 .jan-table-ctx-div { height: 1px; margin: 4px 6px; background: var(--paper-edge, #e6e6e6); }
+
+/* 행 아래 경계를 끌어 행 높이를 바꾸는 띠 — 워드와 같다 */
+.jan-th-rowsize {
+  background: transparent !important;
+  cursor: ns-resize;
+  border-radius: 2px;
+}
+.jan-th-rowsize:hover { background: color-mix(in srgb, var(--accent, #6b5bd6) 35%, transparent) !important; }

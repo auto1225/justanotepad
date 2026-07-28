@@ -3,9 +3,11 @@ import type { Editor } from '@tiptap/react'
 import {
   findTable,
   moveTable,
+  scaleRowHeights,
   selectTableColumn,
   selectTableRow,
   selectWholeTable,
+  setRowHeightAt,
   setTableWidthPercent,
 } from '../lib/tableSelect'
 import { flash } from '../lib/flash'
@@ -38,7 +40,20 @@ const HANDLE = 14
  */
 export function TableHandles({ editor }: TableHandlesProps) {
   const [layout, setLayout] = useState<Layout | null>(null)
-  const dragRef = useRef<{ kind: 'size' | 'move'; startX: number; startY: number; startWidth: number; hostWidth: number; moved: boolean } | null>(null)
+  const dragRef = useRef<{
+    kind: 'size' | 'move' | 'rowsize'
+    startX: number
+    startY: number
+    startWidth: number
+    hostWidth: number
+    moved: boolean
+    /* 행 높이 끌기용 */
+    rowIndex?: number
+    startHeight?: number
+    /* 표 전체 높이 비율 조절용 — 끌기 시작할 때의 행 높이들 */
+    baseHeights?: number[]
+    startTableHeight?: number
+  } | null>(null)
 
   const measure = useCallback(() => {
     if (!editor || editor.isDestroyed || !editor.isActive('table')) { setLayout(null); return }
@@ -101,14 +116,36 @@ export function TableHandles({ editor }: TableHandlesProps) {
       // 단추에서 손을 뗀 뒤의 움직임은 끌기가 아니다 (누름이 어딘가에서 끊긴 경우)
       if (e.buttons === 0) { dragRef.current = null; return }
       drag.moved = true
+      if (drag.kind === 'rowsize') {
+        // 행 경계를 끌어 그 행만 높인다/낮춘다 (워드와 같다)
+        const next = Math.max(18, Math.round((drag.startHeight || 0) + (e.clientY - drag.startY)))
+        setRowHeightAt(editor, drag.rowIndex ?? 0, `${next}px`)
+        return
+      }
       if (drag.kind !== 'size') return
-      const next = ((drag.startWidth + (e.clientX - drag.startX)) / drag.hostWidth) * 100
-      setTableWidthPercent(editor, next)
+      // 모서리 손잡이는 가로·세로를 함께 잡는다 (워드의 표 크기 조절)
+      const dx = e.clientX - drag.startX
+      const dy = e.clientY - drag.startY
+      if (Math.abs(dx) > 2) setTableWidthPercent(editor, ((drag.startWidth + dx) / drag.hostWidth) * 100)
+      if (Math.abs(dy) > 2 && drag.startTableHeight && drag.baseHeights) {
+        const factor = (drag.startTableHeight + dy) / drag.startTableHeight
+        scaleRowHeights(editor, Math.max(0.3, factor), drag.baseHeights)
+      }
     }
     const onUp = (e: MouseEvent) => {
       const drag = dragRef.current
       dragRef.current = null
-      if (!drag || drag.kind !== 'move') return
+      if (!drag) return
+      if (drag.kind === 'rowsize') {
+        /* 끌지 않고 눌렀다 떼었으면 사용자는 글을 만지려던 것이다 —
+           경계 띠가 본문 클릭을 삼키지 않도록 그 자리에 커서를 놓아 준다 */
+        if (!drag.moved) {
+          const at = editor.view.posAtCoords({ left: e.clientX, top: e.clientY })
+          if (at) editor.commands.focus(at.pos)
+        }
+        return
+      }
+      if (drag.kind !== 'move') return
       /* 실제로 끌었을 때만 옮긴다 — 누르기만 하고 손을 뗀 경우(표 전체 선택)에는
          움직이면 안 된다. 예전에는 누른 뒤 아무 데서나 손을 떼면 표가 따라 움직였다. */
       if (!drag.moved) return
@@ -158,7 +195,16 @@ export function TableHandles({ editor }: TableHandlesProps) {
         onMouseDown={(e) => {
           stop(e)
           if (!findTable(editor)) return
-          dragRef.current = { kind: 'size', startX: e.clientX, startY: e.clientY, startWidth: table.width, hostWidth, moved: false }
+          dragRef.current = {
+            kind: 'size',
+            startX: e.clientX,
+            startY: e.clientY,
+            startWidth: table.width,
+            hostWidth,
+            moved: false,
+            baseHeights: rows.map((r) => r.height),
+            startTableHeight: table.height,
+          }
         }}
       />
 
@@ -206,6 +252,35 @@ export function TableHandles({ editor }: TableHandlesProps) {
           style={{ left: table.left - 7, top: r.top, width: 5, height: r.height }}
           onMouseDown={stop}
           onClick={() => selectTableRow(editor, i)}
+        />
+      ))}
+      {/* 행 아래 경계를 끌면 그 행의 높이가 바뀐다 (워드와 같다) */}
+      {rows.map((r, i) => (
+        <button
+          key={'rs' + i}
+          type="button"
+          className="jan-th-rowsize"
+          title={`${i + 1}번째 행 높이 조절`}
+          style={{
+            left: table.left,
+            top: r.top + r.height - 2,
+            // 마지막 행은 오른쪽 끝에 크기 손잡이가 있다 — 그만큼 비워 둔다
+            width: Math.max(0, table.width - (i === rows.length - 1 ? 18 : 0)),
+            height: 4,
+          }}
+          onMouseDown={(e) => {
+            stop(e)
+            dragRef.current = {
+              kind: 'rowsize',
+              startX: e.clientX,
+              startY: e.clientY,
+              startWidth: table.width,
+              hostWidth,
+              moved: false,
+              rowIndex: i,
+              startHeight: r.height,
+            }
+          }}
         />
       ))}
       {rows.map((r, i) => (

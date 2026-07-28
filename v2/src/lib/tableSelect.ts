@@ -119,3 +119,49 @@ export function setTableWidthPercent(editor: Editor, percent: number): boolean {
   )
   return true
 }
+
+/** 행 하나의 높이를 정한다 (순번으로 — 손잡이를 끌 때 쓴다) */
+export function setRowHeightAt(editor: Editor, rowIndex: number, height: string | null): boolean {
+  const table = findTable(editor)
+  if (!table) return false
+  let offset = 0
+  let index = 0
+  let target = -1
+  let attrs: Record<string, unknown> = {}
+  table.node.forEach((row) => {
+    if (row.type.name === 'tableRow') {
+      if (index === rowIndex) { target = table.pos + 1 + offset; attrs = { ...row.attrs } }
+      index++
+    }
+    offset += row.nodeSize
+  })
+  if (target < 0) return false
+  editor.view.dispatch(editor.state.tr.setNodeMarkup(target, undefined, { ...attrs, 'data-height': height }))
+  return true
+}
+
+/**
+ * 표 전체 높이를 비율로 늘이고 줄인다 — 워드의 모서리 손잡이를 위아래로 끌 때.
+ * 지금 화면에 그려진 행 높이를 기준으로 삼아, 지정이 없던 행에도 값을 준다.
+ */
+export function scaleRowHeights(editor: Editor, factor: number, baseHeights: number[]): boolean {
+  const table = findTable(editor)
+  if (!table) return false
+  const MIN = 18
+  let tr = editor.state.tr
+  let offset = 0
+  let index = 0
+  table.node.forEach((row) => {
+    if (row.type.name === 'tableRow') {
+      const base = baseHeights[index]
+      if (base) {
+        const next = Math.max(MIN, Math.round(base * factor))
+        tr = tr.setNodeMarkup(table.pos + 1 + offset, undefined, { ...row.attrs, 'data-height': `${next}px` })
+      }
+      index++
+    }
+    offset += row.nodeSize
+  })
+  if (tr.docChanged) editor.view.dispatch(tr)
+  return true
+}

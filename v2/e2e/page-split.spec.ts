@@ -389,6 +389,72 @@ test.describe('줄 단위 문단 분할', () => {
     expect(await blocks()).toEqual(['앞 문단', '뒤 문단', '표'])
   })
 
+  test('표 높이 — 행 경계를 끌면 그 행만, 모서리를 끌면 표 전체가 늘어난다', async ({ page }) => {
+    await page.evaluate(() => {
+      const pm = document.querySelector('.ProseMirror') as HTMLElement
+      pm.focus()
+      const dt = new DataTransfer()
+      dt.setData('text/html', '<table><tbody><tr><th><p>가</p></th><th><p>나</p></th></tr><tr><td><p>1</p></td><td><p>2</p></td></tr></tbody></table>')
+      pm.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }))
+    })
+    await waitForReflow(page)
+    await page.locator('.ProseMirror table td').first().click({ force: true })
+
+    const rowHeights = () => page.evaluate(() =>
+      [...document.querySelectorAll('.ProseMirror table tr')].map((r) => Math.round(r.getBoundingClientRect().height)))
+
+    const start = await rowHeights()
+    // 둘째 행의 아래 경계를 끌어 내린다 — 그 행만 높아져야 한다
+    await page.evaluate(() => {
+      const strip = document.querySelectorAll('.jan-th-rowsize')[1] as HTMLElement
+      const s = strip.getBoundingClientRect()
+      strip.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, clientX: s.left + 40, clientY: s.top + 2 }))
+      window.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, buttons: 1, clientX: s.left + 40, clientY: s.top + 32 }))
+      window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: s.left + 40, clientY: s.top + 32 }))
+    })
+    const afterRow = await rowHeights()
+    expect(afterRow[0]).toBe(start[0])                    // 첫 행은 그대로
+    expect(afterRow[1]).toBeGreaterThan(start[1] + 20)    // 둘째 행만 높아졌다
+
+    // 모서리를 아래로 끌면 표 전체가 비율대로 늘어난다
+    await page.evaluate(() => {
+      const table = document.querySelector('.ProseMirror table') as HTMLElement
+      const r = table.getBoundingClientRect()
+      const handle = document.querySelector('.jan-th-size') as HTMLElement
+      handle.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, clientX: r.right, clientY: r.bottom }))
+      window.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, buttons: 1, clientX: r.right, clientY: r.bottom + 60 }))
+      window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: r.right, clientY: r.bottom + 60 }))
+    })
+    const afterCorner = await rowHeights()
+    expect(afterCorner[0]).toBeGreaterThan(afterRow[0])
+    expect(afterCorner[1]).toBeGreaterThan(afterRow[1])
+  })
+
+  test('행 경계를 누르기만 하면 높이가 바뀌지 않고 커서가 놓인다', async ({ page }) => {
+    // 경계 띠가 본문 클릭을 삼키면 글을 만질 수 없다
+    await page.evaluate(() => {
+      const pm = document.querySelector('.ProseMirror') as HTMLElement
+      pm.focus()
+      const dt = new DataTransfer()
+      dt.setData('text/html', '<table><tbody><tr><th><p>가</p></th><th><p>나</p></th></tr><tr><td><p>1</p></td><td><p>2</p></td></tr></tbody></table>')
+      pm.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }))
+    })
+    await waitForReflow(page)
+    await page.locator('.ProseMirror table td').first().click({ force: true })
+
+    const before = await page.evaluate(() =>
+      [...document.querySelectorAll('.ProseMirror table tr')].map((r) => r.getAttribute('data-height')))
+    await page.evaluate(() => {
+      const strip = document.querySelectorAll('.jan-th-rowsize')[0] as HTMLElement
+      const s = strip.getBoundingClientRect()
+      strip.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, clientX: s.left + 40, clientY: s.top + 2 }))
+      window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: s.left + 40, clientY: s.top + 2 }))
+    })
+    const after = await page.evaluate(() =>
+      [...document.querySelectorAll('.ProseMirror table tr')].map((r) => r.getAttribute('data-height')))
+    expect(after).toEqual(before)
+  })
+
   test('표를 오른쪽 클릭하면 워드처럼 표 명령이 그 자리에 나온다', async ({ page }) => {
     await page.evaluate(() => {
       const pm = document.querySelector('.ProseMirror') as HTMLElement
