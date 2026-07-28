@@ -455,6 +455,79 @@ test.describe('줄 단위 문단 분할', () => {
     expect(after).toEqual(before)
   })
 
+  test('표를 마우스 없이 키보드만으로 다룬다', async ({ page }) => {
+    await page.evaluate(() => {
+      const pm = document.querySelector('.ProseMirror') as HTMLElement
+      pm.focus()
+      const dt = new DataTransfer()
+      dt.setData('text/html', '<table><tbody>' +
+        '<tr><th><p>머리</p></th><th><p>둘</p></th></tr>' +
+        '<tr><td><p>A</p></td><td><p>1</p></td></tr>' +
+        '<tr><td><p>B</p></td><td><p>2</p></td></tr>' +
+        '</tbody></table>')
+      pm.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }))
+    })
+    await waitForReflow(page)
+    await page.locator('.ProseMirror table td').first().click({ force: true })
+
+    const selected = () => page.evaluate(() =>
+      [...document.querySelectorAll('.ProseMirror .selectedCell')].map((c) => c.textContent?.trim() ?? ''))
+    const rows = () => page.evaluate(() =>
+      [...document.querySelectorAll('.ProseMirror table tr')].map((r) => r.textContent?.trim() ?? ''))
+    const shape = () => page.evaluate(() => ({
+      rows: document.querySelectorAll('.ProseMirror table tr').length,
+      cols: document.querySelectorAll('.ProseMirror table tr:first-child > *').length,
+    }))
+
+    // 행·열·표 선택
+    await page.keyboard.press('Control+Alt+r')
+    expect(await selected()).toEqual(['A', '1'])
+    await page.keyboard.press('Control+Alt+t')
+    expect((await selected()).length).toBe(6)
+
+    // 커서를 되돌리고 행·열 삽입
+    await page.locator('.ProseMirror table td').first().click({ force: true })
+    const start = await shape()
+    await page.keyboard.press('Control+Alt+ArrowDown')
+    expect(await shape()).toMatchObject({ rows: start.rows + 1 })
+    await page.keyboard.press('Control+Alt+ArrowRight')
+    expect(await shape()).toMatchObject({ cols: start.cols + 1 })
+
+    // 행 옮기기 (워드의 Shift+Alt+↑/↓)
+    await page.locator('.ProseMirror table td').first().click({ force: true })
+    const before = await rows()
+    await page.keyboard.press('Shift+Alt+ArrowDown')
+    const after = await rows()
+    expect(after[1]).not.toBe(before[1])
+
+    // 열 너비를 같게
+    await page.keyboard.press('Control+Alt+e')
+    const widths = await page.evaluate(() =>
+      [...document.querySelectorAll('.ProseMirror table colgroup col')].map((c) => (c as HTMLElement).style.width))
+    expect(new Set(widths).size).toBe(1) // 모두 같은 너비
+    expect(widths[0]).toMatch(/px$/)
+  })
+
+  test('Shift+F10 으로 표 상황 메뉴를 열고 키보드로 고른다', async ({ page }) => {
+    await page.evaluate(() => {
+      const pm = document.querySelector('.ProseMirror') as HTMLElement
+      pm.focus()
+      const dt = new DataTransfer()
+      dt.setData('text/html', '<table><tbody><tr><th><p>가</p></th><th><p>나</p></th></tr><tr><td><p>1</p></td><td><p>2</p></td></tr></tbody></table>')
+      pm.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }))
+    })
+    await waitForReflow(page)
+    await page.locator('.ProseMirror table td').first().click({ force: true })
+
+    await page.keyboard.press('Shift+F10')
+    const menu = page.locator('.jan-table-ctx')
+    await expect(menu).toBeVisible()
+    // 첫 항목에 초점이 가 있어야 화살표로 이어 갈 수 있다
+    await expect(menu.getByRole('menuitem').first()).toBeFocused()
+    await page.keyboard.press('Enter') // 위에 행 삽입
+    await expect(page.locator('.ProseMirror table tr')).toHaveCount(3)
+  })
+
   test('표를 오른쪽 클릭하면 워드처럼 표 명령이 그 자리에 나온다', async ({ page }) => {
     await page.evaluate(() => {
       const pm = document.querySelector('.ProseMirror') as HTMLElement

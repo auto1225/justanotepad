@@ -186,3 +186,131 @@ export function textToTable(editor: Editor, separator: string): boolean {
   flash(`${rows.length}행 ${cols}열 표로 바꿨습니다`)
   return true
 }
+
+/* ── 선택 기준 균등 분배 (워드의 「열 너비를 같게」·「행 높이를 같게」) ──
+   워드는 고른 열·행만 고르게 나눈다. 아무것도 고르지 않았으면 표 전체를 대상으로 한다. */
+
+interface CellPick { pos: number; node: PMNode; row: number; col: number }
+
+/** 표의 칸을 행·열 번호와 함께 모은다 */
+function pickCells(table: PMNode, tablePos: number): CellPick[] {
+  const out: CellPick[] = []
+  let rowIndex = 0
+  table.forEach((row, rowOffset) => {
+    if (row.type.name !== 'tableRow') return
+    let colIndex = 0
+    row.forEach((cell, cellOffset) => {
+      out.push({ pos: tablePos + 1 + rowOffset + 1 + cellOffset, node: cell, row: rowIndex, col: colIndex })
+      colIndex += Number(cell.attrs.colspan) || 1
+    })
+    rowIndex++
+  })
+  return out
+}
+
+/** 지금 고른 칸들의 행·열 번호 (선택이 없으면 null) */
+function selectedRowsCols(editor: Editor, cells: CellPick[]): { rows: number[]; cols: number[] } | null {
+  const sel = editor.state.selection as unknown as { $anchorCell?: { pos: number }; $headCell?: { pos: number } }
+  if (!sel.$anchorCell || !sel.$headCell) return null
+  const inside: CellPick[] = []
+  const from = Math.min(sel.$anchorCell.pos, sel.$headCell.pos)
+  const to = Math.max(sel.$anchorCell.pos, sel.$headCell.pos)
+  const anchor = cells.find((c) => c.pos === from)
+  const head = cells.find((c) => c.pos === to)
+  if (!anchor || !head) return null
+  for (const cell of cells) {
+    if (cell.row >= Math.min(anchor.row, head.row) && cell.row <= Math.max(anchor.row, head.row)
+      && cell.col >= Math.min(anchor.col, head.col) && cell.col <= Math.max(anchor.col, head.col)) inside.push(cell)
+  }
+  return {
+    rows: [...new Set(inside.map((c) => c.row))].sort((a, b) => a - b),
+    cols: [...new Set(inside.map((c) => c.col))].sort((a, b) => a - b),
+  }
+}
+
+/** 고른 열(없으면 전체)의 너비를 고르게 나눈다 */
+export function distributeColumns(editor: Editor): boolean {
+  const table = currentTable(editor)
+  if (!table) { flash('표 안에 커서를 두고 실행하세요'); return false }
+  const cells = pickCells(table.node, table.pos)
+  const picked = selectedRowsCols(editor, cells)
+  const dom = editor.view.nodeDOM(table.pos) as HTMLElement | null
+  const cols = dom?.querySelectorAll('colgroup col') ?? []
+  const allCols = [...new Set(cells.map((c) => c.col))].sort((a, b) => a - b)
+  const target = picked?.cols.length ? picked.cols : allCols
+
+  // 대상 열들이 지금 차지한 폭을 합쳐 고르게 나눈다
+  let total = 0
+  target.forEach((col) => { total += parseFloat((cols[col] as HTMLElement | undefined)?.style.width || '0') })
+  if (!total) {
+    const width = dom?.querySelector('table')?.getBoundingClientRect().width || dom?.getBoundingClientRect().width || 0
+    total = (width / Math.max(1, allCols.length)) * target.length
+  }
+  const each = Math.max(24, Math.round(total / target.length))
+
+  let tr = editor.state.tr
+  for (const cell of cells) {
+    const span = Number(cell.node.attrs.colspan) || 1
+    const covered = Array.from({ length: span }, (_, i) => cell.col + i)
+    if (!covered.some((c) => target.includes(c))) continue
+    const colwidth = covered.map((c) => (target.includes(c) ? each : ((cell.node.attrs.colwidth as number[] | null)?.[c - cell.col] ?? each)))
+    tr = tr.setNodeMarkup(cell.pos, undefined, { ...cell.node.attrs, colwidth })
+  }
+  if (tr.docChanged) editor.view.dispatch(tr)
+  flash(picked?.cols.length ? `고른 ${target.length}개 열의 너비를 같게` : '열 너비를 모두 같게')
+  return true
+}
+
+/** 고른 행(없으면 전체)의 높이를 고르게 나눈다 */
+export function distributeRows(editor: Editor): boolean {
+  const table = currentTable(editor)
+  if (!table) { flash('표 안에 커서를 두고 실행하세요'); return false }
+  const cells = pickCells(table.node, table.pos)
+  const picked = selectedRowsCols(editor, cells)
+  const dom = editor.view.nodeDOM(table.pos) as HTMLElement | null
+  const rowEls = dom ? [...dom.querySelectorAll('tr')] : []
+  const allRows = rowEls.map((_, i) => i)
+  const target = picked?.rows.length ? picked.rows : allRows
+  if (!target.length) return false
+
+  const total = target.reduce((sum, i) => sum + (rowEls[i]?.getBoundingClientRect().height || 0), 0)
+  const each = Math.max(18, Math.round(total / target.length))
+
+  let tr = editor.state.tr
+  let offset = 0
+  let index = 0
+  table.node.forEach((row) => {
+    if (row.type.name === 'tableRow') {
+      if (target.includes(index)) {
+        tr = tr.setNodeMarkup(table.pos + 1 + offset, undefined, { ...row.attrs, 'data-height': `${each}px` })
+      }
+      index++
+    }
+    offset += row.nodeSize
+  })
+  if (tr.docChanged) editor.view.dispatch(tr)
+  flash(picked?.rows.length ? `고른 ${target.length}개 행의 높이를 같게` : '행 높이를 모두 같게')
+  return true
+}
+
+/** 행을 위·아래로 옮긴다 — 워드의 Shift+Alt+↑/↓ */
+export function moveRow(editor: Editor, dir: -1 | 1): boolean {
+  const table = currentTable(editor)
+  const index = currentRowIndex(editor)
+  if (!table || index < 0) return false
+  const rows: PMNode[] = []
+  table.node.forEach((row) => { if (row.type.name === 'tableRow') rows.push(row) })
+  const to = index + dir
+  if (to < 0 || to >= rows.length) return false
+  const next = [...rows]
+  const [moved] = next.splice(index, 1)
+  next.splice(to, 0, moved)
+  const tr = editor.state.tr.replaceWith(
+    table.pos,
+    table.pos + table.node.nodeSize,
+    table.node.type.create(table.node.attrs, next)
+  )
+  editor.view.dispatch(tr)
+  flash(dir < 0 ? '행을 위로 옮겼습니다' : '행을 아래로 옮겼습니다')
+  return true
+}

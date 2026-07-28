@@ -4088,9 +4088,11 @@ html, body, #root {
   column-span: none;
 }
 
-/* 자동 맞춤 — 워드의 세 갈래. 기본(창에 맞춤)은 단 폭을 가득 채운다 */
+/* 자동 맞춤 — 워드의 세 갈래. 기본(창에 맞춤)은 단 폭을 가득 채운다.
+   열 너비 조절 플러그인이 <table> 에 인라인 width 를 직접 써 넣으므로,
+   사용자가 고른 값이 그것을 이기도록 !important 를 붙인다. */
 .jan-editor-pages .ProseMirror .tableWrapper[data-fit="contents"] table {
-  width: auto;
+  width: auto !important;
   table-layout: auto;
   min-width: 0;
 }
@@ -4101,8 +4103,8 @@ html, body, #root {
 .jan-editor-pages .ProseMirror .tableWrapper[data-align="center"] table { margin-left: auto; margin-right: auto; }
 .jan-editor-pages .ProseMirror .tableWrapper[data-align="right"] table { margin-left: auto; margin-right: 0; }
 
-/* 표 너비 지정 — 껍데기가 넘겨 준 값을 안쪽 표에 물린다 */
-.jan-editor-pages .ProseMirror .tableWrapper[data-width] table { width: var(--jan-table-w, 100%); min-width: 0; }
+/* 표 너비 지정 — 껍데기가 넘겨 준 값을 안쪽 표에 물린다 (인라인 width 보다 우선) */
+.jan-editor-pages .ProseMirror .tableWrapper[data-width] table { width: var(--jan-table-w, 100%) !important; min-width: 0; }
 
 /* 제목과 저자 줄은 단을 가로질러 지면 전체 폭을 쓴다 — 2단 저널의 표준 첫 장 모양 */
 .jan-editor-pages[data-page-model="nodes"] .jan-page-node > h1,

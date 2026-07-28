@@ -105,18 +105,53 @@ export function moveTable(editor: Editor, dir: -1 | 1): boolean {
   return true
 }
 
-/** 표 전체 너비를 백분율로 — 워드의 오른쪽 아래 크기 조절 손잡이 */
-export function setTableWidthPercent(editor: Editor, percent: number): boolean {
+/**
+ * 표 전체 너비를 백분율로 — 워드의 오른쪽 아래 크기 조절 손잡이.
+ *
+ * 열 너비 조절 플러그인이 칸마다 픽셀 너비(colwidth)를 적어 두면 그 합이 표 폭을 붙든다 —
+ * 백분율만 바꿔서는 화면이 꿈쩍도 하지 않는다. 워드처럼 열 너비도 같은 비율로 줄이고 늘린다.
+ */
+export function setTableWidthPercent(editor: Editor, percent: number, hostWidth?: number): boolean {
   const table = findTable(editor)
   if (!table) return false
   const pct = Math.max(10, Math.min(100, Math.round(percent)))
-  editor.view.dispatch(
-    editor.state.tr.setNodeMarkup(table.pos, undefined, {
-      ...table.node.attrs,
-      'data-width': pct >= 100 ? null : `${pct}%`,
-      'data-fit': pct >= 100 ? null : 'fixed',
+  let tr = editor.state.tr.setNodeMarkup(table.pos, undefined, {
+    ...table.node.attrs,
+    'data-width': pct >= 100 ? null : `${pct}%`,
+    'data-fit': pct >= 100 ? null : 'fixed',
+  })
+
+  // 지정된 열 너비가 있으면 목표 폭에 맞춰 함께 조정한다
+  const widths: number[] = []
+  table.node.forEach((row) => {
+    if (row.type.name !== 'tableRow' || widths.length) return
+    row.forEach((cell) => {
+      const colwidth = cell.attrs.colwidth as number[] | null
+      if (colwidth) widths.push(...colwidth)
     })
-  )
+  })
+  const current = widths.reduce((a, b) => a + b, 0)
+  if (current > 0 && hostWidth) {
+    const ratio = (hostWidth * pct) / 100 / current
+    if (Math.abs(ratio - 1) > 0.01) {
+      let offset = 0
+      table.node.forEach((row) => {
+        if (row.type.name === 'tableRow') {
+          let cellOffset = 0
+          row.forEach((cell) => {
+            const colwidth = cell.attrs.colwidth as number[] | null
+            if (colwidth) {
+              const next = colwidth.map((w) => Math.max(24, Math.round(w * ratio)))
+              tr = tr.setNodeMarkup(table.pos + 1 + offset + 1 + cellOffset, undefined, { ...cell.attrs, colwidth: next })
+            }
+            cellOffset += cell.nodeSize
+          })
+        }
+        offset += row.nodeSize
+      })
+    }
+  }
+  editor.view.dispatch(tr)
   return true
 }
 

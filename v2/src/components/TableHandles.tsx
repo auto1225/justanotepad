@@ -126,7 +126,7 @@ export function TableHandles({ editor }: TableHandlesProps) {
       // 모서리 손잡이는 가로·세로를 함께 잡는다 (워드의 표 크기 조절)
       const dx = e.clientX - drag.startX
       const dy = e.clientY - drag.startY
-      if (Math.abs(dx) > 2) setTableWidthPercent(editor, ((drag.startWidth + dx) / drag.hostWidth) * 100)
+      if (Math.abs(dx) > 2) setTableWidthPercent(editor, ((drag.startWidth + dx) / drag.hostWidth) * 100, drag.hostWidth)
       if (Math.abs(dy) > 2 && drag.startTableHeight && drag.baseHeights) {
         const factor = (drag.startTableHeight + dy) / drag.startTableHeight
         scaleRowHeights(editor, Math.max(0.3, factor), drag.baseHeights)
@@ -169,11 +169,16 @@ export function TableHandles({ editor }: TableHandlesProps) {
   const withColumn = (index: number, fn: () => void) => { selectTableColumn(editor, index); fn() }
   const withRow = (index: number, fn: () => void) => { selectTableRow(editor, index); fn() }
 
+  /* 손잡이는 마우스용 장식이다 — 보조기술에는 숨기고 탭 순서에서도 뺀다.
+     같은 일은 모두 단축키(Ctrl+Alt+…)와 리본·상황 메뉴로 할 수 있다. */
+  const handleProps = { tabIndex: -1 as const }
+
   return (
     <div className="jan-table-handles" aria-hidden="true">
       {/* 왼쪽 위 이동 손잡이 — 누르면 표 전체 선택, 위아래로 끌면 자리를 옮긴다 */}
       <button
         type="button"
+        {...handleProps}
         className="jan-th-move"
         title="표 전체 선택 (위아래로 끌면 표를 옮깁니다)"
         style={{ left: table.left - HANDLE - 3, top: table.top - HANDLE - 3, width: HANDLE, height: HANDLE }}
@@ -189,6 +194,7 @@ export function TableHandles({ editor }: TableHandlesProps) {
       {/* 오른쪽 아래 크기 조절 손잡이 — 끌면 표 전체 너비가 바뀐다 */}
       <button
         type="button"
+        {...handleProps}
         className="jan-th-size"
         title="끌어서 표 너비 조절"
         style={{ left: table.left + table.width - 4, top: table.top + table.height - 4 }}
@@ -213,6 +219,8 @@ export function TableHandles({ editor }: TableHandlesProps) {
         <button
           key={'c' + i}
           type="button"
+          {...handleProps}
+        {...handleProps}
           className="jan-th-col"
           title={`${i + 1}번째 열 선택`}
           style={{ left: c.left, top: table.top - 7, width: c.width, height: 5 }}
@@ -224,6 +232,8 @@ export function TableHandles({ editor }: TableHandlesProps) {
         <button
           key={'ci' + i}
           type="button"
+          {...handleProps}
+        {...handleProps}
           className="jan-th-add"
           title={i === 0 ? '왼쪽에 열 추가' : '여기에 열 추가'}
           style={{ left: c.left - 7, top: table.top - 20 }}
@@ -234,6 +244,8 @@ export function TableHandles({ editor }: TableHandlesProps) {
       {cols.length > 0 && (
         <button
           type="button"
+          {...handleProps}
+        {...handleProps}
           className="jan-th-add"
           title="오른쪽에 열 추가"
           style={{ left: table.left + table.width - 7, top: table.top - 20 }}
@@ -247,6 +259,8 @@ export function TableHandles({ editor }: TableHandlesProps) {
         <button
           key={'r' + i}
           type="button"
+          {...handleProps}
+        {...handleProps}
           className="jan-th-row"
           title={`${i + 1}번째 행 선택`}
           style={{ left: table.left - 7, top: r.top, width: 5, height: r.height }}
@@ -259,6 +273,8 @@ export function TableHandles({ editor }: TableHandlesProps) {
         <button
           key={'rs' + i}
           type="button"
+          {...handleProps}
+        {...handleProps}
           className="jan-th-rowsize"
           title={`${i + 1}번째 행 높이 조절`}
           style={{
@@ -287,6 +303,8 @@ export function TableHandles({ editor }: TableHandlesProps) {
         <button
           key={'ri' + i}
           type="button"
+          {...handleProps}
+        {...handleProps}
           className="jan-th-add"
           title={i === 0 ? '위에 행 추가' : '여기에 행 추가'}
           style={{ left: table.left - 20, top: r.top - 7 }}
@@ -297,6 +315,8 @@ export function TableHandles({ editor }: TableHandlesProps) {
       {rows.length > 0 && (
         <button
           type="button"
+          {...handleProps}
+        {...handleProps}
           className="jan-th-add"
           title="아래에 행 추가"
           style={{ left: table.left - 20, top: table.top + table.height - 7 }}

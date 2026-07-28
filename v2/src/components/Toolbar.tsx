@@ -11,7 +11,8 @@ import { TTSButton } from './TTSButton'
 import { VoiceButton } from './VoiceButton'
 import { Ribbon } from './Ribbon'
 import { aggregateColumn } from '../lib/tableUtils'
-import { TABLE_STYLES, evenRowHeights, setCellPadding, setRowHeight, setTableStyle, splitTable, tableToText, toggleTableOption } from '../lib/tableWord'
+import { TABLE_STYLES, distributeColumns, distributeRows, moveRow, setCellPadding, setRowHeight, setTableStyle, splitTable, tableToText, toggleTableOption } from '../lib/tableWord'
+import { selectTableColumn, selectTableRow, selectWholeTable } from '../lib/tableSelect'
 import { currentCellFormula, setCellFormula, suggestFormula } from '../lib/tableCompute'
 import { FORMULA_FUNCTIONS, NUMBER_FORMATS } from '../lib/tableFormula'
 import { pickTableSize } from '../lib/tableInsert'
@@ -1109,6 +1110,18 @@ export function Toolbar(p: ToolbarProps) {
     const pos = editor.state.selection.from
     editor.chain().focus().setTextSelection(pos).setTextAlign(side).setNodeSelection(pos).run()
   }
+  /* 커서가 든 행·열 번호 (선택 명령이 쓴다) */
+  const currentRowIndex = () => {
+    const { $from } = editor.state.selection
+    for (let d = $from.depth; d > 0; d--) if ($from.node(d).type.name === 'tableRow') return $from.index(d - 1)
+    return 0
+  }
+  const currentColIndex = () => {
+    const { $from } = editor.state.selection
+    for (let d = $from.depth; d > 0; d--) if (/^table(Cell|Header)$/.test($from.node(d).type.name)) return $from.index(d - 1)
+    return 0
+  }
+
   /* 표 속성 — 워드의 「표 속성」과 같은 갈래로 다룬다.
      updateAttributes 는 선택 안의 표를 스스로 찾아 준다 (커서가 셀 어디에 있든). */
   const setTableAttr = (attrs: Record<string, string | null>, note: string) => {
@@ -1192,6 +1205,10 @@ export function Toolbar(p: ToolbarProps) {
   }
   /* ── 표: 워드의 「레이아웃」 탭 ── */
   const tableItems: MenuItem[] = [
+    { divider: '선택', label: '' },
+    { label: '행 선택', short: '행', icon: 'table', hint: 'Ctrl+Alt+R', onClick: () => run(() => { selectTableRow(editor, currentRowIndex()) }) },
+    { label: '열 선택', short: '열', icon: 'columns', hint: 'Ctrl+Alt+C', onClick: () => run(() => { selectTableColumn(editor, currentColIndex()) }) },
+    { label: '표 전체 선택', short: '표', icon: 'table', hint: 'Ctrl+Alt+T', onClick: () => run(() => { selectWholeTable(editor) }) },
     { divider: '행 및 열', label: '' },
     { label: '위에 행 삽입', short: '위 행', icon: 'plus', onClick: () => run(() => editor.chain().focus().addRowBefore().run()) },
     { label: '아래에 행 삽입', short: '아래 행', icon: 'plus', onClick: () => run(() => editor.chain().focus().addRowAfter().run()) },
@@ -1203,14 +1220,17 @@ export function Toolbar(p: ToolbarProps) {
     { label: '셀 병합', short: '병합', icon: 'columns', onClick: () => run(() => editor.chain().focus().mergeCells().run()) },
     { label: '셀 분할', short: '분할', icon: 'columns', onClick: () => run(() => editor.chain().focus().splitCell().run()) },
     { label: '표 분할 (커서 행에서 둘로)', short: '표 분할', icon: 'page-break', onClick: () => run(() => { splitTable(editor) }) },
+    { label: '행을 위로 이동', short: '행 ↑', icon: 'chevron-up', hint: 'Shift+Alt+↑', onClick: () => run(() => { moveRow(editor, -1) }) },
+    { label: '행을 아래로 이동', short: '행 ↓', icon: 'chevron-down', hint: 'Shift+Alt+↓', onClick: () => run(() => { moveRow(editor, 1) }) },
     { divider: '셀 크기', label: '' },
     { label: '창에 자동 맞춤', short: '창 맞춤', icon: 'maximize', onClick: () => run(() => setTableAttr({ 'data-fit': null, 'data-width': null }, '창(단) 너비에 맞춤')) },
     { label: '내용에 자동 맞춤', short: '내용 맞춤', icon: 'minimize', onClick: () => run(() => setTableAttr({ 'data-fit': 'contents', 'data-width': null }, '내용 너비에 맞춤')) },
     { label: '고정 열 너비', short: '고정', icon: 'columns', onClick: () => run(() => setTableAttr({ 'data-fit': 'fixed' }, '열 너비를 고정')) },
     { label: '표 너비 지정...', short: '표 너비', icon: 'hash', onClick: () => run(() => { void askTableWidth() }) },
     { label: '행 높이 지정...', short: '행 높이', icon: 'hash', onClick: () => run(() => { void askRowHeight() }) },
-    { label: '열 너비를 같게', short: '열 같게', icon: 'columns', onClick: () => run(evenColumnWidths) },
-    { label: '행 높이를 같게', short: '행 같게', icon: 'table', onClick: () => run(() => { evenRowHeights(editor) }) },
+    { label: '열 너비를 같게 (고른 열만)', short: '열 같게', icon: 'columns', hint: 'Ctrl+Alt+E', onClick: () => run(() => { distributeColumns(editor) }) },
+    { label: '행 높이를 같게 (고른 행만)', short: '행 같게', icon: 'table', hint: 'Ctrl+Alt+Shift+E', onClick: () => run(() => { distributeRows(editor) }) },
+    { label: '열 너비 지정 지우기 (내용에 맞게)', short: '열 초기화', icon: 'refresh-cw', onClick: () => run(evenColumnWidths) },
     { divider: '맞춤', label: '' },
     { label: '셀 안 위쪽 맞춤', short: '위', icon: 'align-left', onClick: () => run(() => editor.chain().focus().setCellAttribute('valign', null).run()) },
     { label: '셀 안 가운데 맞춤', short: '가운데', icon: 'align-center', onClick: () => run(() => editor.chain().focus().setCellAttribute('valign', 'middle').run()) },

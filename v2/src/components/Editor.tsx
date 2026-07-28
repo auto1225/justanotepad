@@ -8,6 +8,7 @@ import Link from '@tiptap/extension-link'
 import { Table } from '@tiptap/extension-table'
 import { TableRow } from '@tiptap/extension-table-row'
 import { JanTableCell, JanTableHeader, TablePlacement, TableFormulaAuto } from '../extensions/TableCellExt'
+import { TableKeymap } from '../extensions/TableKeymap'
 import { ImageWithWidth as Image } from '../extensions/ImageWithWidth'
 import { PaginationPlus, PAGE_SIZES } from 'tiptap-pagination-plus'
 import { Collaboration } from '@tiptap/extension-collaboration'
@@ -371,6 +372,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       Table.configure({ resizable: true }),
       TablePlacement,
       TableFormulaAuto,
+      TableKeymap,
       TableRow,
       JanTableHeader,
       JanTableCell,

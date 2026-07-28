@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Editor } from '@tiptap/react'
 import { splitTable, tableToText } from '../lib/tableWord'
 import { selectTableColumn, selectTableRow, selectWholeTable } from '../lib/tableSelect'
@@ -21,32 +21,63 @@ interface MenuItem {
  * 리본까지 가지 않고 그 자리에서 삽입·삭제·병합·수식을 쓴다.
  */
 export function TableContextMenu({ editor }: Props) {
-  const [at, setAt] = useState<{ x: number; y: number } | null>(null)
+  const [at, setAt] = useState<{ x: number; y: number; keyboard: boolean } | null>(null)
+  const menuRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     if (!editor) return
     const onMenu = (e: MouseEvent) => {
-      const target = e.target as HTMLElement | null
-      if (!target?.closest?.('.ProseMirror table')) return
       if (!editor.isActive('table')) return
+      const target = e.target as HTMLElement | null
+      /* Shift+F10 · 메뉴 키로 열면 좌표가 0 이거나 편집기 밖을 가리킨다 —
+         그때는 커서 자리에 띄운다 (키보드만으로 쓰는 사람을 위해) */
+      const byKeyboard = !e.clientX && !e.clientY
+      if (!byKeyboard && !target?.closest?.('.ProseMirror table')) return
       e.preventDefault()
-      setAt({ x: e.clientX, y: e.clientY })
+      if (byKeyboard) {
+        const coords = editor.view.coordsAtPos(editor.state.selection.from)
+        setAt({ x: coords.left, y: coords.bottom + 4, keyboard: true })
+      } else {
+        setAt({ x: e.clientX, y: e.clientY, keyboard: false })
+      }
     }
     const close = () => setAt(null)
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setAt(null) }
+    // 메뉴 키(⌨ Menu)로도 연다 — 브라우저가 contextmenu 를 보내지 않는 경우가 있다
+    const onMenuKey = (e: KeyboardEvent) => {
+      if (e.key !== 'ContextMenu' && !(e.shiftKey && e.key === 'F10')) return
+      if (!editor.isActive('table')) return
+      e.preventDefault()
+      const coords = editor.view.coordsAtPos(editor.state.selection.from)
+      setAt({ x: coords.left, y: coords.bottom + 4, keyboard: true })
+    }
     document.addEventListener('contextmenu', onMenu)
     document.addEventListener('mousedown', close)
     window.addEventListener('scroll', close, true)
     document.addEventListener('keydown', onKey)
+    document.addEventListener('keydown', onMenuKey)
     return () => {
       document.removeEventListener('contextmenu', onMenu)
       document.removeEventListener('mousedown', close)
       window.removeEventListener('scroll', close, true)
       document.removeEventListener('keydown', onKey)
+      document.removeEventListener('keydown', onMenuKey)
     }
   }, [editor])
 
   if (!editor || !at) return null
+
+  /* 위아래 화살표로 항목을 옮겨 다닌다 (키보드만으로 쓰는 사람을 위해) */
+  const onMenuKeyDown = (e: React.KeyboardEvent) => {
+    const buttons = [...(menuRef.current?.querySelectorAll('button') ?? [])] as HTMLButtonElement[]
+    if (!buttons.length) return
+    const index = buttons.indexOf(document.activeElement as HTMLButtonElement)
+    if (e.key === 'ArrowDown') { e.preventDefault(); buttons[(index + 1) % buttons.length].focus() }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); buttons[(index - 1 + buttons.length) % buttons.length].focus() }
+    else if (e.key === 'Home') { e.preventDefault(); buttons[0].focus() }
+    else if (e.key === 'End') { e.preventDefault(); buttons[buttons.length - 1].focus() }
+    else if (e.key === 'Escape') { e.preventDefault(); setAt(null); editor.commands.focus() }
+  }
 
   const chain = () => editor.chain().focus()
   const items: MenuItem[] = [
@@ -89,10 +120,16 @@ export function TableContextMenu({ editor }: Props) {
 
   return (
     <div
+      ref={(el) => {
+        menuRef.current = el
+        // 키보드로 열었으면 첫 항목에 바로 초점을 준다
+        if (el && at.keyboard) (el.querySelector('button') as HTMLButtonElement | null)?.focus()
+      }}
       className="jan-table-ctx"
       role="menu"
       style={{ left, top, width: W }}
       onMouseDown={(e) => e.stopPropagation()}
+      onKeyDown={onMenuKeyDown}
     >
       {items.map((item, i) =>
         item.divider ? (
@@ -102,7 +139,7 @@ export function TableContextMenu({ editor }: Props) {
             key={item.label}
             type="button"
             role="menuitem"
-            onClick={() => { item.run?.(); setAt(null) }}
+            onClick={() => { item.run?.(); setAt(null); editor.commands.focus() }}
           >
             <span>{item.label}</span>
             {item.hint && <em>{item.hint}</em>}
