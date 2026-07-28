@@ -13,6 +13,14 @@ import { Ribbon } from './Ribbon'
 import { aggregateColumn } from '../lib/tableUtils'
 import { TABLE_STYLES, blockCalc, copyTable, distributeColumns, distributeRows, moveRow, resizeColumns, resizeRows, setCellDiagonal, setCellPadding, setRowHeight, setTableStyle, setTableWrap, splitTable, tableToText, toggleTableOption } from '../lib/tableWord'
 import { moveTable, selectTableColumn, selectTableRow, selectWholeTable } from '../lib/tableSelect'
+import { IMAGE_SHAPES, IMAGE_STYLES, IMAGE_WRAPS } from '../extensions/ImageObject'
+import {
+  RECOLORS, applyRecolor, clearCrop, compressImage, copyImageFormat, cropToRatio, downloadImage,
+  fitImageToBody, fitImageToCell, flipImage, moveImage, numberImageCaptions, pasteImageFormat,
+  removeWhiteBackground, resetImageFormat, resetImageSize, rotateImage, scaleImage, selectNextImage,
+  setImageAlign, setImageAttrs, setImageBorder, setImageShape, setImageStyle, setImageWidth,
+  setImageWrap, setRotation, toggleAspectLock, toggleImageLock,
+} from '../lib/imageWord'
 import { currentCellFormula, setCellFormula, suggestFormula } from '../lib/tableCompute'
 import { FORMULA_FUNCTIONS, NUMBER_FORMATS } from '../lib/tableFormula'
 import { pickTableSize } from '../lib/tableInsert'
@@ -1105,11 +1113,6 @@ export function Toolbar(p: ToolbarProps) {
   /* 표·그림을 고르면 나타나는 개체 탭 (한글의 맥락 탭) */
   const inTable = contextTab === '표'
   const onImage = contextTab === '그림'
-  const setImgWidth = (w: string) => editor.chain().focus().updateAttributes('image', { width: w }).run()
-  const setImgAlign = (side: 'left' | 'center' | 'right') => {
-    const pos = editor.state.selection.from
-    editor.chain().focus().setTextSelection(pos).setTextAlign(side).setNodeSelection(pos).run()
-  }
   /* 커서가 든 행·열 번호 (선택 명령이 쓴다) */
   const currentRowIndex = () => {
     const { $from } = editor.state.selection
@@ -1311,18 +1314,88 @@ export function Toolbar(p: ToolbarProps) {
     { label: '대각선 지우기', short: '지움', icon: 'table', onClick: () => run(() => { setCellDiagonal(editor, null) }) },
   ]
 
+  /* 그림 — 워드의 「그림 서식」 탭을 그대로 옮겼다.
+     크기·자르기·회전·배치·스타일·테두리·효과·보정·접근성, 그리고 한글의 캡션·개체 보호까지. */
+  const imgDialog = (tab: string) => window.dispatchEvent(new CustomEvent('jan-image-dialog', { detail: { tab } }))
   const imageItems: MenuItem[] = [
+    { divider: '조정', label: '' },
+    { label: '색 보정 (밝기·대비·채도·색조)', short: '색 보정', icon: 'settings', hint: 'Alt+T', onClick: () => run(() => imgDialog('adjust')) },
+    ...RECOLORS.map((r): MenuItem => ({ label: '색: ' + r.label, short: r.label, icon: 'palette', onClick: () => run(() => { applyRecolor(editor, r.key) }) })),
+    { label: '흰 배경 없애기', short: '배경 제거', icon: 'fill', onClick: () => run(() => { removeWhiteBackground(editor) }) },
+    { label: '그림 압축 (긴 변 1600px)', short: '압축', icon: 'download', onClick: () => run(() => { compressImage(editor) }) },
+    { label: '그림 바꾸기...', short: '바꾸기', icon: 'refresh-cw', onClick: () => run(() => window.dispatchEvent(new CustomEvent('jan-image-replace'))) },
+    { label: '그림 원래대로 (서식만)', short: '원래대로', icon: 'refresh-cw', hint: 'Alt+Z', onClick: () => run(() => { resetImageFormat(editor) }) },
+    { label: '그림과 크기 원래대로', short: '전부 원래대로', icon: 'refresh-cw', onClick: () => run(() => { resetImageFormat(editor, true) }) },
+
+    { divider: '그림 스타일', label: '' },
+    ...IMAGE_STYLES.map((st): MenuItem => ({ label: '스타일: ' + st.label + ' — ' + st.hint, short: st.label, icon: 'image', onClick: () => run(() => { setImageStyle(editor, st.key, st.label) }) })),
+    { label: '테두리 색·두께 정하기', short: '테두리', icon: 'box', onClick: () => run(() => {
+      const color = window.prompt('테두리 색 (#RRGGBB · 빈 칸이면 없앤다)', '#333333')
+      if (color === null) return
+      if (!color) { setImageBorder(editor, { color: null, width: null, style: null }); return }
+      const width = Number(window.prompt('테두리 두께 (px)', '2') || 2)
+      const style = window.prompt('선 모양 — solid · dashed · dotted · double', 'solid') || 'solid'
+      setImageBorder(editor, { color, width, style })
+    }) },
+    { label: '테두리 없애기', short: '테두리 없음', icon: 'box', onClick: () => run(() => { setImageBorder(editor, { color: null, width: null, style: null }) }) },
+    { label: '모서리 둥글기', short: '둥글기', icon: 'box', onClick: () => run(() => {
+      const r = window.prompt('모서리 둥글기 (px)', '12')
+      if (r !== null) setImageAttrs(editor, { radius: Number(r) || null })
+    }) },
+    { label: '그림 서식 복사', short: '서식 복사', icon: 'cards', hint: 'Alt+B', onClick: () => run(() => { copyImageFormat(editor) }) },
+    { label: '앞 그림 서식 적용', short: '서식 붙이기', icon: 'cards', hint: 'Alt+Shift+B', onClick: () => run(() => { pasteImageFormat(editor) }) },
+
     { divider: '크기', label: '' },
-    { label: '작게 (200px)', short: '작게', icon: 'image', onClick: () => run(() => setImgWidth('200px')) },
-    { label: '중간 (400px)', short: '중간', icon: 'image', onClick: () => run(() => setImgWidth('400px')) },
-    { label: '크게 (600px)', short: '크게', icon: 'image', onClick: () => run(() => setImgWidth('600px')) },
-    { label: '본문 너비에 맞춤', short: '전체 너비', icon: 'maximize', onClick: () => run(() => setImgWidth('100%')) },
+    { label: '크기·위치 대화상자', short: '크기', icon: 'maximize', hint: 'Alt+P', onClick: () => run(() => imgDialog('size')) },
+    { label: '작게 (200px)', short: '작게', icon: 'image', onClick: () => run(() => { setImageWidth(editor, '200px') }) },
+    { label: '중간 (400px)', short: '중간', icon: 'image', onClick: () => run(() => { setImageWidth(editor, '400px') }) },
+    { label: '크게 (600px)', short: '크게', icon: 'image', onClick: () => run(() => { setImageWidth(editor, '600px') }) },
+    { label: '본문 너비에 맞춤', short: '전체 너비', icon: 'maximize', hint: 'Alt+F', onClick: () => run(() => { fitImageToBody(editor) }) },
+    { label: '표 칸 크기에 맞춤', short: '칸에 맞춤', icon: 'table', onClick: () => run(() => { fitImageToCell(editor) }) },
+    { label: '원래 크기로', short: '원래 크기', icon: 'refresh-cw', hint: 'Alt+0', onClick: () => run(() => { resetImageSize(editor) }) },
+    ...[25, 50, 75, 150, 200].map((n): MenuItem => ({ label: '원래 크기의 ' + n + '%', short: n + '%', icon: 'image', onClick: () => run(() => { scaleImage(editor, n) }) })),
+    { label: '가로 세로 비율 고정 켬/끔', short: '비율 고정', icon: 'lock', hint: 'Alt+K', onClick: () => run(() => { toggleAspectLock(editor) }) },
+
+    { divider: '자르기', label: '' },
+    { label: '자르기 손잡이 켜기/끄기', short: '자르기', icon: 'page-break', onClick: () => run(() => window.dispatchEvent(new Event('jan-image-crop-mode'))) },
+    { label: '자르기 수치로 정하기', short: '자르기 값', icon: 'page-break', onClick: () => run(() => imgDialog('crop')) },
+    ...([['1:1', 1], ['4:3', 4 / 3], ['3:2', 1.5], ['16:9', 16 / 9], ['3:4', 0.75], ['9:16', 9 / 16]] as [string, number][]).map(
+      ([label, ratio]): MenuItem => ({ label: label + ' 비율로 자르기', short: label, icon: 'page-break', onClick: () => run(() => { cropToRatio(editor, ratio, label) }) })
+    ),
+    ...IMAGE_SHAPES.map((sh): MenuItem => ({ label: sh.label + ' 모양으로 자르기', short: sh.label, icon: 'page-break', onClick: () => run(() => { setImageShape(editor, sh.key, sh.label) }) })),
+    { label: '자르기 지우기 (원본 그대로)', short: '자르기 해제', icon: 'refresh-cw', hint: 'Alt+X', onClick: () => run(() => { clearCrop(editor) }) },
+
     { divider: '배치', label: '' },
-    { label: '왼쪽 배치', short: '왼쪽', icon: 'align-left', onClick: () => run(() => setImgAlign('left')) },
-    { label: '가운데 배치', short: '가운데', icon: 'align-center', onClick: () => run(() => setImgAlign('center')) },
-    { label: '오른쪽 배치', short: '오른쪽', icon: 'align-right', onClick: () => run(() => setImgAlign('right')) },
+    ...IMAGE_WRAPS.map((w): MenuItem => ({
+      label: w.label + ' — ' + w.hint, short: w.label, icon: 'align-justify',
+      onClick: () => run(() => { setImageWrap(editor, w.key === 'topbottom' ? null : w.key, '배치: ' + w.label) }),
+    })),
+    { label: '왼쪽 맞춤', short: '왼쪽', icon: 'align-left', onClick: () => run(() => { setImageAlign(editor, 'left') }) },
+    { label: '가운데 맞춤', short: '가운데', icon: 'align-center', onClick: () => run(() => { setImageAlign(editor, 'center') }) },
+    { label: '오른쪽 맞춤', short: '오른쪽', icon: 'align-right', onClick: () => run(() => { setImageAlign(editor, 'right') }) },
+    { label: '앞 문단으로 옮기기', short: '위로', icon: 'chevron-up', hint: 'Alt+Home', onClick: () => run(() => { moveImage(editor, -1) }) },
+    { label: '뒤 문단으로 옮기기', short: '아래로', icon: 'chevron-down', hint: 'Alt+End', onClick: () => run(() => { moveImage(editor, 1) }) },
+    { label: '개체 보호 켬/끔 (크기·위치 잠금)', short: '개체 보호', icon: 'lock', hint: 'Alt+L', onClick: () => run(() => { toggleImageLock(editor) }) },
+
+    { divider: '돌리기', label: '' },
+    { label: '오른쪽으로 90° 회전', short: '오른쪽 90°', icon: 'refresh-cw', hint: 'Alt+R', onClick: () => run(() => { rotateImage(editor, 90) }) },
+    { label: '왼쪽으로 90° 회전', short: '왼쪽 90°', icon: 'refresh-cw', hint: 'Alt+Shift+R', onClick: () => run(() => { rotateImage(editor, -90) }) },
+    { label: '좌우 대칭', short: '좌우 대칭', icon: 'refresh-cw', hint: 'Alt+H', onClick: () => run(() => { flipImage(editor, 'h') }) },
+    { label: '상하 대칭', short: '상하 대칭', icon: 'refresh-cw', hint: 'Alt+V', onClick: () => run(() => { flipImage(editor, 'v') }) },
+    { label: '각도 직접 넣기', short: '각도', icon: 'refresh-cw', onClick: () => run(() => {
+      const deg = window.prompt('회전 각도 (0~359)', '15')
+      if (deg !== null) setRotation(editor, Number(deg) || 0)
+    }) },
+
+    { divider: '캡션과 접근성', label: '' },
+    { label: '캡션 넣기 (그림과 함께 움직인다)', short: '캡션', icon: 'file-text', hint: 'Alt+C', onClick: () => run(() => imgDialog('caption')) },
+    { label: '캡션 번호 다시 매기기', short: '번호 갱신', icon: 'hash', onClick: () => run(() => { numberImageCaptions(editor) }) },
+    { label: '대체 텍스트 편집', short: '대체 텍스트', icon: 'info', hint: 'Alt+A', onClick: () => run(() => imgDialog('alt')) },
+    { label: '다음 그림 고르기', short: '다음 그림', icon: 'chevron-down', hint: 'Alt+N', onClick: () => run(() => { selectNextImage(editor, 1) }) },
+
     { divider: '편집', label: '' },
     { label: '그림판에서 주석 편집', short: '주석 편집', icon: 'paint', onClick: () => run(p.onPaint) },
+    { label: '그림으로 저장', short: '저장', icon: 'download', onClick: () => run(() => { downloadImage(editor) }) },
     { label: '그림 삭제', short: '삭제', icon: 'trash', onClick: () => run(() => editor.chain().focus().deleteSelection().run()) },
   ]
 

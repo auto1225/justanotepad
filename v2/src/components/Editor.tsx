@@ -9,7 +9,8 @@ import { Table } from '@tiptap/extension-table'
 import { TableRow } from '@tiptap/extension-table-row'
 import { JanTableCell, JanTableHeader, TablePlacement, TableFormulaAuto } from '../extensions/TableCellExt'
 import { TableKeymap } from '../extensions/TableKeymap'
-import { ImageWithWidth as Image } from '../extensions/ImageWithWidth'
+import { ImageObject as Image } from '../extensions/ImageObject'
+import { ImageKeymap } from '../extensions/ImageKeymap'
 import { PaginationPlus, PAGE_SIZES } from 'tiptap-pagination-plus'
 import { Collaboration } from '@tiptap/extension-collaboration'
 import { CollaborationCursor } from '@tiptap/extension-collaboration-cursor'
@@ -28,6 +29,9 @@ import { TableHandles } from './TableHandles'
 import { TableContextMenu } from './TableContextMenu'
 import { BubbleToolbar } from './BubbleToolbar'
 import { ImageMenu } from './ImageMenu'
+import { ImageHandles } from './ImageHandles'
+import { ImageContextMenu } from './ImageContextMenu'
+import { ImageDialog } from './ImageDialog'
 import { ModalSkeleton } from './ModalSkeleton'
 import { useDocStore } from '../store/docStore'
 import { useMemosStore } from '../store/memosStore'
@@ -169,6 +173,8 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   const [showPaint, setShowPaint] = useState(false)
   // 문서 이미지 주석 편집 (그림판에서 열기)
   const [paintEdit, setPaintEdit] = useState<{ src: string; pos: number } | null>(null)
+  /* 그림 속성 대화상자 — 단축키(Alt+P 등)와 상황 메뉴가 어느 갈피를 열지 알려 준다 */
+  const [imgDialog, setImgDialog] = useState<string | null>(null)
   const [showHelp, setShowHelp] = useState(false)
   const [showOutline, setShowOutline] = useState(false)
   const [showAbout, setShowAbout] = useState(false)
@@ -379,6 +385,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       /* base64 이미지를 파싱에서 받아들인다 — 기본값(allowBase64:false)이면 저장본을 다시 열 때
          data: 그림이 통째로 사라진다. 큰 그림만 blob 참조로 빠지고 작은 그림은 data: 로 남기 때문. */
       Image.configure({ allowBase64: true }),
+      ImageKeymap,
       MathInline,
       Mermaid,
       MentionExt,
@@ -504,6 +511,33 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
     if (!editor) return
     editor.view.dom.setAttribute('spellcheck', spellCheck ? 'true' : 'false')
   }, [editor, spellCheck])
+
+  /* 그림 속성 대화상자 열기 · 그림 바꾸기 — 단축키·리본·상황 메뉴가 함께 쓴다 */
+  useEffect(() => {
+    if (!editor) return
+    const onDialog = (e: Event) => setImgDialog((e as CustomEvent<{ tab?: string }>).detail?.tab || 'size')
+    const onReplace = () => {
+      const input = document.createElement('input')
+      input.type = 'file'
+      input.accept = 'image/*'
+      input.onchange = () => {
+        const file = input.files?.[0]
+        if (!file) return
+        const reader = new FileReader()
+        reader.onload = () => {
+          import('../lib/imageWord').then((m) => m.replaceImage(editor, String(reader.result || '')))
+        }
+        reader.readAsDataURL(file)
+      }
+      input.click()
+    }
+    window.addEventListener('jan-image-dialog', onDialog)
+    window.addEventListener('jan-image-replace', onReplace)
+    return () => {
+      window.removeEventListener('jan-image-dialog', onDialog)
+      window.removeEventListener('jan-image-replace', onReplace)
+    }
+  }, [editor])
 
   // 이미지 "그림판에서 편집" 이벤트 수신 → 주석 편집 모달
   useEffect(() => {
@@ -1040,6 +1074,9 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       <TableContextMenu editor={editor} />
       <BubbleToolbar editor={editor} />
       <ImageMenu editor={editor} />
+      <ImageHandles editor={editor} />
+      <ImageContextMenu editor={editor} />
+      {imgDialog && <ImageDialog editor={editor} tab={imgDialog} onClose={() => setImgDialog(null)} />}
       <Suspense fallback={<ModalSkeleton />}>
         {showAi && <AiHelper editor={editor} onClose={() => setShowAi(false)} />}
         {showSettings && <SettingsModal onClose={() => setShowSettings(false)} focusSection={settingsFocus} />}
