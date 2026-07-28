@@ -13,6 +13,7 @@ import { ImageObject as Image } from '../extensions/ImageObject'
 import { ImageKeymap } from '../extensions/ImageKeymap'
 import { ShapeObject } from '../extensions/ShapeObject'
 import { CharOverlap, DropCapAttr, EmphasisDot, RubyText } from '../extensions/TextObjects'
+import { CommentMark, FieldInput } from '../extensions/CommentField'
 import { PaginationPlus, PAGE_SIZES } from 'tiptap-pagination-plus'
 import { Collaboration } from '@tiptap/extension-collaboration'
 import { CollaborationCursor } from '@tiptap/extension-collaboration-cursor'
@@ -37,6 +38,7 @@ import { ImageDialog } from './ImageDialog'
 import { ShapePanel } from './ShapePanel'
 import { SymbolPanel } from './SymbolPanel'
 import { ObjectPane } from './ObjectPane'
+import { CommentPane } from './CommentPane'
 import { ModalSkeleton } from './ModalSkeleton'
 import { useDocStore } from '../store/docStore'
 import { useMemosStore } from '../store/memosStore'
@@ -185,6 +187,8 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   /* 문자표와 개체 목록 — 워드의 「기호」 대화상자와 「선택 창(Alt+F10)」 */
   const [showSymbols, setShowSymbols] = useState(false)
   const [showObjects, setShowObjects] = useState(false)
+  /* 메모 목록 — 워드에서 문서 옆에 뜨는 메모 자리 */
+  const [showComments, setShowComments] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
   const [showOutline, setShowOutline] = useState(false)
   const [showAbout, setShowAbout] = useState(false)
@@ -401,6 +405,8 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       RubyText,
       EmphasisDot,
       CharOverlap,
+      CommentMark,
+      FieldInput,
       MathInline,
       Mermaid,
       MentionExt,
@@ -551,8 +557,39 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
     const onObjects = () => setShowObjects((v) => !v)
     /* 개체 목록은 워드와 같은 자리(Alt+F10)에서 열고 닫는다 */
     const onKey = (e: KeyboardEvent) => {
-      if (e.altKey && e.key === 'F10') { e.preventDefault(); setShowObjects((v) => !v) }
+      if (e.altKey && e.key === 'F10') { e.preventDefault(); setShowObjects((v) => !v); return }
+      /* 워드와 같은 자리 — 고른 글에 메모를 단다 */
+      if ((e.ctrlKey || e.metaKey) && e.altKey && (e.key === 'm' || e.key === 'M' || e.code === 'KeyM')) {
+        e.preventDefault()
+        const { from, to } = editor.state.selection
+        if (from === to) { import('../lib/flash').then((m) => m.flash('메모를 달 글을 먼저 고른다')); return }
+        const text = window.prompt('메모 — 이 자리에 남길 말')
+        if (text) {
+          import('../lib/commentField').then((m) => { m.addComment(editor, text); setShowComments(true) })
+        }
+      }
     }
+    const onComments = () => setShowComments((v) => !v)
+    /* 누름틀을 누르면 그 자리에 바로 쓴다 (한글과 같은 느낌).
+       편집기 DOM 이 아직 없을 수도 있어 문서에 붙이고 안에서 살핀다 —
+       editor.view 를 붙일 때 건드리면 아직 안 붙은 순간에 터진다. */
+    const onFieldClick = (e: MouseEvent) => {
+      const el = (e.target as HTMLElement | null)?.closest?.('.ProseMirror .jan-field') as HTMLElement | null
+      if (!el || editor.isDestroyed) return
+      e.preventDefault()
+      let pos: number
+      try {
+        pos = editor.view.posAtDOM(el, 0)
+      } catch { return }
+      if (pos == null || pos < 0) return
+      const node = editor.state.doc.nodeAt(pos)
+      if (!node || node.type.name !== 'janField') return
+      const value = window.prompt(node.attrs.memo || node.attrs.guide || '내용', String(node.attrs.value || ''))
+      if (value == null) return
+      import('../lib/commentField').then((m) => m.fillField(editor, pos, value))
+    }
+    document.addEventListener('click', onFieldClick, true)
+    window.addEventListener('jan-comment-pane', onComments)
     window.addEventListener('jan-symbol-panel', onSymbols)
     window.addEventListener('jan-object-pane', onObjects)
     document.addEventListener('keydown', onKey, true)
@@ -565,6 +602,8 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       window.removeEventListener('jan-shape-dialog', onShape)
       window.removeEventListener('jan-symbol-panel', onSymbols)
       window.removeEventListener('jan-object-pane', onObjects)
+      window.removeEventListener('jan-comment-pane', onComments)
+      document.removeEventListener('click', onFieldClick, true)
       document.removeEventListener('keydown', onKey, true)
     }
   }, [editor])
@@ -1110,6 +1149,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       {shapePanel && <ShapePanel editor={editor} mode={shapePanel} onClose={() => setShapePanel(null)} />}
       {showSymbols && <SymbolPanel editor={editor} onClose={() => setShowSymbols(false)} />}
       {showObjects && <ObjectPane editor={editor} onClose={() => setShowObjects(false)} />}
+      {showComments && <CommentPane editor={editor} onClose={() => setShowComments(false)} />}
       <Suspense fallback={<ModalSkeleton />}>
         {showAi && <AiHelper editor={editor} onClose={() => setShowAi(false)} />}
         {showSettings && <SettingsModal onClose={() => setShowSettings(false)} focusSection={settingsFocus} />}

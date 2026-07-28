@@ -18,6 +18,7 @@ import { CLIPART, SHAPES, WORDART } from '../lib/shapeLibrary'
 import { EMPHASIS_MARKS, OVERLAP_FRAMES } from '../extensions/TextObjects'
 import { currentDropCap, insertOverlap, insertRuby, selectedText, setDropCap, setEmphasis } from '../lib/textObjects'
 import { COVER_STYLES, insertBlankPage, insertCover, todayLabel } from '../lib/coverPage'
+import { addComment, gotoNextField, insertField } from '../lib/commentField'
 import {
   SHAPE_STYLES, applyShapeStyle, changeShape, currentShape, cycleTextDirection, cycleVAlign,
   flipShape, insertShape, moveShape, rotateShape, setShapeAlign, setShapeAttrs, setShapeFill,
@@ -916,6 +917,19 @@ export function Toolbar(p: ToolbarProps) {
         { label: '도형 넣기 (갤러리)', short: '도형', icon: 'box', onClick: () => run(() => window.dispatchEvent(new CustomEvent('jan-shape-dialog', { detail: { mode: 'insert' } }))) },
         { label: '아이콘 · 그리기마당', short: '아이콘', icon: 'star', onClick: () => run(() => window.dispatchEvent(new CustomEvent('jan-shape-dialog', { detail: { mode: 'insert' } }))) },
         { label: '글맵시 (WordArt)', short: '글맵시', icon: 'sparkle', onClick: () => run(() => { insertShape(editor, 'wordart', 'arch-up') }) },
+        { divider: '메모와 서식 칸', label: '' },
+        { label: '메모 달기 (고른 글에)', short: '메모', icon: 'quote', hint: 'Ctrl+Alt+M', onClick: () => run(async () => {
+          const text = (await askText('메모 — 이 자리에 남길 말', '')) || ''
+          if (text && addComment(editor, text)) window.dispatchEvent(new Event('jan-comment-pane'))
+        }) },
+        { label: '메모 목록 열기/닫기', short: '메모 목록', icon: 'menu', onClick: () => run(() => window.dispatchEvent(new Event('jan-comment-pane'))) },
+        { label: '누름틀 넣기 (서식 채우는 칸)', short: '누름틀', icon: 'box', onClick: () => run(async () => {
+          const guide = (await askText('안내문 — 빈칸에 뭘 쓸지 알려 주는 말', '이름을 쓴다')) || ''
+          if (!guide) return
+          const memo = (await askText('작성 지침 (없으면 비워 둔다)', '')) || ''
+          insertField(editor, guide, memo)
+        }) },
+        { label: '다음 누름틀로', short: '다음 칸', icon: 'chevron-down', onClick: () => run(() => { gotoNextField(editor) }) },
         { divider: '쪽', label: '' },
         ...COVER_STYLES.map((c): MenuItem => ({
           label: '표지: ' + c.label + ' — ' + c.hint, short: c.label, icon: 'page',

@@ -7097,3 +7097,31 @@ body.jan-split-dragging * { cursor: inherit !important; }
 .jan-objpane-row > button:not(:first-child) { flex: none; padding: 3px 6px; font-size: 11px; border-radius: 5px; cursor: pointer; }
 .jan-objpane-empty, .jan-objpane-hint { margin: 10px; font-size: 12px; color: var(--jan-text-dim, #5b6270); }
 .jan-objpane-hint { margin-top: auto; border-top: 1px solid var(--jan-border, #d8dce3); padding-top: 8px; }
+
+/* ── 메모(주석)와 누름틀 ────────────────────────────────────────── */
+.ProseMirror .jan-comment {
+  background: rgba(245, 158, 11, .22);
+  border-bottom: 2px solid rgba(217, 119, 6, .8);
+  cursor: help;
+}
+.ProseMirror .jan-comment.is-done { background: rgba(148, 163, 184, .18); border-bottom-color: rgba(100, 116, 139, .5); }
+
+/* 누름틀 — 아직 안 채운 자리는 붉은 기울임으로 눈에 띈다 (한글과 같다) */
+.ProseMirror .jan-field {
+  color: #c2410c;
+  font-style: italic;
+  background: rgba(249, 115, 22, .1);
+  border-radius: 3px;
+  padding: 0 3px;
+  cursor: pointer;
+}
+.ProseMirror .jan-field.is-filled { color: inherit; font-style: normal; background: rgba(59, 130, 246, .08); }
+.ProseMirror .jan-field.ProseMirror-selectednode { outline: 2px solid var(--jan-accent, #3b82f6); }
+
+.jan-cmtpane { top: 140px; width: 280px; }
+.jan-cmtpane-row { align-items: stretch; }
+.jan-cmtpane-row > button:first-child { flex-direction: column; align-items: flex-start; gap: 2px; }
+.jan-cmtpane-quote { font-size: 11px; color: var(--jan-text-dim, #5b6270); border-left: 2px solid rgba(217, 119, 6, .6); padding-left: 5px; }
+.jan-cmtpane-text { font-size: 13px; }
+.jan-cmtpane-meta { font-size: 11px; color: var(--jan-text-dim, #5b6270); }
+.jan-cmtpane-row.is-done .jan-cmtpane-text { text-decoration: line-through; opacity: .65; }
