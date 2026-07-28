@@ -183,6 +183,46 @@ test.describe('줄 단위 문단 분할', () => {
     expect(await page.locator('.jan-page-node').count()).toBeGreaterThan(1)
   })
 
+  test('쪽을 오가며 정리해도 내용이 불어나지 않는다', async ({ page }) => {
+    /* 넓은 표를 올렸다 내렸다 되풀이하던 시절, 그 왕복이 이어질수록 문서 뒷부분이
+       통째로 복제됐다 (같은 절이 네 벌까지 늘어났다). 정리가 끝난 뒤 표식이
+       정확히 한 번만 남아 있는지, 여러 번 건드려도 그대로인지 본다. */
+    await page.getByRole('tab', { name: '논문' }).click()
+    await page.getByRole('button', { name: /IEEE/ }).first().click()
+    await page.waitForTimeout(1200)
+    await page.locator('.jan-page-node').first().click()
+    await page.keyboard.press('Control+a')
+    await page.keyboard.press('Delete')
+    await page.evaluate(() => {
+      const pm = document.querySelector('.ProseMirror') as HTMLElement
+      pm.focus()
+      const row = (n: number) => '<tr>' + Array.from({ length: 5 }, (_, c) => `<td><p>칸 ${n}-${c}</p></td>`).join('') + '</tr>'
+      const wide = '<table><tbody>' + Array.from({ length: 8 }, (_, i) => row(i)).join('') + '</tbody></table>'
+      const filler = '<p>' + '쪽을 채우기 위한 긴 문장입니다. '.repeat(200) + '</p>'
+      const dt = new DataTransfer()
+      dt.setData('text/html', filler + wide + '<h2>고유표식절</h2><p>여기부터 끝까지가 복제되던 구간이다.</p>' + wide)
+      pm.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }))
+    })
+    await waitForReflow(page)
+
+    const count = () => page.evaluate(() => {
+      const text = (document.querySelector('.ProseMirror') as HTMLElement).innerText
+      return { marks: (text.match(/고유표식절/g) || []).length, tables: document.querySelectorAll('.ProseMirror table').length }
+    })
+    expect(await count()).toEqual({ marks: 1, tables: 2 })
+
+    // 여러 번 건드려 리플로우를 다시 돌려도 그대로여야 한다
+    // (쪽이 계속 다시 그려지는 중이라 클릭은 자리를 못 잡는다 — 편집기에 바로 초점을 준다)
+    for (let i = 0; i < 3; i++) {
+      await page.evaluate(() => (document.querySelector('.ProseMirror') as HTMLElement).focus())
+      await page.keyboard.press('Control+End')
+      await page.keyboard.type('가')
+      await page.keyboard.press('Backspace')
+      await waitForReflow(page)
+    }
+    expect(await count()).toEqual({ marks: 1, tables: 2 })
+  })
+
   test('표 캡션은 표와, 그림 캡션은 그림과 붙어 다닌다', async ({ page }) => {
     await page.evaluate(() => {
       const pm = document.querySelector('.ProseMirror') as HTMLElement
