@@ -38,12 +38,24 @@ async function savedHtml(page: import('@playwright/test').Page) {
   })
 }
 
-/** 리플로우가 멈출 때까지(쪽 배치가 연속 세 번 같을 때까지) 기다린다 */
+/** 리플로우가 멈출 때까지(쪽 배치가 연속 세 번 같을 때까지) 기다린다.
+ *  블록 수·높이만 보면 다단 조판에서 아직 한 판 더 남았는데도 같아 보이는 순간이 있어,
+ *  "아래 여백을 얼마나 넘었는가"까지 함께 본다. (넘친 채로 멈추면 그대로 검사에 걸린다) */
 async function waitForReflow(page: import('@playwright/test').Page) {
   const snapshot = () =>
     page.evaluate(() =>
       [...document.querySelectorAll('.jan-page-node')]
-        .map((p) => `${p.children.length}:${Math.round(p.getBoundingClientRect().height)}`)
+        .map((p) => {
+          const el = p as HTMLElement
+          const cs = getComputedStyle(el)
+          const r = el.getBoundingClientRect()
+          const limit = r.top + parseFloat(cs.paddingTop) + el.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom)
+          let over = 0
+          for (const child of Array.from(el.children)) {
+            for (const q of Array.from(child.getClientRects())) over = Math.max(over, q.bottom - limit)
+          }
+          return `${el.children.length}:${Math.round(r.height)}:${Math.round(over)}`
+        })
         .join(',')
     )
   let prev = ''
@@ -53,7 +65,7 @@ async function waitForReflow(page: import('@playwright/test').Page) {
     const now = await snapshot()
     stable = now === prev && now !== '' ? stable + 1 : 0
     prev = now
-    if (stable >= 2) return
+    if (stable >= 3) return
   }
 }
 
@@ -130,6 +142,45 @@ test.describe('줄 단위 문단 분할', () => {
     expect(m.count).toBeGreaterThan(1)
     // 용지가 늘어나 한 장에 다 담기는 방식이면 안 된다 — 규격 높이를 지킨다
     expect(Math.max(...m.heights) - Math.min(...m.heights)).toBeLessThan(4)
+  })
+
+  test('지면 전체 폭을 쓰는 넓은 표도 아래 여백을 넘지 않는다', async ({ page }) => {
+    // 단을 가로지르는 블록은 브라우저가 단을 더 만들지 않고 그냥 아래로 흘린다 —
+    // 길이 합으로만 재던 시절에는 표가 아래 여백을 뚫고 내려갔다.
+    await page.getByRole('tab', { name: '논문' }).click()
+    await page.getByRole('button', { name: /IEEE/ }).first().click()
+    await page.waitForTimeout(1200)
+    await page.locator('.jan-page-node').first().click()
+    await page.keyboard.press('Control+a')
+    await page.keyboard.press('Delete')
+    await page.evaluate(() => {
+      const pm = document.querySelector('.ProseMirror') as HTMLElement
+      pm.focus()
+      const row = (n: number) => '<tr>' + Array.from({ length: 5 }, (_, c) => `<td><p>칸 ${n}-${c}</p></td>`).join('') + '</tr>'
+      const wide = '<table><tbody>' + Array.from({ length: 8 }, (_, i) => row(i)).join('') + '</tbody></table>'
+      const filler = '<p>' + '쪽을 채우기 위한 긴 문장입니다. '.repeat(220) + '</p>'
+      const dt = new DataTransfer()
+      dt.setData('text/html', filler + wide + filler + wide)
+      pm.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }))
+    })
+    await waitForReflow(page)
+
+    const worst = await page.evaluate(() => {
+      let over = 0
+      document.querySelectorAll('.jan-page-node').forEach((p) => {
+        const el = p as HTMLElement
+        const cs = getComputedStyle(el)
+        const r = el.getBoundingClientRect()
+        const limit = r.top + parseFloat(cs.paddingTop) + el.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom)
+        for (const child of Array.from(el.children)) {
+          for (const q of Array.from(child.getClientRects())) over = Math.max(over, q.bottom - limit)
+        }
+      })
+      return Math.round(over)
+    })
+    // 여백 안쪽으로 들어와야 한다 (반올림 오차 2px 까지만 봐 준다)
+    expect(worst).toBeLessThanOrEqual(2)
+    expect(await page.locator('.jan-page-node').count()).toBeGreaterThan(1)
   })
 
   test('표 캡션은 표와, 그림 캡션은 그림과 붙어 다닌다', async ({ page }) => {

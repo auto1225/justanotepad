@@ -86,48 +86,78 @@ interface LineBox { top: number; bottom: number }
  * 줌(scale)도 여기서 함께 벗겨 내 모든 계산을 CSS 픽셀로 통일한다.
  */
 interface Flow {
-  /** 화면 좌표(top,left) → 흐름 좌표 (CSS 픽셀, 쪽 안쪽 위끝이 0) */
+  /** 화면 좌표(top,left) → 흐름 좌표 (CSS 픽셀, 그 블록이 놓인 밴드의 위끝이 0) */
   y: (top: number, left: number) => number
-  /** 이 쪽이 담을 수 있는 흐름 길이 = 안쪽 높이 × 단 수 */
-  capacity: number
   columns: number
   /** 화면 픽셀 → CSS 픽셀 배율 */
   scale: number
 }
 
-function pageFlow(el: HTMLElement, contentHeight: number): Flow {
+/** 쪽의 기하 — 단 나눔과 줌을 벗겨 낸 값들 (모든 길이는 CSS 픽셀) */
+interface PageGeom {
+  columns: number
+  scale: number
+  /** 화면 좌표 기준 안쪽 위끝·아래끝·왼끝 */
+  contentTop: number
+  contentBottom: number
+  contentLeft: number
+  /** 단 하나의 가로 간격 (화면 픽셀) */
+  step: number
+  contentHeight: number
+}
+
+function pageGeom(el: HTMLElement, contentHeight: number): PageGeom {
   const rect = el.getBoundingClientRect()
   const scale = el.offsetWidth > 0 ? rect.width / el.offsetWidth : 1
   const s = scale || 1
   const cs = window.getComputedStyle(el)
   const columns = Math.max(1, Math.round(Number(cs.columnCount)) || 1)
   const padTop = parseFloat(cs.paddingTop) || 0
-  const contentTop = rect.top + padTop * s
-  if (columns === 1) {
-    return { y: (top) => (top - contentTop) / s, capacity: contentHeight, columns, scale: s }
-  }
   const padLeft = parseFloat(cs.paddingLeft) || 0
   const padRight = parseFloat(cs.paddingRight) || 0
   const gap = parseFloat(cs.columnGap) || 0
   const innerW = el.offsetWidth - padLeft - padRight
   const colW = (innerW - gap * (columns - 1)) / columns
-  const step = (colW + gap) * s
-  const contentLeft = rect.left + padLeft * s
+  const contentTop = rect.top + padTop * s
   return {
-    // 단 번호는 왼끝 위치로 정한다. 단 k 는 [k*step, k*step+colW) 에 놓이므로 floor 로 정확히 갈린다
-    // (내어쓰기로 한두 픽셀 왼쪽으로 나간 줄까지 같은 단으로 보도록 1px 을 얹는다)
-    y: (top, left) => {
-      const idx = step > 0 ? Math.max(0, Math.floor((left - contentLeft + 1) / step)) : 0
-      return idx * contentHeight + (top - contentTop) / s
-    },
-    capacity: contentHeight * columns,
     columns,
     scale: s,
+    contentTop,
+    contentBottom: contentTop + contentHeight * s,
+    contentLeft: rect.left + padLeft * s,
+    step: (colW + gap) * s,
+    contentHeight,
+  }
+}
+
+/**
+ * 밴드 — 단이 흐르는 한 구간.
+ * 지면 전체 폭을 쓰는 블록(넓은 표·제목)이 끼면 그 위아래로 단 구간이 갈린다.
+ * 그 블록을 앞 단들과 같은 높이로 보면 "아직 자리가 남았다"고 잘못 재서
+ * 표가 아래 여백을 뚫고 내려간다 — 그래서 밴드마다 기준을 새로 잡는다.
+ */
+interface Band {
+  /** 이 밴드가 시작하기까지 이미 흘러간 길이 */
+  base: number
+  /** 밴드 꼭대기의 화면 y */
+  top: number
+  /** 이 밴드에서 단 하나가 담는 높이 */
+  height: number
+}
+
+/** 어떤 블록이 놓인 밴드를 기준으로 한 흐름 좌표 변환 */
+function bandFlow(geom: PageGeom, band: Band, spanning: boolean): Flow {
+  const colOf = (left: number) => (geom.step > 0 ? Math.max(0, Math.floor((left - geom.contentLeft + 1) / geom.step)) : 0)
+  return {
+    y: (top, left) =>
+      band.base + (spanning ? 0 : colOf(left) * band.height) + (top - band.top) / geom.scale,
+    columns: geom.columns,
+    scale: geom.scale,
   }
 }
 
 /** 1단·줌 없음 기준의 기본 흐름 (화면 좌표 그대로) */
-const SCREEN_FLOW: Flow = { y: (top) => top, capacity: 0, columns: 1, scale: 1 }
+const SCREEN_FLOW: Flow = { y: (top) => top, columns: 1, scale: 1 }
 
 /**
  * Range 가 돌려준 사각형들을 줄 단위로 묶는다.
@@ -254,47 +284,132 @@ interface PageMeasure {
   /** 자식별 흐름 시작·끝 (바깥 여백 포함) */
   starts: number[]
   ends: number[]
-  flow: Flow
+  /** 자식별 "아래 여백을 침범했는가" — 기하로 직접 본다 */
+  overflows: boolean[]
+  /** 자식별 "여기서부터 지면 바닥까지 남은 높이" (쪼갤 자리를 잴 때 쓴다) */
+  rooms: number[]
+  /** 자식별 "단을 가로지르는가" — 가로지르는 블록은 단 아래에 통째로 놓인다 */
+  spanning: boolean[]
+  anyOverflow: boolean
+  /** 마지막 밴드 기준으로 더 담을 수 있는 여유 (당겨오기 판단용) */
+  room: number
+  /** 자식 하나를 줄 단위로 잴 때 쓰는 좌표 변환 (그 블록이 놓인 밴드 기준) */
+  flowAt: (childIndex: number) => Flow
+  columns: number
+  scale: number
 }
 
 /**
- * 페이지 DOM 측정 — 자식마다 "흐름 좌표에서 어디부터 어디까지 차지하는가".
- * 1단이면 높이를 차례로 더한 값과 같고, 다단이면 단을 이어 붙인 좌표로 잰다.
- * 자식별 구간을 알아야 "넘치는 만큼"을 한 번에 옮길 수 있다.
+ * 페이지 DOM 측정.
+ *
+ * 넘침은 흐름 길이를 더해 짐작하지 않고 **기하로 직접** 본다 —
+ * 아래 여백선을 넘어간 조각이 있는가, 또는 마지막 단 바깥으로 밀려났는가.
+ * (지면 전체 폭을 쓰는 표가 끼면 브라우저는 단을 더 만들지 않고 그냥 아래로
+ *  흘려보내므로, 길이 합만으로는 "아직 자리가 있다"는 잘못된 답이 나온다.)
+ *
+ * 쪼갤 자리·당겨올 양을 재는 데에는 여전히 흐름 좌표를 쓴다 —
+ * 단을 아래로 이어 붙인 좌표라야 줄 순서가 맞는다.
  */
 function measure(view: EditorView, pagePos: number, contentHeight: number): PageMeasure | null {
   const dom = view.nodeDOM(pagePos)
   if (!(dom instanceof HTMLElement)) return null
-  const flow = pageFlow(dom, contentHeight)
+  const geom = pageGeom(dom, contentHeight)
   const starts: number[] = []
   const ends: number[] = []
+  const rooms: number[] = []
+  const overflows: boolean[] = []
+  const spanning: boolean[] = []
+  const bands: Array<{ band: Band; spanning: boolean }> = []
   let acc = 0
+
+  if (geom.columns === 1) {
+    const band: Band = { base: 0, top: geom.contentTop, height: contentHeight }
+    for (const child of Array.from(dom.children)) {
+      const el = child as HTMLElement
+      if (el.classList.contains('ProseMirror-widget')) continue
+      const style = window.getComputedStyle(el)
+      const marginY = (parseFloat(style.marginTop) || 0) + (parseFloat(style.marginBottom) || 0)
+      const h = el.getBoundingClientRect().height / geom.scale + marginY
+      starts.push(acc)
+      rooms.push(contentHeight - acc)
+      acc += h
+      ends.push(acc)
+      overflows.push(acc > contentHeight + 1)
+      spanning.push(false)
+      bands.push({ band, spanning: false })
+    }
+    const flow = bandFlow(geom, band, false)
+    return {
+      el: dom, used: acc, starts, ends, rooms, overflows, spanning,
+      anyOverflow: overflows.some(Boolean), room: contentHeight - acc,
+      flowAt: () => flow, columns: 1, scale: geom.scale,
+    }
+  }
+
+  const colOf = (left: number) => (geom.step > 0 ? Math.max(0, Math.floor((left - geom.contentLeft + 1) / geom.step)) : 0)
+  let band: Band = { base: 0, top: geom.contentTop, height: contentHeight }
   for (const child of Array.from(dom.children)) {
     const el = child as HTMLElement
-    // 데코레이션 위젯 등 문서 노드가 아닌 요소는 건너뛴다
     if (el.classList.contains('ProseMirror-widget')) continue
     const style = window.getComputedStyle(el)
     const marginTop = parseFloat(style.marginTop) || 0
     const marginBottom = parseFloat(style.marginBottom) || 0
-    if (flow.columns === 1) {
-      const h = el.getBoundingClientRect().height / flow.scale + marginTop + marginBottom
-      starts.push(acc)
-      acc += h
-      ends.push(acc)
+    const spans = style.columnSpan === 'all'
+    spanning.push(spans)
+    const rects = Array.from(el.getClientRects())
+    if (!rects.length) {
+      starts.push(acc); ends.push(acc); rooms.push(0); overflows.push(false); bands.push({ band, spanning: spans })
       continue
     }
-    // 다단에서는 한 블록이 단을 넘어 조각날 수 있다 — 조각들의 처음과 끝으로 구간을 잡는다
-    const rects = el.getClientRects()
-    if (!rects.length) { starts.push(acc); ends.push(acc); continue }
     const head = rects[0]
     const tail = rects[rects.length - 1]
+    // 아래 여백을 넘었거나, 마지막 단 밖으로 밀려났으면 넘친 것이다
+    const over = rects.some((r) => r.bottom > geom.contentBottom + 1 || colOf(r.left) >= geom.columns)
+    overflows.push(over)
+
+    if (spans) {
+      const spanBand: Band = { base: band.base + geom.columns * band.height, top: head.top, height: band.height }
+      const height = (tail.bottom - head.top) / geom.scale
+      const start = spanBand.base - marginTop
+      const end = spanBand.base + height + marginBottom
+      starts.push(start)
+      ends.push(end)
+      rooms.push((geom.contentBottom - head.top) / geom.scale)
+      bands.push({ band: spanBand, spanning: true })
+      acc = Math.max(acc, end)
+      // 이 블록 아래로 단이 다시 흐른다 — 밴드를 새로 연다
+      band = { base: end, top: tail.bottom, height: Math.max(0, (geom.contentBottom - tail.bottom) / geom.scale) }
+      continue
+    }
+
+    const flow = bandFlow(geom, band, false)
     const start = flow.y(head.top, head.left) - marginTop
-    const end = flow.y(tail.top, tail.left) + tail.height / flow.scale + marginBottom
+    const end = flow.y(tail.top, tail.left) + tail.height / geom.scale + marginBottom
     starts.push(start)
     ends.push(Math.max(end, start))
+    rooms.push(band.base + geom.columns * band.height - start)
+    bands.push({ band, spanning: false })
     acc = Math.max(acc, end)
   }
-  return { el: dom, used: acc, starts, ends, flow }
+
+  return {
+    el: dom,
+    used: acc,
+    starts,
+    ends,
+    rooms,
+    overflows,
+    spanning,
+    anyOverflow: overflows.some(Boolean),
+    // 마지막 밴드의 단 바닥까지가 아직 담을 수 있는 자리다
+    room: band.base + geom.columns * band.height - acc,
+    flowAt: (i) => {
+      const entry = bands[i] || { band, spanning: false }
+      return bandFlow(geom, entry.band, entry.spanning)
+    },
+    columns: geom.columns,
+    scale: geom.scale,
+  }
 }
 
 /** 페이지 노드들의 위치와 노드를 순서대로 수집 */
@@ -474,17 +589,15 @@ function reflowOnce(view: EditorView, contentHeight: number): boolean {
     const { pos, node } = pages[i]
     const m = measure(view, pos, contentHeight)
     if (!m || m.ends.length !== node.childCount) continue
-    const capacity = m.flow.capacity
-    if (m.used <= capacity + 1) continue
+    if (!m.anyOverflow) continue
 
-    // 용지가 담는 흐름 길이를 처음 넘기는 블록을 찾는다
+    // 아래 여백을 처음 침범하는 블록을 찾는다
     // (첫 블록이라도 경계에 걸리면 줄 단위 분할 대상이므로 c===0 도 포함한다)
-    let cutIndex = -1
-    for (let c = 0; c < node.childCount; c++) {
-      if (m.ends[c] > capacity) { cutIndex = c; break }
-    }
-    if (cutIndex < 0) continue
-    const acc = Math.max(0, m.starts[cutIndex])
+    const cutIndex0 = m.overflows.findIndex(Boolean)
+    if (cutIndex0 < 0) continue
+    let cutIndex = cutIndex0
+    // 그 블록의 머리부터 지면 바닥까지 남은 자리 — 여기까지만 채우고 나머지를 넘긴다
+    const roomForCut = m.rooms[cutIndex]
 
     // ── 줄 단위 분할 — 경계에 걸친 문단을 남는 자리만큼 채우고 그 줄에서 쪼갠 뒤,
     //    같은 트랜잭션에서 뒷조각부터 다음 쪽으로 넘긴다.
@@ -496,7 +609,7 @@ function reflowOnce(view: EditorView, contentHeight: number): boolean {
       for (let c = 0; c < cutIndex; c++) childOffset += node.child(c).nodeSize
       const child = node.child(cutIndex) // 경계에 걸친 블록
       // 텍스트 문단·제목만 쪼갠다 (표·이미지·콜아웃은 블록 단위로 옮긴다)
-      const splitAt = findSplitPos(view, pos + 1 + childOffset, child, capacity - acc, m.flow)
+      const splitAt = findSplitPos(view, pos + 1 + childOffset, child, roomForCut, m.flowAt(cutIndex))
       if (splitAt > 0) {
         const tr = state.tr
         // 쪼갠 뒷조각에 "이어짐" 표시를 처음부터 붙인다 (저장 시 원래 한 문단으로 합침)
@@ -519,7 +632,7 @@ function reflowOnce(view: EditorView, contentHeight: number): boolean {
     // 잘라낼 지점 앞이 거의 비어 있다면(큰 표·이미지가 남은 자리를 다 먹는 경우)
     // 그 블록까지 이 쪽에 두고 그 다음부터 넘긴다. 앞 쪽을 백지로 만들고 뒤로
     // 넘기는 것이 가장 나쁘고, 밀기를 아예 포기하면 문서 전체가 한 쪽에 쌓인다.
-    if (acc <= NEARLY_EMPTY) {
+    if (Math.max(0, m.starts[cutIndex0]) <= NEARLY_EMPTY) {
       if (cutIndex + 1 >= node.childCount) continue // 뒤에 밀 것이 없다 → 넘침 허용
       cutIndex += 1
     }
@@ -559,14 +672,18 @@ function reflowOnce(view: EditorView, contentHeight: number): boolean {
     const next = pages[i + 1]
     const first = next.node.firstChild
     if (!first || !first.isTextblock || first.content.size < 2) continue
+    // 단을 가로지르는 블록(넓은 표 캡션·제목)은 줄로 쪼개 올리면 자리 계산이 어긋난다
+    const nextFirstMeasure = measure(view, next.pos, contentHeight)
+    if (nextFirstMeasure?.spanning[0]) continue
     const m = measure(view, pos, contentHeight)
     if (!m) continue
-    const room = m.flow.capacity - m.used
+    const room = m.room
     if (room < MIN_SPLIT_ROOM) continue
     const fragPos = next.pos + 1
     const fragDom = view.nodeDOM(fragPos)
     if (!(fragDom instanceof HTMLElement)) continue
-    const nextFlow = measure(view, next.pos, contentHeight)?.flow || m.flow
+    const nextMeasure = measure(view, next.pos, contentHeight)
+    const nextFlow = nextMeasure ? nextMeasure.flowAt(0) : m.flowAt(0)
     const line = firstLineHeight(fragDom) / (nextFlow.scale || 1)
     // 한 줄도 못 올릴 여유면 그대로 둔다 (올렸다 도로 내리는 왕복 방지)
     if (!line || room < line + 1) continue
@@ -598,15 +715,29 @@ function reflowOnce(view: EditorView, contentHeight: number): boolean {
     const next = pages[i + 1]
     const nm = measure(view, next.pos, contentHeight)
     if (!m || !nm || nm.ends.length !== next.node.childCount) continue
-    let room = m.flow.capacity - m.used
+    let room = m.room
     if (room <= 2) continue
 
-    // 다음 쪽 앞에서 몇 블록이 들어가는지 센다
+    /* 다음 쪽 앞에서 몇 블록이 들어가는지 센다.
+       단을 가로지르는 블록은 남은 단 자리에 끼어들지 못하고 단 전체 아래에 놓인다 —
+       앞 내용이 단으로 고르게 나뉜 높이에 제 높이를 더해도 지면 안이어야 들어온다.
+       (이 조건을 빼면 표를 올렸다가 넘쳐서 도로 내리기를 끝없이 되풀이한다) */
     let take = 0
+    let flowAfter = m.used
     for (let c = 0; c < next.node.childCount; c++) {
       const h = nm.ends[c] - nm.starts[c]
-      if (h > room) break
-      room -= h
+      if (nm.spanning[c]) {
+        /* 단을 채우는 방식(column-fill:auto)에서는 앞 내용이 첫 단을 다 채우면
+           단 구간의 높이가 지면 끝까지 늘어난다 — 그 아래에 놓이는 가로지르는 블록은
+           들어갈 자리가 없다. 그래서 "앞 내용이 차지한 높이(한 단 기준) + 이 블록"이
+           지면 안이어야만 올린다. */
+        const bandUsed = Math.min(flowAfter, contentHeight)
+        if (bandUsed + h > contentHeight - 1) break
+      } else {
+        if (h > room) break
+        room -= h
+      }
+      flowAfter += h
       take++
     }
     // 제목·표 캡션만 끌어올리면 쪽 바닥에 홀로 남는다 — 뒤따르는 내용이 함께 오지 못하면 두고 온다
@@ -643,7 +774,7 @@ function markGrowPages(view: EditorView, contentHeight: number) {
   const marks: number[] = []
   collectPages(view.state.doc).forEach(({ pos }) => {
     const m = measure(view, pos, contentHeight)
-    if (m && m.used > m.flow.capacity + 1) marks.push(pos)
+    if (m && m.anyOverflow) marks.push(pos)
   })
   const cur = (growKey.getState(view.state) || []) as number[]
   if (cur.length === marks.length && cur.every((p, i) => p === marks[i])) return
@@ -725,6 +856,12 @@ export const PageReflow = Extension.create<ReflowOptions>({
              몇 초 만에 화면이 멈춘다. 게다가 예약이 passes 를 0 으로 되돌려
              최대 횟수 제한도 무력해진다. */
           let running = false
+          /* 한 판(=최대 maxPasses 번) 을 다 쓰고도 진행 중이면 화면에 한 프레임 양보하고 이어서 한다.
+             큰 문서를 통째로 붙여넣으면 블록 수만큼 옮겨야 해서 40번으로는 못 끝내는데,
+             거기서 손을 놓으면 마지막 표가 아래 여백을 뚫은 채로 남는다.
+             맴돌기(수렴 실패)는 changed 가 false 가 되어 스스로 멈추므로, 이어달리기 횟수만 묶어 둔다. */
+          let relays = 0
+          const MAX_RELAYS = 12
 
           const run = (view: EditorView) => {
             raf = 0
@@ -733,8 +870,11 @@ export const PageReflow = Extension.create<ReflowOptions>({
               const contentHeight = options.getContentHeight()
               if (!contentHeight || contentHeight < 40) return
               if (passes >= (options.maxPasses ?? 40)) {
-                // 여기까지 왔는데 안 끝나면 그만둔다 (다음 편집 때 다시 시도)
                 passes = 0
+                if (relays < MAX_RELAYS) {
+                  relays++
+                  raf = window.requestAnimationFrame(() => run(view))
+                }
                 return
               }
               passes++
@@ -743,6 +883,7 @@ export const PageReflow = Extension.create<ReflowOptions>({
                 raf = window.requestAnimationFrame(() => run(view))
               } else {
                 passes = 0
+                relays = 0
                 markGrowPages(view, contentHeight)
               }
             } finally {
@@ -755,6 +896,7 @@ export const PageReflow = Extension.create<ReflowOptions>({
           const schedule = (view: EditorView) => {
             if (raf || running) return // 이미 잡혀 있거나, 그 판 안에서 온 요청이다
             passes = 0
+            relays = 0
             raf = window.requestAnimationFrame(() => run(view))
           }
 
