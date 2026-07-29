@@ -15,10 +15,10 @@ const IDLE_BEFORE_RELOAD_MS = 20 * 1000
 
 export function registerV2ServiceWorker() {
   if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return
-  if (location.hostname === 'localhost' && location.protocol !== 'https:') {
-    // 로컬 개발 모드 — SW 비활성
-    return
-  }
+  /* 개발 서버(vite dev)에서만 끈다 — 고친 코드가 캐시에 갇히면 개발이 괴롭다.
+     빌드본은 localhost 에서도 켠다: 그래야 배포 전에 설치·파일 연결(.jan)을
+     그대로 시험해 볼 수 있다 (설치 조건에 서비스 워커가 들어간다) */
+  if (import.meta.env?.DEV) return
   window.addEventListener('load', () => {
     navigator.serviceWorker
       .register('/v2/sw-v2.js', { scope: '/v2/' })
