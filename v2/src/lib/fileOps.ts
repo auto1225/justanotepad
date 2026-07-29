@@ -18,18 +18,45 @@ const fsaWindow = (): FsaWindow => window as unknown as FsaWindow
 /** 사용자가 파일 선택창을 닫은 경우 — 오류가 아니라 취소다 */
 const isAbort = (e: unknown) => e instanceof DOMException && e.name === 'AbortError'
 
+/** 허락이 없어서 막힌 것인가 (자리·용량 문제와 구분해야 알맞게 안내한다) */
+const isPermissionError = (e: unknown) =>
+  e instanceof DOMException && (e.name === 'NotAllowedError' || e.name === 'SecurityError')
+
+/** 파일 손잡이에 쓰기 허락 받기 — 이미 있으면 묻지 않는다 */
+async function ensureWritePermission(handle: FileSystemFileHandle, mayAsk: boolean): Promise<boolean> {
+  const fs = handle as unknown as {
+    queryPermission?: (o: { mode: string }) => Promise<PermissionState>
+    requestPermission?: (o: { mode: string }) => Promise<PermissionState>
+  }
+  try {
+    if (typeof fs.queryPermission === 'function') {
+      const state = await fs.queryPermission({ mode: 'readwrite' })
+      if (state === 'granted') return true
+      if (state === 'denied' || !mayAsk) return false
+    }
+    if (typeof fs.requestPermission !== 'function') return true // 이 브라우저에는 없는 단계다 — 그냥 써 본다
+    return (await fs.requestPermission({ mode: 'readwrite' })) === 'granted'
+  } catch {
+    return true // 물어볼 수 없으면 실제 쓰기에서 판가름 난다
+  }
+}
+
 export interface SaveOptions {
   title?: string
   content: string
   handle?: FileSystemFileHandle | null
   /** 이 문서의 쪽 설정 — 파일 안에 함께 넣어 두면 다시 열 때 그대로 살아난다 */
   pageSettings?: unknown
+  /** 자동 저장처럼 사람이 누르지 않은 저장 — 창을 띄우거나 내려받기로 새지 않는다 */
+  silent?: boolean
 }
 
 export interface SaveResult {
   ok: boolean
   handle?: FileSystemFileHandle
   error?: string
+  /** 쓰기 허락이 없어서 못 썼다 — 부르는 쪽에서 「다른 이름」을 권할 수 있다 */
+  needsPermission?: boolean
 }
 
 export interface OpenFileResult {
@@ -41,16 +68,13 @@ export interface OpenFileResult {
 }
 
 export async function saveToFile(opts: SaveOptions): Promise<SaveResult> {
-  const { title = '새 메모', content, handle, pageSettings } = opts
-  // 그림은 janref: 대신 실제 그림 자료를 넣는다 — 안 그러면 파일을 열었을 때 그림이 깨진다
-  const body = await resolveBlobRefsInHtml(content)
-  const file = wrapHtml(title, body, pageSettings)
+  const { title = '새 메모', content, handle, pageSettings, silent = false } = opts
 
+  let targetHandle = handle ?? null
   if (typeof fsaWindow().showSaveFilePicker === 'function') {
-    /* 자리 고르기와 쓰기를 나눠서 다룬다.
-       예전에는 하나로 묶여 있어, 자리를 고른 뒤 쓰기가 어긋나면 0KB 파일을 남긴 채
-       내려받기 창이 한 번 더 떴다 — 사용자에게는 "저장이 두 번" 되는 것으로 보였다. */
-    let targetHandle = handle ?? null
+    /* 자리 고르기가 먼저다 — 그림을 실제 자료로 바꾸는 일(수백 KB)을 앞에 두면
+       그 사이에 "사용자가 방금 누름" 상태가 풀려 브라우저가 창을 막는다.
+       (Failed to execute 'createWritable' … not allowed … in the current context) */
     if (!targetHandle) {
       try {
         targetHandle = await fsaWindow().showSaveFilePicker!({
@@ -66,8 +90,16 @@ export async function saveToFile(opts: SaveOptions): Promise<SaveResult> {
         targetHandle = null
       }
     }
-    if (targetHandle) {
-      // 여기서부터는 사용자가 이미 자리를 골랐다 — 실패하면 창을 또 띄우지 않고 그대로 알린다
+  }
+
+  // 그림은 janref: 대신 실제 그림 자료를 넣는다 — 안 그러면 파일을 열었을 때 그림이 깨진다
+  const file = wrapHtml(title, await resolveBlobRefsInHtml(content), pageSettings)
+
+  if (targetHandle) {
+    /* 쓰기 허락을 먼저 확인한다 — 창을 새로 띄우지 않고 조용히 실패하는 가장 흔한 원인이다.
+       (탭을 다시 연 뒤나 자동 저장처럼 누른 직후가 아닐 때 허락이 풀려 있다) */
+    const permitted = await ensureWritePermission(targetHandle, !silent)
+    if (permitted) {
       try {
         const writable = await targetHandle.createWritable()
         await writable.write(file)
@@ -75,9 +107,13 @@ export async function saveToFile(opts: SaveOptions): Promise<SaveResult> {
         return { ok: true, handle: targetHandle }
       } catch (err) {
         if (isAbort(err)) return { ok: false, error: '취소됨' }
-        return { ok: false, error: errText(err) }
+        if (!isPermissionError(err)) return { ok: false, error: errText(err) }
+        console.warn('[fileOps] 쓰기 허락이 없어 내려받기로 대신한다:', err)
       }
     }
+    /* 여기까지 왔으면 그 자리에는 쓸 수 없다 —
+       자동 저장이면 조용히 넘기고(내려받기 폭탄 방지), 사람이 누른 저장이면 내려받기로 건넨다 */
+    if (silent) return { ok: false, error: '이 파일에 쓸 권한이 없다 — 「다른 이름」으로 다시 저장해라', needsPermission: true }
   }
 
   try {

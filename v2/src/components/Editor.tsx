@@ -908,7 +908,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       if (result.handle) setFileHandle(result.handle, currentId)
       if (currentId) pushActiveSnapshot(currentId).catch(() => {})
       trackEvent('save_file')
-      flash(result.handle ? '파일로 저장했습니다' : '파일을 다운로드했습니다')
+      flash(result.handle ? '파일로 저장했습니다' : '브라우저가 그 자리에 쓰는 것을 막아 내려받기로 저장했습니다')
       if (memo) dispatchWebhook({ type: 'memo-saved', memoId: memo.id, title: memo.title, charCount: editor.state.doc.textContent.length }).catch(() => {})
     } else if (result.error !== '취소됨') {
       flash('저장 실패: ' + result.error)

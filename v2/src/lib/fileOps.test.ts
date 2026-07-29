@@ -122,6 +122,55 @@ describe('파일 저장', () => {
     expect(result.ok).toBe(true)
   })
 
+  it('쓰기 허락이 없으면 내려받기로 건네준다 (사람이 누른 저장)', async () => {
+    const handle = {
+      queryPermission: async () => 'prompt' as PermissionState,
+      requestPermission: async () => 'denied' as PermissionState,
+      createWritable: async () => { throw new DOMException('nope', 'NotAllowedError') },
+    }
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+
+    const result = await saveToFile({ title: '보고서', content: '<p>본문</p>', handle: handle as unknown as FileSystemFileHandle })
+
+    expect(click).toHaveBeenCalledTimes(1)
+    expect(result.ok).toBe(true)
+  })
+
+  it('자동 저장은 허락이 없어도 내려받기로 새지 않는다', async () => {
+    const handle = {
+      queryPermission: async () => 'prompt' as PermissionState,
+      requestPermission: async () => 'granted' as PermissionState, // 조용한 저장에서는 묻지 않아야 한다
+      createWritable: async () => { throw new DOMException('nope', 'NotAllowedError') },
+    }
+    const asked = vi.spyOn(handle, 'requestPermission')
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+
+    const result = await saveToFile({
+      title: '보고서', content: '<p>본문</p>', silent: true,
+      handle: handle as unknown as FileSystemFileHandle,
+    })
+
+    expect(asked).not.toHaveBeenCalled()
+    expect(click).not.toHaveBeenCalled()
+    expect(result).toMatchObject({ ok: false, needsPermission: true })
+  })
+
+  it('허락이 이미 있으면 묻지 않고 그대로 쓴다', async () => {
+    let written = ''
+    const handle = {
+      queryPermission: async () => 'granted' as PermissionState,
+      requestPermission: async () => 'granted' as PermissionState,
+      createWritable: async () => ({ write: (t: string) => { written = t }, close: async () => {} }),
+    }
+    const asked = vi.spyOn(handle, 'requestPermission')
+
+    const result = await saveToFile({ title: '보고서', content: '<p>본문</p>', handle: handle as unknown as FileSystemFileHandle })
+
+    expect(asked).not.toHaveBeenCalled()
+    expect(result.ok).toBe(true)
+    expect(written).toContain('<p>본문</p>')
+  })
+
   it('저장한 내용에 쪽 설정이 함께 적힌다', async () => {
     let written = ''
     fsaSaveWindow().showSaveFilePicker = vi.fn(async () => ({

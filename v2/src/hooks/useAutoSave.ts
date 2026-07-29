@@ -7,6 +7,7 @@ import { useMemosStore } from '../store/memosStore'
 import { trackEvent } from '../lib/analytics'
 import { getSavableHtml } from '../extensions/PageDocument'
 import { pageSettingsFromUi, useUIStore } from '../store/uiStore'
+import { flash } from '../lib/flash'
 
 /**
  * Phase 10 — 자동 저장.
@@ -35,11 +36,17 @@ export function useAutoSave(editor: Editor | null, title: string) {
         const result = await saveToFile({
           title, content: html, handle: handleNow,
           pageSettings: pageSettingsFromUi(useUIStore.getState()),
+          silent: true, // 사람이 누른 저장이 아니다 — 창을 띄우거나 내려받기로 새면 안 된다
         })
         if (result.ok) {
           useDocStore.getState().setSavedAt(Date.now())
           if (currentId) pushActiveSnapshot(currentId).catch(() => {})
           trackEvent('autosave')
+        } else if (result.needsPermission) {
+          /* 그 파일에 더는 쓸 수 없다 (탭을 다시 연 뒤 허락이 풀린 경우다).
+             손잡이를 놓아 자동 저장이 조용히 헛돌지 않게 하고, 한 번만 알린다 */
+          useDocStore.getState().setFileHandle(null)
+          flash('파일 쓰기 허락이 풀려 자동 저장을 멈췄습니다 — Ctrl+S 로 다시 저장해 주세요')
         }
       }, DEBOUNCE_MS)
     }
