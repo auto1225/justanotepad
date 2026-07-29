@@ -38,6 +38,24 @@ function fsaWriteBlocked(): boolean {
   return fsaBlockedMemo
 }
 
+/**
+ * 이 환경에서 「자리를 골라 그 파일에 쓰기」가 될 법한가.
+ *
+ * 창 안의 창(iframe·내장 브라우저)에서는 브라우저가 쓰기를 막는다 —
+ * 그런 자리에서 파일 창을 띄우면 사용자는 창을 두 번 보고 한 번은 헛수고를 한다.
+ * 될 법하지 않으면 처음부터 내려받기로 저장한다 (설정을 만질 일이 없게).
+ */
+function fsaWriteUsable(): boolean {
+  if (typeof fsaWindow().showSaveFilePicker !== 'function') return false
+  if (fsaWriteBlocked()) return false
+  try {
+    if (window.self !== window.top) return false // 내장·삽입된 화면
+  } catch {
+    return false // 크로스 오리진이라 확인조차 막힌다 = 내장된 화면이다
+  }
+  return true
+}
+
 function markFsaWriteBlocked(): void {
   fsaBlockedMemo = true
   try { localStorage.setItem(FSA_BLOCKED_KEY, '1') } catch { /* 저장소가 막혀 있어도 이 세션 동안은 기억한다 */ }
@@ -98,7 +116,7 @@ export async function saveToFile(opts: SaveOptions): Promise<SaveResult> {
   const { title = '새 메모', content, handle, pageSettings, silent = false } = opts
 
   let targetHandle = handle ?? null
-  if (typeof fsaWindow().showSaveFilePicker === 'function' && !(!targetHandle && fsaWriteBlocked())) {
+  if (targetHandle || fsaWriteUsable()) {
     /* 자리 고르기가 먼저다 — 그림을 실제 자료로 바꾸는 일(수백 KB)을 앞에 두면
        그 사이에 "사용자가 방금 누름" 상태가 풀려 브라우저가 창을 막는다.
        (Failed to execute 'createWritable' … not allowed … in the current context) */

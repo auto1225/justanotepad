@@ -98,6 +98,20 @@ describe('파일 저장', () => {
     allowFsaWriteAgain()
   })
 
+  it('내장된 화면(iframe)에서는 헛되이 파일 창을 띄우지 않고 곧장 내려받는다', async () => {
+    const picker = vi.fn(async () => ({ createWritable: async () => ({ write: () => {}, close: async () => {} }) }))
+    fsaSaveWindow().showSaveFilePicker = picker
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    const top = vi.spyOn(window, 'top', 'get').mockReturnValue({} as Window)
+
+    const result = await saveToFile({ title: '보고서', content: '<p>본문</p>' })
+
+    expect(picker).not.toHaveBeenCalled()
+    expect(click).toHaveBeenCalledTimes(1)
+    expect(result.ok).toBe(true)
+    top.mockRestore()
+  })
+
   it('그 환경이 파일 쓰기를 막으면, 다음 저장부터는 창을 한 번만 띄운다', async () => {
     const picker = vi.fn(async () => ({
       createWritable: async () => { throw new DOMException('platform', 'NotAllowedError') },

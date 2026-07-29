@@ -908,10 +908,14 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       if (result.handle) setFileHandle(result.handle, currentId)
       if (currentId) pushActiveSnapshot(currentId).catch(() => {})
       trackEvent('save_file')
-      flash(result.handle ? '파일로 저장했습니다' : '브라우저가 그 자리에 쓰는 것을 막아 내려받기로 저장했습니다')
+      flash(result.handle ? '파일로 저장했습니다' : '다운로드 폴더에 저장했습니다')
       if (memo) dispatchWebhook({ type: 'memo-saved', memoId: memo.id, title: memo.title, charCount: editor.state.doc.textContent.length }).catch(() => {})
     } else if (result.error !== '취소됨') {
-      flash('저장 실패: ' + result.error)
+      // 브라우저가 뱉는 영어 예외를 그대로 보여 주지 않는다 — 무엇을 하면 되는지만 말한다
+      flash(/quota|storage/i.test(result.error || '')
+        ? '저장 공간이 부족합니다 — 자리를 비우고 다시 저장해 주세요'
+        : '저장하지 못했습니다 — 「다른 이름」으로 다시 저장해 주세요')
+      console.warn('[저장 실패]', result.error)
     }
   }
 
