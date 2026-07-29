@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { allowFsaWriteAgain, openFile, readPageSettings, saveToFile, wrapHtml } from './fileOps'
+import { unpackJan } from './janFormat'
 
 /** 테스트에서 File System Access API 를 갈아끼우기 위한 창 타입 */
 const fsaTestWindow = () => window as unknown as { showOpenFilePicker?: unknown }
@@ -98,6 +99,41 @@ describe('파일 저장', () => {
     allowFsaWriteAgain()
   })
 
+  it('기본 저장 형식은 우리 문서 형식(.jan) 이다', async () => {
+    let written: Blob | string = ''
+    const handle = {
+      name: '보고서.jan',
+      queryPermission: async () => 'granted' as PermissionState,
+      createWritable: async () => ({ write: (t: Blob | string) => { written = t }, close: async () => {} }),
+    }
+
+    const result = await saveToFile({
+      title: '보고서', content: '<p>본문</p>', pageSettings: { pageColumnCount: 2 },
+      handle: handle as unknown as FileSystemFileHandle,
+    })
+
+    expect(result.ok).toBe(true)
+    expect(written).toBeInstanceOf(Blob)
+    const back = await unpackJan(await (written as Blob).arrayBuffer())
+    expect(back.title).toBe('보고서')
+    expect(back.html).toContain('<p>본문</p>')
+    expect(back.pageSettings).toEqual({ pageColumnCount: 2 })
+  })
+
+  it('.html 로 저장해 둔 문서는 계속 .html 로 저장한다', async () => {
+    let written: Blob | string = ''
+    const handle = {
+      name: '보고서.html',
+      queryPermission: async () => 'granted' as PermissionState,
+      createWritable: async () => ({ write: (t: Blob | string) => { written = t }, close: async () => {} }),
+    }
+
+    await saveToFile({ title: '보고서', content: '<p>본문</p>', handle: handle as unknown as FileSystemFileHandle })
+
+    expect(typeof written).toBe('string')
+    expect(written as string).toContain('<p>본문</p>')
+  })
+
   it('그냥 「저장」은 파일 창을 띄우지 않고 바로 저장한다', async () => {
     const picker = vi.fn(async () => ({ createWritable: async () => ({ write: () => {}, close: async () => {} }) }))
     fsaSaveWindow().showSaveFilePicker = picker
@@ -117,13 +153,13 @@ describe('파일 저장', () => {
     fsaSaveWindow().showSaveFilePicker = picker
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
 
-    const saved = await saveToFile({ title: '보고서', content: '<p>본문</p>', pick: true })
+    const saved = await saveToFile({ title: '보고서', content: '<p>본문</p>', pick: true, format: 'html' })
     expect(picker).toHaveBeenCalledTimes(1)
     expect(saved.handle).toBeTruthy()
     expect(written).toContain('<p>본문</p>')
 
     // 손잡이를 잃어버린 뒤(탭을 다시 연 경우)에도, 된다는 것을 아는 환경이면 창을 띄워 이어 간다
-    const again = await saveToFile({ title: '보고서', content: '<p>둘째</p>' })
+    const again = await saveToFile({ title: '보고서', content: '<p>둘째</p>', format: 'html' })
     expect(picker).toHaveBeenCalledTimes(2)
     expect(again.ok).toBe(true)
     expect(click).not.toHaveBeenCalled()
@@ -229,7 +265,10 @@ describe('파일 저장', () => {
     }
     const asked = vi.spyOn(handle, 'requestPermission')
 
-    const result = await saveToFile({ title: '보고서', content: '<p>본문</p>', handle: handle as unknown as FileSystemFileHandle })
+    const result = await saveToFile({
+      title: '보고서', content: '<p>본문</p>', format: 'html',
+      handle: handle as unknown as FileSystemFileHandle,
+    })
 
     expect(asked).not.toHaveBeenCalled()
     expect(result.ok).toBe(true)
@@ -245,7 +284,10 @@ describe('파일 저장', () => {
       }),
     }))
 
-    const result = await saveToFile({ title: '보고서', content: '<p>본문</p>', pick: true, pageSettings: { pageColumnCount: 2 } })
+    const result = await saveToFile({
+      title: '보고서', content: '<p>본문</p>', pick: true, format: 'html',
+      pageSettings: { pageColumnCount: 2 },
+    })
 
     expect(result.ok).toBe(true)
     expect(readPageSettings(written)).toEqual({ pageColumnCount: 2 })

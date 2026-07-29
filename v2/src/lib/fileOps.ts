@@ -1,6 +1,7 @@
 import { errText } from './errText'
 import { DOC_EXPORT_CSS } from './docCss'
 import { resolveBlobRefsInHtml } from './blobRefs'
+import { JAN_EXT, JAN_MIME, isJanName, packJan, unpackJan } from './janFormat'
 
 
 /** File System Access API — lib.dom 에 아직 없어 쓰는 만큼만 타입을 둔다 */
@@ -121,7 +122,12 @@ export interface SaveOptions {
   silent?: boolean
   /** 「다른 이름」처럼 사용자가 저장 자리를 고르겠다고 분명히 시킨 저장 */
   pick?: boolean
+  /** 저장 형식 — 기본은 우리 문서 형식(.jan). 손잡이가 있으면 그 파일의 확장자를 따른다 */
+  format?: DocFormat
 }
+
+/** 우리 문서 형식(.jan) 과, 다른 프로그램과 주고받는 한 장짜리 HTML */
+export type DocFormat = 'jan' | 'html'
 
 export interface SaveResult {
   ok: boolean
@@ -141,6 +147,8 @@ export interface OpenFileResult {
 
 export async function saveToFile(opts: SaveOptions): Promise<SaveResult> {
   const { title = '새 메모', content, handle, pageSettings, silent = false, pick = false } = opts
+  // 이미 어떤 파일에 매여 있으면 그 파일의 형식을 따른다 (.html 로 저장해 둔 문서를 .jan 으로 바꿔치지 않는다)
+  let format: DocFormat = opts.format ?? (handle?.name && !isJanName(handle.name) ? 'html' : 'jan')
 
   let targetHandle = handle ?? null
   let justPicked = false // 이번에 창을 띄워 고른 자리인가 (막힘의 원인을 가리는 데 쓴다)
@@ -151,13 +159,15 @@ export async function saveToFile(opts: SaveOptions): Promise<SaveResult> {
     if (!targetHandle) {
       try {
         targetHandle = await fsaWindow().showSaveFilePicker!({
-          suggestedName: `${title}.html`,
-          types: [{
-            description: 'HTML 문서',
-            accept: { 'text/html': ['.html', '.htm'] },
-          }],
+          suggestedName: `${title}${format === 'html' ? '.html' : JAN_EXT}`,
+          types: [
+            { description: 'JustANotepad 문서', accept: { [JAN_MIME]: [JAN_EXT] } },
+            { description: 'HTML 문서 (다른 프로그램과 주고받기)', accept: { 'text/html': ['.html', '.htm'] } },
+          ],
         })
         justPicked = true
+        // 사용자가 창에서 고른 확장자가 곧 형식이다
+        if (targetHandle?.name) format = isJanName(targetHandle.name) ? 'jan' : 'html'
       } catch (err) {
         if (isAbort(err)) return { ok: false, error: '취소됨' }
         console.warn('[fileOps] 저장 위치 고르기 실패, 내려받기로 대신한다:', err)
@@ -166,8 +176,11 @@ export async function saveToFile(opts: SaveOptions): Promise<SaveResult> {
     }
   }
 
-  // 그림은 janref: 대신 실제 그림 자료를 넣는다 — 안 그러면 파일을 열었을 때 그림이 깨진다
-  const file = wrapHtml(title, await resolveBlobRefsInHtml(content), pageSettings)
+  /* 우리 형식은 그림을 따로 담은 묶음(zip), HTML 은 그림을 본문에 넣은 한 장.
+     어느 쪽이든 그림이 살아 있어야 한다 — janref: 를 실제 자료로 되돌린다. */
+  const file: Blob | string = format === 'jan'
+    ? await packJan({ title, html: content, pageSettings, savedAt: Date.now() })
+    : wrapHtml(title, await resolveBlobRefsInHtml(content), pageSettings)
 
   if (targetHandle) {
     /* 쓰기 허락을 먼저 확인한다 — 창을 새로 띄우지 않고 조용히 실패하는 가장 흔한 원인이다.
@@ -199,11 +212,11 @@ export async function saveToFile(opts: SaveOptions): Promise<SaveResult> {
   }
 
   try {
-    const blob = new Blob([file], { type: 'text/html' })
+    const blob = typeof file === 'string' ? new Blob([file], { type: 'text/html' }) : file
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `${title}.html`
+    a.download = `${title}${format === 'html' ? '.html' : JAN_EXT}`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
@@ -219,8 +232,8 @@ export async function openFile(): Promise<OpenFileResult | null> {
     try {
       const [handle] = await fsaWindow().showOpenFilePicker!({
         types: [{
-          description: 'HTML 문서',
-          accept: { 'text/html': ['.html', '.htm'] },
+          description: '문서 파일',
+          accept: { [JAN_MIME]: [JAN_EXT], 'text/html': ['.html', '.htm'] },
         }],
         multiple: false,
       })
@@ -239,7 +252,7 @@ function openFileWithInput(): Promise<OpenFileResult | null> {
   return new Promise((resolve, reject) => {
     const input = document.createElement('input')
     input.type = 'file'
-    input.accept = 'text/html,.html,.htm'
+    input.accept = `${JAN_EXT},text/html,.html,.htm`
     input.style.position = 'fixed'
     input.style.left = '-9999px'
 
@@ -283,10 +296,24 @@ function openFileWithInput(): Promise<OpenFileResult | null> {
 }
 
 async function readOpenedFile(file: File, handle?: FileSystemFileHandle | null): Promise<OpenFileResult> {
+  const nameTitle = file.name.replace(/\.(jan|html|htm)$/i, '')
+  // 우리 형식은 묶음(zip)이다 — 이름이나 파일 첫머리(PK)로 알아본다
+  if (isJanName(file.name) || await looksLikeZip(file)) {
+    const doc = await unpackJan(await file.arrayBuffer())
+    return { content: doc.html, handle, title: doc.title || nameTitle, pageSettings: doc.pageSettings }
+  }
   const text = await file.text()
-  const title = file.name.replace(/\.(html|htm)$/i, '')
-  const content = extractBody(text)
-  return { content, handle, title, pageSettings: readPageSettings(text) }
+  return { content: extractBody(text), handle, title: nameTitle, pageSettings: readPageSettings(text) }
+}
+
+/** 파일 첫 두 글자가 PK 면 zip 묶음이다 (확장자를 바꿔 두었어도 알아본다) */
+async function looksLikeZip(file: Blob): Promise<boolean> {
+  try {
+    const head = new Uint8Array(await file.slice(0, 2).arrayBuffer())
+    return head[0] === 0x50 && head[1] === 0x4b
+  } catch {
+    return false
+  }
 }
 
 /** 파일에 적힌 쪽 설정 — 없으면 undefined (부르는 쪽에서 기본 판형을 쓴다) */
