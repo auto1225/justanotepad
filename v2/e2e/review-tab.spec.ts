@@ -94,7 +94,7 @@ test.describe('검수 탭', () => {
     await expect(editor.locator('ins.jan-ins')).toHaveCount(1)
 
     // 모두 적용 → 지운 글은 없어지고 넣은 글은 보통 글이 된다
-    await page.locator('button[aria-label="이 변경 적용"]').first().click()
+    await page.locator('button[aria-label="이 변경 적용"] .jan-ribbon-caret').first().click()
     await page.locator('.jan-ribbon-dropdown button.jan-menu-item', { hasText: '모두 적용' }).click()
     await expect(editor.locator('del.jan-del')).toHaveCount(0)
     await expect(editor.locator('ins.jan-ins')).toHaveCount(0)
@@ -111,7 +111,7 @@ test.describe('검수 탭', () => {
     for (let i = 0; i < 4; i++) await page.keyboard.press('Backspace')
     await page.keyboard.type('있다')
 
-    await page.locator('button[aria-label="이 변경 되돌림"]').first().click()
+    await page.locator('button[aria-label="이 변경 되돌림"] .jan-ribbon-caret').first().click()
     await page.locator('.jan-ribbon-dropdown button.jan-menu-item', { hasText: '모두 되돌림' }).click()
     await expect(editor.locator('del.jan-del')).toHaveCount(0)
     await expect(editor.locator('ins.jan-ins')).toHaveCount(0)
@@ -145,7 +145,7 @@ test.describe('검수 탭', () => {
     for (let i = 0; i < 4; i++) await page.keyboard.press('Backspace')
     await expect(editor.locator('del.jan-del')).toHaveCount(1)
 
-    await page.locator('button[aria-label^="표시 방식"]').first().click()
+    await page.locator('button[aria-label^="표시 방식"] .jan-ribbon-caret').first().click()
     const menu = page.locator('.jan-ribbon-dropdown')
     await expect(menu).toBeVisible()
     await menu.locator('button.jan-menu-item', { hasText: '고친 뒤 모습' }).click()
@@ -153,7 +153,7 @@ test.describe('검수 탭', () => {
     await expect(page.locator('html')).toHaveAttribute('data-jan-track', 'final')
 
     // 다시 「모든 수정 내용」 으로 돌리면 지운 글이 보인다
-    await page.locator('button[aria-label^="표시 방식"]').first().click()
+    await page.locator('button[aria-label^="표시 방식"] .jan-ribbon-caret').first().click()
     await page.locator('.jan-ribbon-dropdown button.jan-menu-item', { hasText: '모든 수정 내용' }).click()
     await expect(editor.locator('del.jan-del').first()).toBeVisible()
   })

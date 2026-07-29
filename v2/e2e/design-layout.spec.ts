@@ -95,7 +95,7 @@ test.describe('레이아웃 탭', () => {
     await ready(page)
     await tab(page, '레이아웃')
     const caps = await page.locator('.jan-ribbon-group .jan-ribbon-cap').allInnerTexts()
-    expect(caps.slice(0, 4)).toEqual(['페이지 설정', '원고지', '단락', '정렬'])
+    expect(caps.slice(0, 4)).toEqual(['페이지 설정', '원고지', '문단 간격', '정렬'])
   })
 
   test('줄 번호를 켜면 문단마다 번호가 붙는다', async ({ page }) => {

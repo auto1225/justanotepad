@@ -45,7 +45,7 @@ test.describe('자료 탭', () => {
   test('묶음이 워드 「참조」 와 같은 차례로 나뉜다', async ({ page }) => {
     await ready(page)
     const caps = await page.locator('.jan-ribbon-group .jan-ribbon-cap').allInnerTexts()
-    expect(caps.slice(0, 6)).toEqual(['목차', '각주 · 미주', '인용 · 참고 문헌', '캡션', '색인', '근거 목차'])
+    expect(caps.slice(0, 6)).toEqual(['목차', '각주 · 미주', '인용 · 참고 문헌', '캡션 · 참조', '색인 · 근거', '학술 양식'])
   })
 
   test('목차는 제목에서 만들어지고, 제목이 바뀌면 그 자리에서 새로 만들어진다', async ({ page }) => {
@@ -85,7 +85,8 @@ test.describe('자료 탭', () => {
     await answer(page, '주차')
     await expect(page.locator('.ProseMirror [data-index]')).toHaveCount(1)
 
-    await page.locator('button[aria-label^="색인 넣기"]').first().click()
+    await page.locator('button[aria-label^="색인 항목 표시"] .jan-ribbon-caret').first().click()
+    await page.locator('.jan-ribbon-dropdown button.jan-menu-item', { hasText: '색인 넣기' }).click()
     const rows = page.locator('.ProseMirror [data-jan-field="index"]')
     await expect(rows).toHaveCount(2)
     await expect(rows.nth(1)).toContainText('주차')
@@ -124,7 +125,8 @@ test.describe('자료 탭', () => {
     await answer(page, '법령')
     await expect(page.locator('.ProseMirror [data-authority]')).toHaveCount(1)
 
-    await page.locator('button[aria-label^="근거 목차"]').first().click()
+    await page.locator('button[aria-label^="근거 표시"] .jan-ribbon-caret').first().click()
+    await page.locator('.jan-ribbon-dropdown button.jan-menu-item', { hasText: '근거 목차 넣기' }).click()
     const rows = page.locator('.ProseMirror [data-jan-field="auth"]')
     await expect(rows.first()).toContainText('근거 목차')
     await expect(rows.filter({ hasText: '주차장법 제6조' })).toHaveCount(1)

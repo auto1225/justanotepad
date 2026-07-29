@@ -71,10 +71,14 @@ function popoverSpot(el: HTMLElement | null): { left: number; top: number } | nu
 function useCloseOnScroll(open: boolean, close: () => void) {
   useEffect(() => {
     if (!open) return
-    window.addEventListener('scroll', close, true)
+    /* 열자마자 들어오는 스크롤은 「단추를 화면 안으로 끌어온 것」 이라 닫을 까닭이 아니다 —
+       ▾ 를 누른 순간 리본이 조금 밀리면서 차림표가 곧바로 닫혀 버리는 일이 있었다 */
+    const opened = performance.now()
+    const onScroll = () => { if (performance.now() - opened > 250) close() }
+    window.addEventListener('scroll', onScroll, true)
     window.addEventListener('resize', close)
     return () => {
-      window.removeEventListener('scroll', close, true)
+      window.removeEventListener('scroll', onScroll, true)
       window.removeEventListener('resize', close)
     }
   }, [open, close])
@@ -215,7 +219,22 @@ function DropButton({ item, caption }: { item: RibbonItem; caption: string }) {
         type="button"
         onMouseDown={(e) => e.preventDefault()}
         className={'jan-ribbon-btn jan-ribbon-split' + (open ? ' is-open' : '')}
-        onClick={() => { if (item.onClick) item.onClick(); setSpot(popoverSpot(btnRef.current)); setOpen((v) => !v) }}
+        /* 워드처럼 두 자리로 나뉜 단추 — 몸통은 대표 명령, 오른쪽 ▾ 는 차림표.
+           예전에는 한 번 누르면 명령이 돌고 차림표까지 열려, 쓸 때마다 열린 차림표를 닫아야 했다. */
+        onClick={(e) => {
+          const onCaret = !!(e.target as HTMLElement).closest?.('.jan-ribbon-caret')
+          if (item.onClick && !onCaret) { item.onClick(); return }
+          setSpot(popoverSpot(btnRef.current))
+          setOpen((v) => !v)
+        }}
+        /* 키보드로도 차림표를 열 수 있어야 한다 — ↓ 또는 Alt+↓ (콤보 상자와 같은 자리) */
+        onKeyDown={(e) => {
+          if (e.key !== 'ArrowDown' || open) return
+          e.preventDefault()
+          e.stopPropagation()
+          setSpot(popoverSpot(btnRef.current))
+          setOpen(true)
+        }}
         title={item.hint ? `${item.label} (${item.hint})` : item.label}
         aria-label={item.label}
         aria-haspopup="menu"
@@ -225,7 +244,12 @@ function DropButton({ item, caption }: { item: RibbonItem; caption: string }) {
         data-help-group={caption || undefined}
       >
         <Icon name={item.icon || 'file-text'} size={18} />
-        <span>{shortLabel(item)} <Icon name="chevron-down" size={9} /></span>
+        <span>
+          {shortLabel(item)}
+          <span className="jan-ribbon-caret" role="presentation" title={`${item.label} — 더보기 (↓)`}>
+            <Icon name="chevron-down" size={9} />
+          </span>
+        </span>
       </button>
       {open && spot && createPortal(
         <div

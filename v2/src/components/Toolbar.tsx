@@ -152,20 +152,6 @@ interface ToolbarProps {
   onTrash: () => void
 }
 
-/** useHeadingAnchors 의 slug 규칙과 동일해야 목차 앵커가 실제 제목 id 와 일치한다 */
-function headingSlug(text: string): string {
-  return (
-    text
-      .normalize('NFKD')
-      .replace(/[̀-ͯ]/g, '')
-      .replace(/[^\wÀ-￿\s-]/g, '')
-      .trim()
-      .replace(/\s+/g, '-')
-      .toLowerCase()
-      .slice(0, 60) || 'h'
-  )
-}
-
 const SYMBOL_GROUPS: Array<{ label: string; chars: string[] }> = [
   { label: '문장 부호', chars: ['—', '–', '…', '·', '•', '◦', '¶', '§', '©', '®', '™', '「', '」', '『', '』', '《', '》'] },
   { label: '도형 · 화살표', chars: ['★', '☆', '◆', '◇', '■', '□', '▲', '▼', '→', '←', '↑', '↓', '⇒', '⇐', '↔', '✓', '✗'] },
@@ -447,21 +433,6 @@ export function Toolbar(p: ToolbarProps) {
     else editor.chain().focus().setLink({ href: /^(https?:|mailto:|#)/i.test(url) ? url : 'https://' + url }).run()
     setShowLinkPop(false)
   }
-  const insertToc = () => {
-    const items: Array<{ level: number; text: string }> = []
-    editor.state.doc.descendants((node) => {
-      if (node.type.name === 'heading' && node.textContent.trim()) {
-        items.push({ level: (node.attrs.level as number) || 1, text: node.textContent.trim() })
-      }
-    })
-    if (!items.length) { flash('목차를 만들 제목(H1~H3)이 없습니다'); return }
-    const escapeText = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    const html = '<p><strong>목차</strong></p>' + items.map((i) =>
-      `<p data-indent="${Math.min(8, i.level - 1)}"><a href="#${headingSlug(i.text)}">${escapeText(i.text)}</a></p>`
-    ).join('') + '<p></p>'
-    insertHTML(html)
-    flash(`제목 ${items.length}개로 목차를 만들었습니다`)
-  }
   const insertHr = () => editor.chain().focus().setHorizontalRule().run()
 
   /* === 자료 탭 (워드 「참조」) === */
@@ -635,10 +606,6 @@ export function Toolbar(p: ToolbarProps) {
     // div 도 class 도 스키마에 없어 통째로 벗겨진다 — 문단이 이미 허용하는 data-paper-block 을 쓴다
     if (ref) insertHTML(`<p data-paper-block="ref">${escHtml(ref)}</p>`)
   }
-  const cyclePageColumns = () => {
-    const current = ui.pageColumnCount || 1
-    ui.setPageColumnCount(current === 1 ? 2 : current === 2 ? 3 : 1)
-  }
 
   /* === 논문 — 표준 양식·수식 번호·캡션·상호참조 === */
   const applyFormat = (key: string) => {
@@ -647,14 +614,6 @@ export function Toolbar(p: ToolbarProps) {
   const eqNumbered = async () => {
     const latex = await askText('번호 수식 (LaTeX):', '', { placeholder: 'E = mc^2' })
     if (latex) { insertNumberedEquation(editor, latex); flash('번호 수식 삽입 — 참조는 "수식 참조"로') }
-  }
-  const figCaption = async () => {
-    const text = await askText('그림 캡션 설명:', '', { placeholder: '시스템 구성도' })
-    if (text) insertFigureCaption(editor, text)
-  }
-  const tabCaption = async () => {
-    const text = await askText('표 캡션 설명:', '', { placeholder: '실험 결과 비교' })
-    if (text) insertTableCaption(editor, text)
   }
   const crossRef = async (refType: 'eq' | 'fig' | 'tab') => {
     const label = refType === 'eq' ? '수식' : refType === 'fig' ? '그림' : '표'
@@ -675,11 +634,6 @@ export function Toolbar(p: ToolbarProps) {
     if (latex) insertNumberedEquation(editor, latex)
   }
   const runPaperLint = () => showLintReport(lintPaper(editor))
-  const exportLatex = () => {
-    const memoTitle = useMemosStore.getState().current()?.title || 'paper'
-    downloadLatex(getSavableHtml(editor), memoTitle)
-    flash('LaTeX(.tex) 내보내기 — Overleaf 에서 바로 열 수 있습니다')
-  }
   const setRunningHeader = async () => {
     const header = await askText('머리글 ({page}/{total} 사용 가능):', ui.runningHeader)
     if (header === null) return
@@ -695,7 +649,7 @@ export function Toolbar(p: ToolbarProps) {
   const currentPaperLabel = PAPER_STYLES.find((style) => style.value === ui.paperStyle)?.label.replace(' (기본)', '') || '줄노트'
   const pageColumnLabel = `${ui.pageColumnCount || 1}단`
   const pageMarginLabel = pageMarginsSummary(ui.pageMarginsMm, ui.pageMarginMm)
-  const viewLayoutLabel = ui.viewLayout === 'draft' ? '초안 레이아웃' : '인쇄 레이아웃'
+  const viewLayoutLabel = ui.viewLayout === 'draft' ? '초안 모양' : '인쇄 모양'
   const openPageSettings = () => p.onPageSettings()
 
   /* === 책갈피 / 텍스트 상자 / 구분선 스타일 === */
@@ -876,14 +830,6 @@ export function Toolbar(p: ToolbarProps) {
       rec.addEventListener('stop', () => overlay.remove())
     } catch (e) { flash('마이크 접근 실패: ' + errText(e), 2600) }
   }
-  const meetingNote = () => {
-    insertHTML(`
-<h3>회의 노트 — ${new Date().toLocaleString('ko-KR')}</h3>
-<p><strong>참석자:</strong> </p>
-<p><strong>안건:</strong> </p>
-<p><strong>결정사항:</strong> </p>
-<p><strong>액션 아이템:</strong> </p>`)
-  }
   const aiImageStub = async () => {
     const prompt = await askText('AI 이미지 프롬프트 (Pollinations 무료 생성):', '오브젝트의 단순한 라인아트')
     if (!prompt) return
@@ -960,7 +906,11 @@ export function Toolbar(p: ToolbarProps) {
   const exportHwpx = async () => { try { await downloadHwpx(getSavableHtml(editor), memoTitle()) } catch (e) { flash('HWPX 실패: ' + errText(e), 2600) } }
   const exportMd = () => { try { downloadMd(getSavableHtml(editor), memoTitle()) } catch (e) { flash('MD 실패: ' + errText(e), 2600) } }
   const exportPdf = async () => { try { await exportToPdf(getSavableHtml(editor), memoTitle()) } catch (e) { flash('PDF 실패: ' + errText(e), 2600) } }
-  const exportTex = () => { try { downloadLatex(getSavableHtml(editor), memoTitle()) } catch (e) { flash('LaTeX 실패: ' + errText(e), 2600) } }
+  /** LaTeX 내보내기 — Overleaf 에서 바로 열린다 (예전에 논문 탭에 따로 있던 것을 하나로 합쳤다) */
+  const exportTex = () => {
+    try { downloadLatex(getSavableHtml(editor), memoTitle()); flash('LaTeX(.tex) 내보내기 — Overleaf 에서 바로 열 수 있습니다') }
+    catch (e) { flash('LaTeX 실패: ' + errText(e), 2600) }
+  }
   /** 원클릭 전체 내보내기 — MD·HTML·LaTeX·HWPX·DOC 를 한 번에 (브라우저 다중 다운로드 차단 회피를 위해 순차 실행) */
   const exportAll = async () => {
     const title = memoTitle()
@@ -1046,81 +996,15 @@ export function Toolbar(p: ToolbarProps) {
    * 8 카테고리 메뉴
    * ============================================================ */
   const rawGroups: MenuGroup[] = [
-    /* 1. 논문 */
-    {
-      label: '논문', items: [
-        { label: '논문 인용 관리 패널 (DOI 자동)', icon: 'file-text', onClick: () => run(p.onPaper) },
-        { label: '변환 되돌리기', hint: 'Ctrl+Z', icon: 'undo', onClick: () => run(() => editor.chain().focus().undo().run()) },
-        { divider: '표준 양식 (글로벌)', label: '' },
-        ...PAPER_FORMATS.map((f) => ({
-          label: f.label,
-          icon: 'file-text' as const,
-          onClick: () => run(() => applyFormat(f.key)),
-        })),
-        { divider: '수식 · 그림 · 표', label: '' },
-        { label: '수식 스튜디오 (전 분야 기호·공식)', icon: 'hash', onClick: () => run(() => setMathStudio({ initial: '' })) },
-        { label: '번호 수식 삽입 (n)', icon: 'hash', onClick: () => run(() => { void eqNumbered() }) },
-        { label: '수식 템플릿 (분수·적분·행렬·화학식...)', icon: 'hash', onClick: () => run(() => { void eqFromTemplate() }) },
-        { label: '그림 캡션 (Fig. n)', icon: 'image', onClick: () => run(() => { void figCaption() }) },
-        { label: '표 캡션 (Table n)', icon: 'table', onClick: () => run(() => { void tabCaption() }) },
-        { label: '수식 참조 삽입', icon: 'link', onClick: () => run(() => { void crossRef('eq') }) },
-        { label: '그림 참조 삽입', icon: 'link', onClick: () => run(() => { void crossRef('fig') }) },
-        { label: '표 참조 삽입', icon: 'link', onClick: () => run(() => { void crossRef('tab') }) },
-        { divider: '논문 구성 요소', label: '' },
-        { label: '저자 · 소속 · 교신 블록', icon: 'user', onClick: () => run(insertAuthorBlock) },
-        { label: 'Abstract 박스', icon: 'file-text', onClick: () => run(insertAbstract) },
-        { label: 'Keywords 블록', icon: 'hash', onClick: () => run(insertKeywords) },
-        { label: '목차 삽입 (제목 기반)', icon: 'list-numbered', onClick: () => run(insertToc) },
-        { short: '개요', label: '문서 개요 패널', icon: 'list-bullet', onClick: () => run(p.onToggleOutline) },
-        { label: 'Acknowledgments (감사의 말)', icon: 'heart', onClick: () => run(insertAcknowledgments) },
-        { label: 'CRediT 저자 기여도', icon: 'user', onClick: () => run(() => insertCreditBlock(editor)) },
-        { label: '이해상충 선언 (COI)', icon: 'shield', onClick: () => run(() => insertCoiBlock(editor)) },
-        { label: 'Data Availability', icon: 'download', onClick: () => run(() => insertDataAvailabilityBlock(editor)) },
-        { label: '그림 목록 (List of Figures)', icon: 'image', onClick: () => run(() => insertListOfFigures(editor)) },
-        { label: '표 목록 (List of Tables)', icon: 'table', onClick: () => run(() => insertListOfTables(editor)) },
-        { label: '약어 목록 자동 추출', icon: 'hash', onClick: () => run(() => insertAcronymList(editor)) },
-        { divider: '레이아웃', label: '' },
-        { short: '단', label: `다단 레이아웃: ${pageColumnLabel}`, icon: 'columns', onClick: () => run(cyclePageColumns) },
-        { label: '페이지 구분 삽입', hint: 'Ctrl+Enter', icon: 'page-break', onClick: () => run(insertPageBreak) },
-        { short: '머리말', label: '러닝 헤더 · 꼬리말 설정', icon: 'pin', onClick: () => run(setRunningHeader) },
-        { divider: '참조 & 인용', label: '' },
-        { label: '각주 삽입', icon: 'sup', onClick: () => run(insertFootnote) },
-        { label: '인용 삽입', icon: 'quote', onClick: () => run(insertCitation) },
-        { label: '참고문헌 항목 추가', icon: 'file-text', onClick: () => run(insertReference) },
-        { label: '번호 재정렬 (각주·수식·그림·표·참조)', icon: 'hash', onClick: () => run(renumberAll) },
-        { divider: '논문 도구', label: '' },
-        { label: '논문 검사 (제출 전 자동 점검)', icon: 'shield', onClick: () => run(runPaperLint) },
-        { label: 'LaTeX(.tex) 내보내기 — Overleaf 용', icon: 'download', onClick: () => run(exportLatex) },
-        { label: '템플릿 (학술 논문)', icon: 'file-text', onClick: () => run(p.onTemplates) },
-        { label: '내 도구 / 역할 팩', icon: 'briefcase', onClick: () => run(p.onRoles) },
-      ],
-    },
 
     /* 2. 서식 */
     {
       label: '서식', items: [
-        { divider: '클립보드', label: '' },
-        {
-          label: '붙여넣기', short: '붙여넣기', icon: 'cards', hint: 'Ctrl+V',
-          onClick: () => run(() => { pasteAs(editor, 'keep') }),
-          menu: [
-            { label: '원본 서식 유지', icon: 'cards', onClick: () => run(() => { pasteAs(editor, 'keep') }) },
-            { label: '서식 병합 (지금 문단에 맞춤)', icon: 'cards', onClick: () => run(() => { pasteAs(editor, 'merge') }) },
-            { label: '텍스트만 유지', icon: 'file-text', onClick: () => run(() => { pasteAs(editor, 'text') }) },
-            { label: '표로 붙여넣기 (CSV·엑셀)', icon: 'table', onClick: () => run(() => { void insertTableFromCsv() }) },
-          ],
-        },
-        { label: '잘라내기', short: '잘라내기', icon: 'page-break', hint: 'Ctrl+X', small: true, onClick: () => run(() => document.execCommand('cut')) },
-        { label: '복사', short: '복사', icon: 'cards', hint: 'Ctrl+C', small: true, onClick: () => run(() => document.execCommand('copy')) },
-        { label: '서식 복사', short: '서식 복사', icon: 'paint', hint: 'Ctrl+Shift+C', small: true, onClick: () => run(() => window.dispatchEvent(new Event('jan-format-copy'))) },
-        { label: '서식 붙여넣기', short: '서식 붙임', icon: 'paint', hint: 'Ctrl+Shift+V', small: true, onClick: () => run(() => window.dispatchEvent(new Event('jan-format-paste'))) },
-
+        /* 늘 보이는 서식 줄(굵게·기울임·색·맞춤·목록·들여쓰기)과 겹치는 단추는 두지 않는다.
+           여기 남는 것은 「종류를 고르는 것」 과 「창을 여는 것」 — 리본을 접어도 기본 서식은 줄에 있다. */
         { divider: '글꼴', label: '' },
-        { label: '굵게', short: '굵게', hint: 'Ctrl+B', icon: 'bold', onClick: () => run(() => editor.chain().focus().toggleBold().run()) },
-        { label: '기울임', short: '기울임', hint: 'Ctrl+I', icon: 'italic', onClick: () => run(() => editor.chain().focus().toggleItalic().run()) },
         {
-          label: '밑줄', short: '밑줄', hint: 'Ctrl+U', icon: 'underline',
-          onClick: () => run(() => editor.chain().focus().toggleUnderline().run()),
+          label: '밑줄 모양 고르기', short: '밑줄 모양', icon: 'underline',
           menu: [
             ...UNDERLINE_STYLES.map((u): MenuItem => ({
               label: u.label, icon: 'underline', onClick: () => run(() => { setUnderlineStyle(editor, u.key) }),
@@ -1131,9 +1015,6 @@ export function Toolbar(p: ToolbarProps) {
             { label: '밑줄 없애기', icon: 'close', onClick: () => run(() => { setUnderlineStyle(editor, null) }) },
           ],
         },
-        { label: '취소선', short: '취소선', icon: 'strike', onClick: () => run(() => editor.chain().focus().toggleStrike().run()) },
-        { label: '글자 크기 한 단계 크게', short: '크게', icon: 'zoom-in', small: true, onClick: () => run(() => stepFontSize(1)) },
-        { label: '글자 크기 한 단계 작게', short: '작게', icon: 'zoom-out', small: true, onClick: () => run(() => stepFontSize(-1)) },
         {
           label: '대/소문자 바꾸기', short: '대소문자', icon: 'h1',
           menu: [
@@ -1145,11 +1026,13 @@ export function Toolbar(p: ToolbarProps) {
           ],
         },
         {
-          label: '글꼴 색', short: '글자 색', icon: 'palette',
+          /* 서식 줄의 글자색 단추는 빠른 색 몇 가지, 이쪽은 워드의 색판 전체(테마 색 60 + 표준 색) —
+             같은 일이지만 고르는 폭이 달라 둘 다 둔다. 이름으로 그 차이를 알린다. */
+          label: '글자 색 자세히 (테마 색 · 표준 색)', short: '글자 색', icon: 'palette',
           panel: () => <ColorPalette noneLabel="자동 (검정)" noneValue="#000000" onPick={(c) => { editor.chain().focus().setColor(c || '#000000').run() }} />,
         },
         {
-          label: '텍스트 강조 색', short: '형광펜', icon: 'highlight',
+          label: '형광펜 색 자세히 (테마 색 · 표준 색)', short: '형광 색', icon: 'highlight',
           panel: () => <ColorPalette noneLabel="강조 없음" onPick={(c) => {
             if (c) editor.chain().focus().toggleHighlight({ color: c }).run()
             else editor.chain().focus().unsetHighlight().run()
@@ -1163,55 +1046,36 @@ export function Toolbar(p: ToolbarProps) {
           label: '문자 테두리', short: '문자 테두리', icon: 'box',
           panel: () => <ColorPalette noneLabel="테두리 없음" onPick={(c) => { setCharBorder(editor, c) }} />,
         },
-        { label: '위 첨자', short: '위 첨자', icon: 'sup', small: true, onClick: () => run(() => editor.chain().focus().toggleSuperscript().run()) },
-        { label: '아래 첨자', short: '아래 첨자', icon: 'sup', small: true, onClick: () => run(() => editor.chain().focus().toggleSubscript().run()) },
-        { label: '모든 서식 지우기', short: '서식 지우기', icon: 'close', small: true, onClick: () => run(() => editor.chain().focus().unsetAllMarks().clearNodes().run()) },
-        { label: '글자 효과 (그림자·외곽선)', short: '글자 효과', icon: 'sparkle', small: true, onClick: () => run(setTextEffect) },
-        { label: '글자 모양 창 (자간·장평·효과)', short: '글자 모양', icon: 'settings', small: true, onClick: () => run(p.onTypo) },
+        { label: '글자 효과 (그림자·외곽선)', short: '글자 효과', icon: 'sparkle', onClick: () => run(setTextEffect) },
+        { label: '글자 모양 창 (자간·장평·효과)', short: '글자 모양', icon: 'settings', onClick: () => run(p.onTypo) },
 
         { divider: '단락', label: '' },
         {
-          label: '글머리 기호', short: '글머리', icon: 'list-bullet',
-          onClick: () => run(() => editor.chain().focus().toggleBulletList().run()),
+          /* 켜고 끄기는 서식 줄에 있다 — 여기서는 「어떤 모양으로」 를 고른다 */
+          label: '글머리 모양 고르기', short: '글머리 모양', icon: 'list-bullet',
           menu: BULLET_MARKS.map((b): MenuItem => ({
             label: b.label, icon: 'list-bullet', onClick: () => run(() => { setBulletStyle(editor, b.key) }),
           })),
         },
         {
-          label: '번호 매기기', short: '번호', icon: 'list-numbered',
-          onClick: () => run(() => editor.chain().focus().toggleOrderedList().run()),
+          label: '번호 모양 고르기', short: '번호 모양', icon: 'list-numbered',
           menu: NUMBER_MARKS.map((n): MenuItem => ({
             label: n.label, icon: 'list-numbered', onClick: () => run(() => { setNumberStyle(editor, n.key) }),
           })),
         },
-        { label: '체크리스트', short: '체크', icon: 'list-check', small: true, onClick: () => run(() => editor.chain().focus().toggleList('taskList', 'taskItem').run()) },
-        { label: '들여쓰기', short: '들여쓰기', icon: 'chevron-right', small: true, onClick: () => run(() => editor.chain().focus().indentParagraph().run()) },
-        { label: '내어쓰기', short: '내어쓰기', icon: 'chevron-left', small: true, onClick: () => run(() => editor.chain().focus().outdentParagraph().run()) },
         {
-          label: '맞춤', short: '맞춤',
-          grid: {
-            cols: 4,
-            items: [
-              { label: '왼쪽 맞춤 (Ctrl+L)', icon: 'align-left', onClick: () => run(() => editor.chain().focus().setTextAlign('left').run()) },
-              { label: '가운데 맞춤 (Ctrl+E)', icon: 'align-center', onClick: () => run(() => editor.chain().focus().setTextAlign('center').run()) },
-              { label: '오른쪽 맞춤 (Ctrl+R)', icon: 'align-right', onClick: () => run(() => editor.chain().focus().setTextAlign('right').run()) },
-              { label: '양쪽 맞춤 (Ctrl+J)', icon: 'align-justify', onClick: () => run(() => editor.chain().focus().setTextAlign('justify').run()) },
-            ],
-          },
-        },
-        {
-          label: '줄 간격', short: '줄 간격', icon: 'paragraph',
+          label: '줄 간격 · 문단 공백', short: '줄 간격', icon: 'paragraph',
           menu: [
             ...LINE_SPACINGS.map((v): MenuItem => ({
-              label: `${v.toFixed(2).replace(/\.00$/, '.0')}`, icon: 'paragraph',
+              label: `줄 간격 ${v.toFixed(2).replace(/\.00$/, '.0')}`, icon: 'paragraph',
               onClick: () => run(() => { setLineSpacing(editor, v) }),
             })),
-            { divider: '단락 공백', label: '' },
-            { label: '단락 앞에 공백 추가', icon: 'chevron-up', onClick: () => run(() => { setParagraphSpace(editor, 'before', 12) }) },
-            { label: '단락 앞 공백 제거', icon: 'close', onClick: () => run(() => { setParagraphSpace(editor, 'before', null) }) },
-            { label: '단락 뒤에 공백 추가', icon: 'chevron-down', onClick: () => run(() => { setParagraphSpace(editor, 'after', 12) }) },
-            { label: '단락 뒤 공백 제거', icon: 'close', onClick: () => run(() => { setParagraphSpace(editor, 'after', null) }) },
-            { label: '줄 간격 옵션... (문단 모양 창)', icon: 'settings', onClick: () => run(p.onTypo) },
+            { divider: '문단 공백', label: '' },
+            { label: '문단 앞에 공백 넣기', icon: 'chevron-up', onClick: () => run(() => { setParagraphSpace(editor, 'before', 12) }) },
+            { label: '문단 앞 공백 없애기', icon: 'close', onClick: () => run(() => { setParagraphSpace(editor, 'before', null) }) },
+            { label: '문단 뒤에 공백 넣기', icon: 'chevron-down', onClick: () => run(() => { setParagraphSpace(editor, 'after', 12) }) },
+            { label: '문단 뒤 공백 없애기', icon: 'close', onClick: () => run(() => { setParagraphSpace(editor, 'after', null) }) },
+            { label: '문단 모양 창 열기', icon: 'settings', onClick: () => run(p.onTypo) },
           ],
         },
         {
@@ -1224,9 +1088,7 @@ export function Toolbar(p: ToolbarProps) {
             label: b.label, icon: 'box', onClick: () => run(() => { setParagraphBorder(editor, b.key) }),
           })),
         },
-        { label: '가나다순 정렬 (표에서)', short: '정렬', icon: 'list-numbered', small: true, onClick: () => run(() => { sortTableByCurrentColumn(editor, 'asc') }) },
-        { label: '엔터 표시(¶) 켬/끔', short: '¶', icon: 'paragraph', small: true, onClick: () => run(togglePilcrow) },
-        { label: '첫 줄 들여쓰기 토글', short: '첫 줄 토글', icon: 'chevron-right', small: true, onClick: () => run(toggleFirstLineIndent) },
+        { label: '이 문단 첫 줄 들여쓰기 켬/끔', short: '첫 줄', icon: 'chevron-right', onClick: () => run(toggleFirstLineIndent) },
 
         { divider: '스타일', label: '' },
         { label: '제목 1', short: '제목 1', icon: 'h1', onClick: () => run(() => editor.chain().focus().toggleHeading({ level: 1 }).run()) },
@@ -1245,7 +1107,7 @@ export function Toolbar(p: ToolbarProps) {
             { label: '약한 강조 (이탤릭)', icon: 'italic', onClick: () => run(() => editor.chain().focus().setItalic().run()) },
             { label: '강조 (굵게)', icon: 'bold', onClick: () => run(() => editor.chain().focus().setBold().run()) },
             { label: '강한 강조 (굵은 이탤릭)', icon: 'bold', onClick: () => run(() => editor.chain().focus().setBold().setItalic().run()) },
-            { label: '인용', icon: 'quote', onClick: () => run(() => editor.chain().focus().toggleBlockquote().run()) },
+            { label: '인용 스타일 (블록 인용)', icon: 'quote', onClick: () => run(() => editor.chain().focus().toggleBlockquote().run()) },
             { label: '강한 인용 (음영 인용)', icon: 'quote', onClick: () => run(() => { editor.chain().focus().toggleBlockquote().run(); setParagraphShading(editor, '#f2f4f7') }) },
             { label: '약한 참조 (작은 회색)', icon: 'sup', onClick: () => run(() => editor.chain().focus().setColor('#8a8f98').setMark('textStyle', { fontSize: '9pt' }).run()) },
             { label: '강한 참조 (작은 굵은 강조색)', icon: 'sup', onClick: () => run(() => editor.chain().focus().setBold().setColor('#D97757').setMark('textStyle', { fontSize: '9pt' }).run()) },
@@ -1253,32 +1115,35 @@ export function Toolbar(p: ToolbarProps) {
             { label: '목록 단락 (들여쓴 문단)', icon: 'list-bullet', onClick: () => run(() => editor.chain().focus().indentParagraph().run()) },
           ],
         },
-        { label: '현재 서식을 내 스타일로 저장', short: '스타일 저장', icon: 'star', small: true, onClick: () => run(async () => {
-          const name = await askText('스타일 이름', '내 스타일')
-          if (name) saveCurrentAsStyle(editor, name)
-        }) },
-        { label: '내 스타일 적용 / 관리', short: '내 스타일', icon: 'star-on', small: true, onClick: () => run(() => showMyStylesPicker(editor)) },
-        { label: '문서 스타일', short: '문서 스타일', icon: 'palette', onClick: () => run(p.onTypo) },
-
-        { divider: '편집', label: '' },
-        { label: '찾기', short: '찾기', icon: 'search', hint: 'Ctrl+F', onClick: () => run(p.onFind) },
-        { label: '바꾸기', short: '바꾸기', icon: 'replace', hint: 'Ctrl+H', onClick: () => run(p.onFind) },
         {
-          label: '선택', short: '선택', icon: 'cmd',
+          label: '내 스타일 적용 / 관리', short: '내 스타일', icon: 'star-on',
+          onClick: () => run(() => showMyStylesPicker(editor)),
           menu: [
-            { label: '모두 선택', hint: 'Ctrl+A', icon: 'check', onClick: () => run(() => { selectAll(editor) }) },
-            { label: '비슷한 서식의 텍스트 선택', icon: 'sparkle', onClick: () => run(() => { selectSimilarFormatting(editor) }) },
-            { label: '개체 선택 (그림·도형 목록)', hint: 'Alt+F10', icon: 'menu', onClick: () => run(() => window.dispatchEvent(new Event('jan-object-pane'))) },
+            { label: '지금 서식을 내 스타일로 저장', short: '스타일 저장', icon: 'star', onClick: () => run(async () => {
+              const name = await askText('스타일 이름', '내 스타일')
+              if (name) saveCurrentAsStyle(editor, name)
+            }) },
           ],
         },
 
-        { divider: '한국어 타이포', label: '' },
-        { label: '문서 기본 자간', short: '기본 자간', icon: 'paragraph', small: true, onClick: () => run(() => { void setDocLetterSpacing() }) },
-        { label: '문서 기본 장평', short: '기본 장평', icon: 'paragraph', small: true, onClick: () => run(() => { void setDocCharScale() }) },
-        { label: '첫 줄 들여쓰기 (문서 기본)', short: '첫 줄', icon: 'chevron-right', small: true, onClick: () => run(() => { void setDocTextIndent() }) },
-        { label: '문서 기본 양쪽 정렬 켬/끔', short: '기본 양쪽', icon: 'align-justify', small: true, onClick: () => run(toggleDocJustify) },
-        { label: '단락 간격', short: '단락 간격', icon: 'paragraph', small: true, onClick: () => run(setParagraphSpacing) },
-        { label: '강조 배경 상자', short: '강조 상자', icon: 'box', small: true, onClick: () => run(insertHighlightBox) },
+        { divider: '문서 기본값', label: '' },
+        {
+          label: '문서 기본 글자', short: '기본 글자', icon: 'paragraph',
+          onClick: () => run(() => { void setDocLetterSpacing() }),
+          menu: [
+            { label: '문서 기본 장평', short: '장평', icon: 'paragraph', onClick: () => run(() => { void setDocCharScale() }) },
+            { label: '문서 기본 양쪽 정렬 켬/끔', short: '양쪽 정렬', icon: 'align-justify', onClick: () => run(toggleDocJustify) },
+          ],
+        },
+        {
+          label: '문서 기본 문단', short: '기본 문단', icon: 'paragraph',
+          onClick: () => run(setParagraphSpacing),
+          menu: [
+            { label: '문서 기본 첫 줄 들여쓰기', short: '첫 줄', icon: 'chevron-right', onClick: () => run(() => { void setDocTextIndent() }) },
+            { label: '강조 배경 상자 넣기', short: '강조 상자', icon: 'box', onClick: () => run(insertHighlightBox) },
+          ],
+        },
+        { label: '문서 스타일 창 열기', short: '문서 스타일', icon: 'palette', onClick: () => run(p.onTypo) },
       ],
     },
 
@@ -1309,7 +1174,6 @@ export function Toolbar(p: ToolbarProps) {
           short: '표', label: '표 삽입 (격자에서 크기 고르기)', icon: 'table',
           onClick: () => run(() => { void insertTable() }),
           menu: [
-            { short: '격자로', label: '표 삽입 (격자에서 크기 고르기)', icon: 'table', onClick: () => run(() => { void insertTable() }) },
             { short: '표 붙이기', label: '표로 붙여넣기 (CSV·엑셀 데이터)', icon: 'table', onClick: () => run(() => { void insertTableFromCsv() }) },
             { short: '표→차트', label: '표를 차트로 만들기', icon: 'chart', onClick: () => run(() => { void chartFromTable() }) },
           ],
@@ -1320,7 +1184,6 @@ export function Toolbar(p: ToolbarProps) {
           short: '그림', label: '그림 넣기 (파일에서)', icon: 'image',
           onClick: () => run(uploadImage),
           menu: [
-            { short: '파일에서', label: '그림 넣기 (파일에서)', icon: 'image', onClick: () => run(uploadImage) },
             { short: '인터넷 주소', label: '그림 넣기 (인터넷 주소로)', icon: 'globe', onClick: () => run(insertImageURL) },
             { short: '스크린샷', label: '화면 캡쳐해서 넣기', icon: 'preview', onClick: () => run(captureScreen) },
             { short: '갤러리', label: '문서 안 그림 모아 보기', icon: 'image', onClick: () => run(openGallery) },
@@ -1332,9 +1195,6 @@ export function Toolbar(p: ToolbarProps) {
           menu: [
             { short: '도형 갤러리', label: '도형 넣기 (갤러리)', icon: 'box', onClick: () => run(() => window.dispatchEvent(new CustomEvent('jan-shape-dialog', { detail: { mode: 'insert' } }))) },
             { short: '아이콘', label: '아이콘 · 그리기마당', icon: 'star', onClick: () => run(() => window.dispatchEvent(new CustomEvent('jan-shape-dialog', { detail: { mode: 'insert' } }))) },
-            { short: '글맵시', label: '글맵시 (WordArt)', icon: 'sparkle', onClick: () => run(() => { insertShape(editor, 'wordart', 'arch-up') }) },
-            { short: '글상자', label: '글상자 (텍스트 상자)', icon: 'box', onClick: () => run(() => { insertShape(editor, 'textbox', 'rect') }) },
-            { short: '세로 글상자', label: '세로쓰기 글상자', icon: 'box', onClick: () => run(() => { insertShape(editor, 'textbox', 'rect', { textDir: 'vertical', width: 140, height: 260 }) }) },
           ],
         },
         { short: '3D 모델', label: '3D 모델 (GLB·STL·OBJ — 끌어서 돌려 본다)', icon: 'cube', onClick: () => run(() => { void insert3dModel() }) },
@@ -1343,7 +1203,6 @@ export function Toolbar(p: ToolbarProps) {
           short: '차트', label: '차트 (막대·꺾은선·원·방사형 등 9가지)', icon: 'chart',
           onClick: () => run(openChart),
           menu: [
-            { short: '차트 만들기', label: '차트 (막대·꺾은선·원·방사형 등 9가지)', icon: 'chart', onClick: () => run(openChart) },
             { short: '표→차트', label: '표를 차트로 만들기', icon: 'chart', onClick: () => run(() => { void chartFromTable() }) },
             { short: '다이어그램', label: '다이어그램 (Mermaid)', icon: 'hash', onClick: () => run(async () => { const c = await askText('Mermaid 다이어그램:', 'graph TD\n  A-->B', { multiline: true }); if (c) editor.chain().focus().setMermaid(c).run() }) },
           ],
@@ -1369,35 +1228,14 @@ export function Toolbar(p: ToolbarProps) {
         { divider: '링크', label: '' },
         { short: '링크', label: '링크', hint: 'Ctrl+K', icon: 'link', onClick: () => run(toggleLink) },
         {
-          short: '참조', label: '책갈피 · 상호 참조 · 목차', icon: 'pin',
-          onClick: () => run(openCrossRef),
+          /* 목차·각주·인용은 자료 탭, 개요 패널은 보기 탭이 맡는다 — 여기는 「가리키기」 만 */
+          short: '책갈피', label: '책갈피 삽입 (이 자리에 이름 붙이기)', icon: 'pin',
+          onClick: () => run(insertBookmark),
           menu: [
             { short: '상호 참조', label: '상호 참조 (표·그림·제목을 가리킨다 — 번호가 밀려도 따라간다)', icon: 'link', onClick: () => run(openCrossRef) },
-            { short: '책갈피', label: '책갈피 삽입', icon: 'pin', onClick: () => run(insertBookmark) },
-            { short: '목차', label: '목차 (제목 기반 자동 생성)', icon: 'list-numbered', onClick: () => run(insertToc) },
-            { short: '각주', label: '각주 삽입', icon: 'sup', onClick: () => run(insertFootnote) },
-            { short: '인용 번호', label: '인용 번호 삽입', icon: 'quote', onClick: () => run(insertCitation) },
-            { short: '개요 패널', label: '문서 개요 패널', icon: 'list-bullet', onClick: () => run(p.onToggleOutline) },
           ],
         },
 
-        { divider: '메모', label: '' },
-        {
-          short: '메모', label: '메모 달기 (고른 글에)', hint: 'Ctrl+Alt+M', icon: 'quote',
-          onClick: () => run(async () => {
-            const text = (await askText('메모 — 이 자리에 남길 말', '')) || ''
-            if (text && addComment(editor, text)) window.dispatchEvent(new Event('jan-comment-pane'))
-          }),
-          menu: [
-            { short: '메모 달기', label: '메모 달기 (고른 글에)', icon: 'quote', onClick: () => run(async () => {
-              const text = (await askText('메모 — 이 자리에 남길 말', '')) || ''
-              if (text && addComment(editor, text)) window.dispatchEvent(new Event('jan-comment-pane'))
-            }) },
-            { short: '메모 목록', label: '메모 목록 열기/닫기', icon: 'menu', onClick: () => run(() => window.dispatchEvent(new Event('jan-comment-pane'))) },
-            { short: '개체 목록', label: '개체 목록 (겹친 개체 고르기)', hint: 'Alt+F10', icon: 'menu', onClick: () => run(() => window.dispatchEvent(new Event('jan-object-pane'))) },
-            { short: '빠른 메모', label: '빠른 메모', hint: 'Ctrl+Shift+J', icon: 'plus', onClick: () => run(p.onQuick) },
-          ],
-        },
       ],
     },
 
@@ -1405,7 +1243,7 @@ export function Toolbar(p: ToolbarProps) {
        삽입 탭이 스무 칸을 넘겨 두 탭으로 나눴다 — 넣는 「물건」 과 글에 붙는 「꾸밈」 의 경계다. */
     {
       label: '텍스트', items: [
-        { divider: '머리글/바닥글', label: '' },
+        { divider: '머리글 · 바닥글', label: '' },
         { short: '머리글', label: '머리글 · 바닥글 (쪽마다 되풀이되는 줄)', icon: 'pin', onClick: () => run(setRunningHeader) },
         { short: '쪽 번호', label: '페이지 번호 모양 · 시작 번호', icon: 'hash', onClick: () => run(() => { sessionStorage.setItem('jan-page-focus', '쪽번호'); openPageSettings() }) },
 
@@ -1414,7 +1252,6 @@ export function Toolbar(p: ToolbarProps) {
           short: '글상자', label: '글상자 (텍스트 상자)', icon: 'box',
           onClick: () => run(() => { insertShape(editor, 'textbox', 'rect') }),
           menu: [
-            { short: '가로 글상자', label: '글상자 (텍스트 상자)', icon: 'box', onClick: () => run(() => { insertShape(editor, 'textbox', 'rect') }) },
             { short: '세로 글상자', label: '세로쓰기 글상자', icon: 'box', onClick: () => run(() => { insertShape(editor, 'textbox', 'rect', { textDir: 'vertical', width: 140, height: 260 }) }) },
             { short: '글맵시', label: '글맵시 (WordArt)', icon: 'sparkle', onClick: () => run(() => { insertShape(editor, 'wordart', 'arch-up') }) },
           ],
@@ -1457,7 +1294,6 @@ export function Toolbar(p: ToolbarProps) {
           short: '기호', label: '문자표 (이름으로 찾기 · 최근 문자)', hint: 'Ctrl+F10', icon: 'hash',
           onClick: () => run(() => window.dispatchEvent(new Event('jan-symbol-panel'))),
           menu: [
-            { short: '문자표', label: '문자표 (이름으로 찾기 · 최근 문자)', icon: 'hash', onClick: () => run(() => window.dispatchEvent(new Event('jan-symbol-panel'))) },
             { short: '특수 문자', label: '특수 문자', icon: 'sparkle', onClick: () => run(insertSymbol) },
           ],
         },
@@ -1502,7 +1338,7 @@ export function Toolbar(p: ToolbarProps) {
           insertOverlap(editor, chars, frame)
         }) },
 
-        { divider: '리스트 · 상자', label: '' },
+        { divider: '목록 · 상자', label: '' },
         {
           short: '리스트', label: '체크리스트 · 인용 · 코드 블록', icon: 'list-check',
           onClick: () => run(() => editor.chain().focus().toggleList('taskList', 'taskItem').run()),
@@ -1544,8 +1380,8 @@ export function Toolbar(p: ToolbarProps) {
           short: '목차', label: '목차 넣기 (제목에서 만든다)', icon: 'list-numbered',
           onClick: () => run(() => { putToc(editor) }),
           menu: [
-            { short: '3수준', label: '목차 넣기 (H1~H3)', icon: 'list-numbered', onClick: () => run(() => { putToc(editor, { maxLevel: 3 }) }) },
-            { short: '2수준', label: '목차 넣기 (H1~H2)', icon: 'list-numbered', onClick: () => run(() => { putToc(editor, { maxLevel: 2 }) }) },
+            { short: '3수준', label: '목차 넣기 (제목 1~3수준)', icon: 'list-numbered', onClick: () => run(() => { putToc(editor, { maxLevel: 3 }) }) },
+            { short: '2수준', label: '목차 넣기 (제목 1~2수준)', icon: 'list-numbered', onClick: () => run(() => { putToc(editor, { maxLevel: 2 }) }) },
             { short: '쪽번호 없이', label: '목차 넣기 (쪽 번호 없이)', icon: 'list-bullet', onClick: () => run(() => { putToc(editor, { pageNumbers: false }) }) },
             { short: '고쳐 넣기', label: '목차 고쳐 넣기 (바뀐 제목으로 다시)', icon: 'refresh-cw', onClick: () => run(() => { putToc(editor) }) },
           ],
@@ -1558,26 +1394,39 @@ export function Toolbar(p: ToolbarProps) {
             onClick: () => run(() => { addToToc(editor, lv) }),
           })),
         },
-        { short: '모두 새로', label: '심어 둔 목록 모두 새로 만들기 (목차·색인·참고 문헌…)', icon: 'refresh-cw', onClick: () => run(() => { refreshAllFields(editor, loadSources(), citeStyle()) }) },
+        {
+          short: '모두 새로', label: '심어 둔 목록 모두 새로 만들기 (목차·색인·참고 문헌…)', icon: 'refresh-cw',
+          onClick: () => run(() => { refreshAllFields(editor, loadSources(), citeStyle()) }),
+          menu: [
+            { short: '번호 모두', label: '번호 모두 다시 매기기 (각주·캡션·수식·참조)', icon: 'hash', onClick: () => run(renumberAll) },
+            { short: '각주 번호', label: '각주 번호만 다시 매기기', icon: 'hash', onClick: () => run(() => { renumberFootnotes(editor); flash('각주 번호를 다시 매겼습니다') }) },
+            { short: '캡션 번호', label: '캡션·수식 번호만 다시 매기기', icon: 'hash', onClick: () => run(() => { renumberWithFeedback(editor) }) },
+          ],
+        },
 
         { divider: '각주 · 미주', label: '' },
-        { short: '각주', label: '각주 삽입 (쪽 아래에 모인다)', icon: 'sup', onClick: () => run(insertFootnote) },
+        { short: '각주', label: '각주 삽입 (쪽 아래에 모인다)', icon: 'sup', hint: 'Ctrl+Alt+F', onClick: () => run(insertFootnote) },
         { short: '미주', label: '미주 삽입 (문서 끝에 모인다)', icon: 'sup', onClick: () => run(() => { insertEndnote(editor) }) },
         {
-          short: '다음 주석', label: '다음 각주로 이동', icon: 'chevron-down',
+          short: '주석 이동', label: '다음 각주로 이동', icon: 'chevron-down',
           onClick: () => run(() => { gotoNextNote(editor, 'footnote') }),
           menu: [
-            { short: '다음 각주', label: '다음 각주로 이동', icon: 'chevron-down', onClick: () => run(() => { gotoNextNote(editor, 'footnote') }) },
             { short: '다음 미주', label: '다음 미주로 이동', icon: 'chevron-down', onClick: () => run(() => { gotoNextNote(editor, 'endnote') }) },
             { short: '각주 자리', label: '각주 모인 자리 보기', icon: 'eye', onClick: () => run(() => { gotoNoteArea(editor, 'footnote') }) },
             { short: '미주 자리', label: '미주 모인 자리 보기', icon: 'eye', onClick: () => run(() => { gotoNoteArea(editor, 'endnote') }) },
           ],
         },
-        { short: '번호 다시', label: '각주 번호 다시 매기기', icon: 'refresh-cw', small: true, onClick: () => run(() => { renumberFootnotes(editor); flash('각주 번호를 다시 매겼습니다') }) },
 
         { divider: '인용 · 참고 문헌', label: '' },
-        { short: '인용', label: '인용 삽입 (본문에 (저자, 연도))', icon: 'quote', onClick: () => run(openSources) },
-        { short: '출처 관리', label: '출처 관리 (모아 둔 자료 목록)', icon: 'folder', onClick: () => run(openSources) },
+        {
+          short: '출처 관리', label: '출처 관리 — 인용과 참고 문헌의 밑자료', icon: 'folder',
+          onClick: () => run(openSources),
+          menu: [
+            { short: 'DOI', label: 'DOI·논문 정보로 불러오기 (학술 인용 패널)', icon: 'cloud', onClick: () => run(p.onPaper) },
+            { short: '항목 추가', label: '참고문헌 항목 직접 적어 넣기', icon: 'file-text', onClick: () => run(insertReference) },
+            { short: '번호식 인용', label: '번호식 인용 넣기 [n] (학술 양식)', icon: 'quote', onClick: () => run(insertCitation) },
+          ],
+        },
         {
           short: '표기 방식', label: `인용 표기 방식: ${citeStyle()}`, icon: 'sliders',
           menu: CITE_STYLES.map((st): MenuItem => ({
@@ -1587,27 +1436,85 @@ export function Toolbar(p: ToolbarProps) {
         },
         { short: '참고 문헌', label: '참고 문헌 목록 넣기 / 고쳐 넣기', icon: 'list-bullet', onClick: () => run(() => { putBibliography(editor, loadSources(), citeStyle()) }) },
 
-        { divider: '캡션', label: '' },
+        { divider: '캡션 · 참조', label: '' },
         {
           short: '캡션', label: '캡션 넣기 (그림·표에 번호와 설명)', icon: 'image-text',
           onClick: () => run(() => { void insertCaption('figure') }),
           menu: [
-            { short: '그림 캡션', label: '그림 캡션 넣기', icon: 'image-text', onClick: () => run(() => { void insertCaption('figure') }) },
-            { short: '표 캡션', label: '표 캡션 넣기', icon: 'table', onClick: () => run(() => { void insertCaption('table') }) },
-            { short: '번호 다시', label: '캡션·수식 번호 다시 매기기', icon: 'refresh-cw', onClick: () => run(() => { renumberWithFeedback(editor) }) },
+            { short: '그림 캡션', label: '그림 캡션 넣기 (그림 n)', icon: 'image-text', onClick: () => run(() => { void insertCaption('figure') }) },
+            { short: '표 캡션', label: '표 캡션 넣기 (표 n)', icon: 'table', onClick: () => run(() => { void insertCaption('table') }) },
           ],
         },
-        { short: '그림 목차', label: '그림 목차 넣기 / 고쳐 넣기', icon: 'image', onClick: () => run(() => { putCaptionList(editor, 'figure') }) },
-        { short: '표 목차', label: '표 목차 넣기 / 고쳐 넣기', icon: 'table', onClick: () => run(() => { putCaptionList(editor, 'table') }) },
-        { short: '상호 참조', label: '상호 참조 (표·그림·제목을 가리킨다)', icon: 'link', onClick: () => run(openCrossRef) },
+        {
+          short: '상호 참조', label: '상호 참조 (표·그림·제목을 가리킨다)', icon: 'link',
+          onClick: () => run(openCrossRef),
+          menu: [
+            { short: '수식', label: '수식 참조 넣기 (식 n)', icon: 'hash', onClick: () => run(() => { void crossRef('eq') }) },
+            { short: '그림', label: '그림 참조 넣기 (그림 n)', icon: 'image', onClick: () => run(() => { void crossRef('fig') }) },
+            { short: '표', label: '표 참조 넣기 (표 n)', icon: 'table', onClick: () => run(() => { void crossRef('tab') }) },
+          ],
+        },
+        {
+          short: '그림·표', label: '그림 목차 넣기 / 고쳐 넣기', icon: 'image',
+          onClick: () => run(() => { putCaptionList(editor, 'figure') }),
+          menu: [
+            { short: '표 목차', label: '표 목차 넣기 / 고쳐 넣기', icon: 'table', onClick: () => run(() => { putCaptionList(editor, 'table') }) },
+          ],
+        },
 
-        { divider: '색인', label: '' },
-        { short: '항목 표시', label: '색인 항목 표시 (고른 말을 색인에 넣는다)', icon: 'tag', onClick: () => run(() => { void markIndex() }) },
-        { short: '색인', label: '색인 넣기 / 고쳐 넣기', icon: 'list-bullet', onClick: () => run(() => { putIndex(editor) }) },
+        { divider: '색인 · 근거', label: '' },
+        {
+          short: '색인', label: '색인 항목 표시 (고른 말을 색인에 넣는다)', icon: 'tag',
+          onClick: () => run(() => { void markIndex() }),
+          menu: [
+            { short: '색인 넣기', label: '색인 넣기 / 고쳐 넣기', icon: 'list-bullet', onClick: () => run(() => { putIndex(editor) }) },
+          ],
+        },
+        {
+          short: '근거', label: '근거 표시 (법령·판례를 근거 목차에 넣는다)', icon: 'shield',
+          onClick: () => run(() => { void markAuth() }),
+          menu: [
+            { short: '근거 목차', label: '근거 목차 넣기 / 고쳐 넣기', icon: 'list-bullet', onClick: () => run(() => { putAuthorityList(editor) }) },
+          ],
+        },
 
-        { divider: '근거 목차', label: '' },
-        { short: '근거 표시', label: '근거 표시 (법령·판례를 근거 목차에 넣는다)', icon: 'shield', onClick: () => run(() => { void markAuth() }) },
-        { short: '근거 목차', label: '근거 목차 넣기 / 고쳐 넣기', icon: 'list-bullet', onClick: () => run(() => { putAuthorityList(editor) }) },
+        { divider: '학술 양식', label: '' },
+        {
+          short: '표준 양식', label: '학술 표준 양식 입히기 (IEEE·APA·Springer…)', icon: 'file-text',
+          onClick: () => run(() => applyFormat(PAPER_FORMATS[0].key)),
+          menu: PAPER_FORMATS.map((f): MenuItem => ({
+            short: f.label, label: f.label, icon: 'file-text',
+            onClick: () => run(() => applyFormat(f.key)),
+          })),
+        },
+        {
+          short: '논문 요소', label: '논문 구성 요소 넣기 (초록·키워드·감사의 말…)', icon: 'file-plus',
+          onClick: () => run(insertAbstract),
+          menu: [
+            { short: '저자', label: '저자 · 소속 · 교신 블록', icon: 'user', onClick: () => run(insertAuthorBlock) },
+            { short: '초록', label: 'Abstract (초록) 박스', icon: 'file-text', onClick: () => run(insertAbstract) },
+            { short: '키워드', label: 'Keywords (키워드) 블록', icon: 'hash', onClick: () => run(insertKeywords) },
+            { short: '감사의 말', label: 'Acknowledgments (감사의 말)', icon: 'heart', onClick: () => run(insertAcknowledgments) },
+            { short: '기여도', label: 'CRediT 저자 기여도', icon: 'user', onClick: () => run(() => insertCreditBlock(editor)) },
+            { short: '이해상충', label: '이해상충 선언 (COI)', icon: 'shield', onClick: () => run(() => insertCoiBlock(editor)) },
+            { short: '자료 공개', label: 'Data Availability (자료 공개)', icon: 'download', onClick: () => run(() => insertDataAvailabilityBlock(editor)) },
+            { short: '약어 목록', label: '약어 목록 자동 뽑기', icon: 'hash', onClick: () => run(() => insertAcronymList(editor)) },
+            { short: '그림 목록', label: '그림 목록 (List of Figures)', icon: 'image', onClick: () => run(() => insertListOfFigures(editor)) },
+            { short: '표 목록', label: '표 목록 (List of Tables)', icon: 'table', onClick: () => run(() => insertListOfTables(editor)) },
+            { short: '더보기', label: '논문 구성 요소 더보기 (창에서)', icon: 'menu', onClick: () => run(p.onPaper) },
+          ],
+        },
+        {
+          short: '수식', label: '수식 스튜디오 (기호·공식)', icon: 'hash',
+          onClick: () => run(() => setMathStudio({ initial: '' })),
+          menu: [
+            { short: '번호 수식', label: '번호 붙은 수식 넣기 (n)', icon: 'hash', onClick: () => run(() => { void eqNumbered() }) },
+            { short: '수식 틀', label: '수식 틀에서 고르기 (분수·적분·행렬·화학식)', icon: 'hash', onClick: () => run(() => { void eqFromTemplate() }) },
+          ],
+        },
+
+        { divider: '제출 전 점검', label: '' },
+        { short: '논문 검사', label: '논문 검사 (제출 전 자동 점검)', icon: 'shield', onClick: () => run(runPaperLint) },
       ],
     },
 
@@ -1616,16 +1523,22 @@ export function Toolbar(p: ToolbarProps) {
       label: '차트 도구', items: [
         { divider: '종류와 데이터', label: '' },
         { short: '데이터', label: '데이터 고치기 (표·종류·서식 창)', icon: 'table', onClick: () => run(openChart) },
-        ...CHART_TYPES.map((t): MenuItem => ({
-          short: t.label, label: `차트 종류: ${t.label} — ${t.hint}`, icon: 'chart',
-          onClick: () => run(() => { editor.chain().focus().updateChart({ type: t.key }).run(); flash(`차트 — ${t.label}`) }),
-        })),
+        {
+          short: '종류', label: '차트 종류 바꾸기', icon: 'chart',
+          menu: CHART_TYPES.map((t): MenuItem => ({
+            short: t.label, label: `차트 종류: ${t.label} — ${t.hint}`, icon: 'chart',
+            onClick: () => run(() => { editor.chain().focus().updateChart({ type: t.key }).run(); flash(`차트 — ${t.label}`) }),
+          })),
+        },
 
         { divider: '차트 스타일', label: '' },
-        ...CHART_STYLES.map((st): MenuItem => ({
-          short: st.label, label: `차트 스타일: ${st.label}`, icon: 'sparkle',
-          onClick: () => run(() => { editor.chain().focus().updateChart({ ...st.patch, chartStyle: st.key }).run(); flash(`차트 스타일 — ${st.label}`) }),
-        })),
+        {
+          short: '스타일', label: '차트 스타일 고르기', icon: 'sparkle',
+          menu: CHART_STYLES.map((st): MenuItem => ({
+            short: st.label, label: `차트 스타일: ${st.label}`, icon: 'sparkle',
+            onClick: () => run(() => { editor.chain().focus().updateChart({ ...st.patch, chartStyle: st.key }).run(); flash(`차트 스타일 — ${st.label}`) }),
+          })),
+        },
         {
           short: '색', label: '차트 색 바꾸기', icon: 'palette',
           menu: Object.keys(CHART_PALETTES).map((k): MenuItem => ({
@@ -1667,17 +1580,17 @@ export function Toolbar(p: ToolbarProps) {
             onClick: () => run(() => { editor.chain().focus().updateChart({ numberFormat: f.key }).run() }),
           })),
         },
-        { short: '쌓기', label: '쌓아 보기 켜고 끄기', icon: 'columns', small: true, onClick: () => run(() => {
+        { short: '쌓기', label: '쌓아 보기 켜고 끄기', icon: 'columns', onClick: () => run(() => {
           const now = !!(editor.getAttributes('janChart').spec as { stacked?: boolean } | undefined)?.stacked
           editor.chain().focus().updateChart({ stacked: !now }).run()
         }) },
 
         { divider: '크기와 자리', label: '' },
-        { short: '크게', label: '차트 크게 (+60px)', icon: 'zoom-in', small: true, onClick: () => run(() => resizeChart(60)) },
-        { short: '작게', label: '차트 작게 (-60px)', icon: 'zoom-out', small: true, onClick: () => run(() => resizeChart(-60)) },
-        { short: '왼쪽', label: '차트를 왼쪽에', icon: 'align-left', small: true, onClick: () => run(() => alignObject('left')) },
-        { short: '가운데', label: '차트를 가운데에', icon: 'align-center', small: true, onClick: () => run(() => alignObject('center')) },
-        { short: '오른쪽', label: '차트를 오른쪽에', icon: 'align-right', small: true, onClick: () => run(() => alignObject('right')) },
+        { short: '크게', label: '차트 크게 (+60px)', icon: 'zoom-in', onClick: () => run(() => resizeChart(60)) },
+        { short: '작게', label: '차트 작게 (-60px)', icon: 'zoom-out', onClick: () => run(() => resizeChart(-60)) },
+        { short: '왼쪽', label: '차트를 왼쪽에', icon: 'align-left', onClick: () => run(() => alignObject('left')) },
+        { short: '가운데', label: '차트를 가운데에', icon: 'align-center', onClick: () => run(() => alignObject('center')) },
+        { short: '오른쪽', label: '차트를 오른쪽에', icon: 'align-right', onClick: () => run(() => alignObject('right')) },
       ],
     },
 
@@ -1686,27 +1599,33 @@ export function Toolbar(p: ToolbarProps) {
       label: '도해 도구', items: [
         { divider: '배치', label: '' },
         { short: '글 고치기', label: '도해 글·배치 고치기 (창 열기)', icon: 'smart', onClick: () => run(openSmartArt) },
-        ...SMART_LAYOUTS.slice(0, 8).map((l): MenuItem => ({
-          short: l.label, label: `도해 배치: ${l.label} — ${l.hint}`, icon: 'smart',
-          onClick: () => run(() => { editor.chain().focus().updateSmartArt({ layout: l.key }).run(); flash(`도해 — ${l.label}`) }),
-        })),
+        {
+          short: '배치', label: '도해 배치 고르기', icon: 'smart',
+          menu: SMART_LAYOUTS.slice(0, 8).map((l): MenuItem => ({
+            short: l.label, label: `도해 배치: ${l.label} — ${l.hint}`, icon: 'smart',
+            onClick: () => run(() => { editor.chain().focus().updateSmartArt({ layout: l.key }).run(); flash(`도해 — ${l.label}`) }),
+          })),
+        },
 
         { divider: '색', label: '' },
-        ...Object.keys(SMART_PALETTES).map((k): MenuItem => ({
-          short: k, label: `도해 색: ${k}`, icon: 'palette',
-          onClick: () => run(() => { editor.chain().focus().updateSmartArt({ palette: k }).run(); flash(`도해 색 — ${k}`) }),
-        })),
+        {
+          short: '색', label: '도해 색 고르기', icon: 'palette',
+          menu: Object.keys(SMART_PALETTES).map((k): MenuItem => ({
+            short: k, label: `도해 색: ${k}`, icon: 'palette',
+            onClick: () => run(() => { editor.chain().focus().updateSmartArt({ palette: k }).run(); flash(`도해 색 — ${k}`) }),
+          })),
+        },
 
         { divider: '항목', label: '' },
         { short: '항목 추가', label: '도해에 항목 하나 더', icon: 'plus', onClick: () => run(() => changeSmartItems(1)) },
         { short: '항목 빼기', label: '도해에서 마지막 항목 빼기', icon: 'minus', onClick: () => run(() => changeSmartItems(-1)) },
 
         { divider: '크기와 자리', label: '' },
-        { short: '크게', label: '도해 크게 (+60px)', icon: 'zoom-in', small: true, onClick: () => run(() => resizeSmart(60)) },
-        { short: '작게', label: '도해 작게 (-60px)', icon: 'zoom-out', small: true, onClick: () => run(() => resizeSmart(-60)) },
-        { short: '왼쪽', label: '도해를 왼쪽에', icon: 'align-left', small: true, onClick: () => run(() => alignObject('left')) },
-        { short: '가운데', label: '도해를 가운데에', icon: 'align-center', small: true, onClick: () => run(() => alignObject('center')) },
-        { short: '오른쪽', label: '도해를 오른쪽에', icon: 'align-right', small: true, onClick: () => run(() => alignObject('right')) },
+        { short: '크게', label: '도해 크게 (+60px)', icon: 'zoom-in', onClick: () => run(() => resizeSmart(60)) },
+        { short: '작게', label: '도해 작게 (-60px)', icon: 'zoom-out', onClick: () => run(() => resizeSmart(-60)) },
+        { short: '왼쪽', label: '도해를 왼쪽에', icon: 'align-left', onClick: () => run(() => alignObject('left')) },
+        { short: '가운데', label: '도해를 가운데에', icon: 'align-center', onClick: () => run(() => alignObject('center')) },
+        { short: '오른쪽', label: '도해를 오른쪽에', icon: 'align-right', onClick: () => run(() => alignObject('right')) },
       ],
     },
 
@@ -1824,8 +1743,6 @@ export function Toolbar(p: ToolbarProps) {
         {
           short: '나누기', label: '나누기 (쪽·단)', icon: 'page-break',
           menu: [
-            { short: '쪽 나눔', label: '페이지 나누기', hint: 'Ctrl+Enter', icon: 'page-break', onClick: () => run(insertPageBreak) },
-            { short: '빈 쪽', label: '빈 쪽 넣기', icon: 'page', onClick: () => run(() => { insertBlankPage(editor) }) },
           ],
         },
         {
@@ -1855,12 +1772,17 @@ export function Toolbar(p: ToolbarProps) {
           ],
         },
 
-        { divider: '단락', label: '' },
-        { short: '왼쪽 들여쓰기', label: '왼쪽 들여쓰기 늘리기', icon: 'align-right', onClick: () => run(() => { editor.chain().focus().indentParagraph().run() }) },
-        { short: '왼쪽 내어쓰기', label: '왼쪽 들여쓰기 줄이기', icon: 'align-left', onClick: () => run(() => { editor.chain().focus().outdentParagraph().run() }) },
-        { short: '앞 공백', label: '단락 앞 공백 넣기 (12px)', icon: 'sliders', small: true, onClick: () => run(() => { setParagraphSpace(editor, 'before', 12) }) },
-        { short: '뒤 공백', label: '단락 뒤 공백 넣기 (12px)', icon: 'sliders', small: true, onClick: () => run(() => { setParagraphSpace(editor, 'after', 12) }) },
-        { short: '공백 없앰', label: '단락 앞뒤 공백 없애기', icon: 'close', small: true, onClick: () => run(() => { setParagraphSpace(editor, 'before', null); setParagraphSpace(editor, 'after', null) }) },
+        /* 들여쓰기·내어쓰기는 늘 보이는 서식 줄에 있다 — 여기는 쪽 안의 「간격」 만 다룬다 */
+        { divider: '문단 간격', label: '' },
+        {
+          short: '문단 간격', label: '문단 앞뒤 공백 넣기', icon: 'paragraph',
+          onClick: () => run(() => { setParagraphSpace(editor, 'before', 12) }),
+          menu: [
+            { short: '앞 공백', label: '문단 앞에 공백 넣기 (12px)', icon: 'chevron-up', onClick: () => run(() => { setParagraphSpace(editor, 'before', 12) }) },
+            { short: '뒤 공백', label: '문단 뒤에 공백 넣기 (12px)', icon: 'chevron-down', onClick: () => run(() => { setParagraphSpace(editor, 'after', 12) }) },
+            { short: '없애기', label: '문단 앞뒤 공백 없애기', icon: 'close', onClick: () => run(() => { setParagraphSpace(editor, 'before', null); setParagraphSpace(editor, 'after', null) }) },
+          ],
+        },
 
         { divider: '정렬', label: '' },
         {
@@ -1887,53 +1809,20 @@ export function Toolbar(p: ToolbarProps) {
         { short: '선택 창', label: '선택 창 (겹친 개체 목록에서 고르기)', hint: 'Alt+F10', icon: 'menu', onClick: () => run(() => window.dispatchEvent(new Event('jan-object-pane'))) },
         { short: '회전', label: '개체 90° 돌리기', icon: 'refresh-cw', onClick: () => run(rotateObject) },
 
-        { divider: '머리글/바닥글 · 인쇄', label: '' },
-        { short: '노트 배경', label: `노트 배경 스타일: ${currentPaperLabel}`, icon: 'palette', onClick: () => run(() => { sessionStorage.setItem('jan-page-focus', '배경'); openPageSettings() }) },
-        { short: '엔터 표시', label: '엔터 표시(¶) 켬/끔', icon: 'paragraph', small: true, onClick: () => run(togglePilcrow) },
-        { short: '미리보기', label: '인쇄 미리보기 (Paged.js)', hint: 'Ctrl+Alt+P', icon: 'preview', onClick: () => run(p.onPrintPreview) },
-        { label: '인쇄', hint: 'Ctrl+P', icon: 'print', onClick: () => run(() => window.print()) },
+        /* 엔터 표시는 보기 탭, 인쇄와 미리보기는 파일·보기 탭이 맡는다 */
+        { divider: '종이 바탕', label: '' },
+        { short: '노트 배경', label: `노트 배경 무늬: ${currentPaperLabel}`, icon: 'palette', onClick: () => run(() => { sessionStorage.setItem('jan-page-focus', '배경'); openPageSettings() }) },
       ],
     },
 
     /* 5. 미디어 */
-    {
-      label: '미디어', items: [
-        { label: '이미지 업로드', icon: 'image', onClick: () => run(uploadImage) },
-        { label: '이미지 URL', icon: 'image', onClick: () => run(insertImageURL) },
-        { label: 'YouTube 임베드', icon: 'globe', onClick: () => run(insertYouTube) },
-        { label: '화면 캡쳐', icon: 'preview', onClick: () => run(captureScreen) },
-        { label: '갤러리 뷰', icon: 'image', onClick: () => run(openGallery) },
-        { divider: '오디오', label: '' },
-        { label: '음성 입력 (받아쓰기)', icon: 'mic', onClick: () => run(startVoiceInput) },
-        { label: '읽어주기 (TTS)', icon: 'speaker', onClick: () => run(speakSelection) },
-        { label: '음성 녹음', icon: 'mic', onClick: () => run(recordAudio) },
-        { label: '회의 노트 (녹음+받아쓰기)', icon: 'users', onClick: () => run(p.onMeetingNotes) },
-        { label: '강의 노트 (녹음+받아쓰기)', icon: 'mic', onClick: () => run(p.onLectureNotes) },
-        { label: '회의록 템플릿 삽입', icon: 'file-plus', onClick: () => run(meetingNote) },
-        { divider: '파일 / 첨부', label: '' },
-        { label: '파일 첨부', icon: 'paperclip', onClick: () => run(p.onAtt) },
-        { divider: '드로잉', label: '' },
-        { label: '그림판 (그리기·손글씨·도형)', icon: 'paint', onClick: () => run(p.onPaint) },
-        { label: '선택한 이미지를 그림판에서 주석 편집', icon: 'paint', onClick: () => run(() => {
-          const src = editor.getAttributes('image').src as string | undefined
-          if (!src) { flash('먼저 문서에서 편집할 이미지를 클릭해 선택하세요'); return }
-          window.dispatchEvent(new CustomEvent('jan-edit-image-in-paint', { detail: { src, pos: editor.state.selection.from } }))
-        }) },
-        { label: '포스트잇 (JustPin)', icon: 'pin', onClick: () => run(p.onPostit) },
-        { divider: 'AI', label: '' },
-        { short: 'AI 이미지', label: 'AI 이미지 생성 (Pollinations)', icon: 'sparkle', onClick: () => run(aiImageStub) },
-      ],
-    },
-
+    
     /* 6. 도구 */
     {
       label: '도구', items: [
-        { label: '명령 팔레트', hint: 'Ctrl+Shift+P', icon: 'sparkle', onClick: () => run(cmdPalette) },
         { label: 'AI 도우미', hint: 'Ctrl+/', icon: 'ai', onClick: () => run(p.onAi) },
         { label: 'AI 챗 패널', icon: 'ai', onClick: () => run(p.onChat) },
         { divider: '검색 / 편집', label: '' },
-        { label: '검색', hint: 'Ctrl+Shift+F', icon: 'find', onClick: () => run(p.onSearch) },
-        { label: '찾아 바꾸기', hint: 'Ctrl+H', icon: 'replace', onClick: () => run(p.onFind) },
         { label: '깨진 링크 검사', icon: 'unlink', onClick: () => run(p.onLinkCheck) },
         { divider: '분석', label: '' },
         { short: '문서 진단', label: '문서 건강 점수 (100점 진단)', icon: 'shield', onClick: () => run(runDocHealth) },
@@ -1944,15 +1833,12 @@ export function Toolbar(p: ToolbarProps) {
         { label: '워드 클라우드', icon: 'sparkle', onClick: () => run(wordCloud) },
         { divider: '언어', label: '' },
         { label: '번역', icon: 'translate', onClick: () => run(p.onTranslate) },
-        { label: '맞춤법 검사 켬/끔', icon: 'check', onClick: () => run(toggleSpellCheck) },
+        { short: '맞춤법', label: '맞춤법 검사 켬/끔', icon: 'check', hint: 'F7', onClick: () => run(toggleSpellCheck) },
         { divider: '학습 / 시각화', label: '' },
         { label: '마인드맵', icon: 'sparkle', onClick: () => run(p.onMindMap) },
         { label: '플래시카드 학습', icon: 'list-bullet', onClick: () => run(flashcards) },
         { divider: 'OCR / 자동화', label: '' },
         { short: 'OCR', label: 'OCR (이미지 → 텍스트)', icon: 'image', onClick: () => run(p.onOcr) },
-        { label: '템플릿', icon: 'file-text', onClick: () => run(p.onTemplates) },
-        { label: '스니펫', icon: 'file-plus', onClick: () => run(p.onSnippets) },
-        { label: '매크로', icon: 'wand', onClick: () => run(p.onMacros) },
         { label: '포모도로 타이머', icon: 'clock', onClick: () => run(startPomodoro) },
       ],
     },
@@ -1960,79 +1846,127 @@ export function Toolbar(p: ToolbarProps) {
     /* 7. 보기 */
     {
       label: '보기', items: [
-        { short: '문서 보기', label: `문서 보기: ${viewLayoutLabel}`, icon: 'preview', onClick: () => run(() => ui.setViewLayout(ui.viewLayout === 'draft' ? 'print' : 'draft')) },
-        { label: '인쇄 레이아웃', icon: 'page', onClick: () => run(() => ui.setViewLayout('print')) },
-        { label: '초안 레이아웃', icon: 'file-text', onClick: () => run(() => ui.setViewLayout('draft')) },
+        { divider: '문서 보기', label: '' },
+        {
+          short: '문서 보기', label: `문서 보기: ${viewLayoutLabel}`, icon: 'preview',
+          onClick: () => run(() => ui.setViewLayout(ui.viewLayout === 'draft' ? 'print' : 'draft')),
+          menu: [
+            { label: '인쇄 모양 (쪽이 보이는 편집)', short: '인쇄 모양', icon: 'page', onClick: () => run(() => ui.setViewLayout('print')) },
+            { label: '초안 모양 (쪽 없이 글만)', short: '초안 모양', icon: 'file-text', onClick: () => run(() => ui.setViewLayout('draft')) },
+          ],
+        },
         { divider: '창', label: '' },
-        { label: '집중 모드', hint: 'F11', icon: 'focus', onClick: () => run(() => ui.toggleFocus()) },
-        { label: '읽기 모드', hint: 'Shift+F11', icon: 'preview', onClick: () => run(() => ui.toggleReading()) },
-        { short: '타자기', label: `타자기 모드 ${ui.typewriterMode ? '끄기' : '켜기'} (커서 줄 중앙 고정)`, icon: 'focus', onClick: () => run(() => { ui.toggleTypewriter(); flash(ui.typewriterMode ? '타자기 모드 끔' : '타자기 모드 켬 — 커서 줄이 화면 중앙에 유지됩니다') }) },
-        { short: '문단 강조', label: `현재 문단 하이라이트 ${ui.paragraphFocus ? '끄기' : '켜기'}`, icon: 'focus', onClick: () => run(() => { ui.toggleParagraphFocus(); flash(ui.paragraphFocus ? '문단 하이라이트 끔' : '문단 하이라이트 켬 — 커서 문단 외에는 흐려집니다') }) },
-        { label: '사이드바 토글', icon: 'list-bullet', onClick: () => run(() => ui.toggleSidebar()) },
-        { label: `눈금자 ${ui.showRulers ? '숨기기' : '표시'}`, icon: 'columns', onClick: () => run(() => ui.toggleRulers()) },
-        { label: `쪽모음 ${ui.pageThumbs ? '닫기' : '열기'} (여러 쪽 보기)`, icon: 'page', onClick: () => run(() => {
-          if (ui.viewLayout !== 'print' && !ui.pageThumbs) { flash('쪽모음은 인쇄 레이아웃에서 사용할 수 있습니다 — 보기 → 인쇄 레이아웃'); return }
-          ui.togglePageThumbs()
-        }) },
-        { label: ui.spreadCols ? `쪽 나란히 편집 끝내기 (현재 ${ui.spreadCols}쪽)` : '쪽 나란히 편집 (1·2쪽을 가로로 놓고 편집)', icon: 'columns', onClick: () => run(() => {
-          if (ui.spreadCols) { ui.setSpreadCols(0); flash('쪽 나란히 편집을 끝냈습니다'); return }
-          if (ui.viewLayout !== 'print') { flash('쪽 나란히 편집은 인쇄 레이아웃에서 사용할 수 있습니다 — 보기 → 인쇄 레이아웃'); return }
-          ui.setSpreadCols(2)
-          flash('쪽 나란히 편집 — 각 쪽에서 바로 편집됩니다 (2·3·4쪽 배치 선택, PageUp/PageDown 이동)', 3200)
-        }) },
-        { label: `창 나누기 ${ui.splitView ? '취소' : ''}(같은 문서 위·아래 두 창)`, icon: 'columns', onClick: () => run(() => {
-          ui.toggleSplitView()
-          flash(ui.splitView ? '창 나누기를 취소했습니다' : '창 나누기 — 아래 창에서도 같은 문서를 바로 편집할 수 있습니다 (분할선을 끌어 크기 조절)', 3000)
-        }) },
+        {
+          short: '화면 모드', label: '집중 모드', hint: 'F11', icon: 'focus',
+          onClick: () => run(() => ui.toggleFocus()),
+          menu: [
+            { label: '읽기 모드 (고치지 않고 읽기)', short: '읽기', icon: 'preview', hint: 'Shift+F11', onClick: () => run(() => ui.toggleReading()) },
+            { label: `타자기 모드 켬/끔 (커서 줄을 화면 중앙에)${ui.typewriterMode ? ' — 지금 켜져 있다' : ''}`, short: '타자기', icon: 'focus', onClick: () => run(() => { ui.toggleTypewriter(); flash(ui.typewriterMode ? '타자기 모드 끔' : '타자기 모드 켬 — 커서 줄이 화면 중앙에 유지됩니다') }) },
+            { label: `현재 문단 강조 켬/끔${ui.paragraphFocus ? ' — 지금 켜져 있다' : ''}`, short: '문단 강조', icon: 'focus', onClick: () => run(() => { ui.toggleParagraphFocus(); flash(ui.paragraphFocus ? '문단 하이라이트 끔' : '문단 하이라이트 켬 — 커서 문단 외에는 흐려집니다') }) },
+          ],
+        },
+        { short: '사이드바', label: '사이드바 켬/끔', icon: 'list-bullet', onClick: () => run(() => ui.toggleSidebar()) },
+        { short: '눈금자', label: '눈금자 켬/끔', icon: 'columns', onClick: () => run(() => ui.toggleRulers()) },
+        {
+          short: '여러 쪽', label: `쪽모음 ${ui.pageThumbs ? '닫기' : '열기'} (여러 쪽 한눈에)`, icon: 'page',
+          onClick: () => run(() => {
+            if (ui.viewLayout !== 'print' && !ui.pageThumbs) { flash('쪽모음은 인쇄 모양에서 쓸 수 있습니다 — 보기 → 문서 보기 → 인쇄 모양'); return }
+            ui.togglePageThumbs()
+          }),
+          menu: [
+            { label: ui.spreadCols ? `쪽 나란히 편집 끝내기 (지금 ${ui.spreadCols}쪽)` : '쪽 나란히 편집 (1·2쪽을 가로로 놓고)', short: '나란히', icon: 'columns', onClick: () => run(() => {
+              if (ui.spreadCols) { ui.setSpreadCols(0); flash('쪽 나란히 편집을 끝냈습니다'); return }
+              if (ui.viewLayout !== 'print') { flash('쪽 나란히 편집은 인쇄 모양에서 쓸 수 있습니다 — 보기 → 문서 보기 → 인쇄 모양'); return }
+              ui.setSpreadCols(2)
+              flash('쪽 나란히 편집 — 각 쪽에서 바로 편집됩니다 (2·3·4쪽 배치 선택, PageUp/PageDown 이동)', 3200)
+            }) },
+            { label: `창 나누기 ${ui.splitView ? '취소' : ''}(같은 문서를 위·아래 두 창에)`, short: '창 나누기', icon: 'columns', onClick: () => run(() => {
+              ui.toggleSplitView()
+              flash(ui.splitView ? '창 나누기를 취소했습니다' : '창 나누기 — 아래 창에서도 같은 문서를 바로 편집할 수 있습니다 (분할선을 끌어 크기 조절)', 3000)
+            }) },
+          ],
+        },
         { divider: '줌', label: '' },
-        { label: '줌 인', hint: 'Ctrl+=', icon: 'plus', onClick: () => run(() => ui.zoomIn()) },
-        { label: '줌 아웃', hint: 'Ctrl+-', icon: 'minus', onClick: () => run(() => ui.zoomOut()) },
-        { label: '줌 리셋 (100%)', hint: 'Ctrl+0', icon: 'undo', onClick: () => run(() => ui.zoomReset()) },
-        { short: '쪽 너비', label: '페이지 너비에 맞춤', icon: 'maximize', onClick: () => run(() => fitPageZoom('width')) },
-        { short: '한 쪽', label: '한 페이지 보기', icon: 'page', onClick: () => run(() => fitPageZoom('page')) },
-        { label: '75%', icon: 'zoom-out', onClick: () => run(() => setPageZoom(0.75)) },
-        { label: '125%', icon: 'zoom-in', onClick: () => run(() => setPageZoom(1.25)) },
-        { divider: '아웃라인 / 미리보기', label: '' },
-        { label: `목차 ${p.outlineOpen ? '닫기' : '열기'}`, icon: 'list-bullet', onClick: () => run(p.onToggleOutline) },
+        { short: '크게', label: '줌 크게', hint: 'Ctrl+=', icon: 'zoom-in', onClick: () => run(() => ui.zoomIn()) },
+        { short: '작게', label: '줌 작게', hint: 'Ctrl+-', icon: 'zoom-out', onClick: () => run(() => ui.zoomOut()) },
+        {
+          short: '줌 맞춤', label: '줌 100% 로', hint: 'Ctrl+0', icon: 'maximize',
+          onClick: () => run(() => ui.zoomReset()),
+          menu: [
+            { label: '쪽 너비에 맞춤', short: '쪽 너비', icon: 'maximize', onClick: () => run(() => fitPageZoom('width')) },
+            { label: '한 쪽 다 보이게', short: '한 쪽', icon: 'page', onClick: () => run(() => fitPageZoom('page')) },
+            { label: '줌 75%', short: '75%', icon: 'zoom-out', onClick: () => run(() => setPageZoom(0.75)) },
+            { label: '줌 125%', short: '125%', icon: 'zoom-in', onClick: () => run(() => setPageZoom(1.25)) },
+          ],
+        },
+        { divider: '개요 · 미리보기', label: '' },
+        { short: '개요', label: `문서 개요 ${p.outlineOpen ? '닫기' : '열기'}`, icon: 'list-bullet', onClick: () => run(p.onToggleOutline) },
         { short: 'MD 보기', label: 'Markdown 미리보기', icon: 'preview', onClick: () => run(p.onMdPreview) },
-        { label: '인쇄 미리보기', hint: 'Ctrl+Alt+P', icon: 'preview', onClick: () => run(p.onPrintPreview) },
+        { short: '미리보기', label: '인쇄 미리보기', hint: 'Ctrl+Alt+P', icon: 'preview', onClick: () => run(p.onPrintPreview) },
         { divider: '표시', label: '' },
         { short: '엔터 표시', label: '엔터 표시(¶) 켬/끔', icon: 'paragraph', onClick: () => run(togglePilcrow) },
-        { short: '제목 번호', label: '제목 번호 매기기 토글', icon: 'hash', onClick: () => run(() => ui.toggleHeadingNumbers && ui.toggleHeadingNumbers()) },
+        { short: '제목 번호', label: '제목 번호 켬/끔', icon: 'hash', onClick: () => run(() => ui.toggleHeadingNumbers && ui.toggleHeadingNumbers()) },
       ],
     },
 
     /* 8. 파일 */
     {
       label: '파일', items: [
-        { label: '새 메모', hint: 'Ctrl+N', icon: 'plus', onClick: () => run(p.onNewMemo) },
-        { label: '열기...', hint: 'Ctrl+O', icon: 'open', onClick: () => run(p.onOpen) },
-        { label: '저장', hint: 'Ctrl+S', icon: 'save', onClick: () => run(p.onSave) },
-        { short: '다른 이름', label: '다른 이름으로 저장...', icon: 'save', onClick: () => run(p.onSaveAs) },
+        { divider: '문서', label: '' },
+        {
+          label: '새 메모', hint: 'Ctrl+N', icon: 'plus',
+          onClick: () => run(p.onNewMemo),
+          menu: [
+            { label: '빠른 메모 (작은 창에 바로 적기)', short: '빠른 메모', icon: 'plus', onClick: () => run(p.onQuick) },
+          ],
+        },
+        { label: '열기', hint: 'Ctrl+O', icon: 'open', onClick: () => run(p.onOpen) },
+        {
+          label: '저장', hint: 'Ctrl+S', icon: 'save',
+          onClick: () => run(p.onSave),
+          menu: [
+            { label: '다른 이름으로 저장', short: '다른 이름', icon: 'save', onClick: () => run(p.onSaveAs) },
+            { label: '버전 기록에서 되살리기', short: '버전 기록', icon: 'history', onClick: () => run(p.onVersions) },
+          ],
+        },
         /* 앱으로 설치해야 운영체제가 .jan 을 이 앱에 이어 준다 (두 번 눌러 열기) */
         ...(install.canInstall
           ? [{ short: '앱 설치', label: '앱으로 설치 (.jan 파일 연결)', icon: 'download' as const, onClick: () => run(() => { void installApp() }) }]
           : []),
-        { divider: '내보내기', label: '' },
+        { divider: '인쇄 · 내보내기', label: '' },
         { label: '인쇄', hint: 'Ctrl+P', icon: 'print', onClick: () => run(() => window.print()) },
-        { label: 'PDF 내보내기', icon: 'file-text', onClick: () => run(exportPdf) },
-        { label: 'HTML 내보내기', icon: 'globe', onClick: () => run(exportHtml) },
-        { short: 'MD 저장', label: 'Markdown(.md) 저장', icon: 'file-text', onClick: () => run(exportMd) },
-        { label: 'HWPX (한글) 내보내기', icon: 'file-text', onClick: () => run(exportHwpx) },
-        { label: 'Word(.doc) 내보내기', icon: 'file-text', onClick: () => run(exportDocx) },
-        { label: 'LaTeX(.tex) 내보내기', icon: 'file-text', onClick: () => run(exportTex) },
-        { label: '모든 형식 내보내기 (MD·HTML·LaTeX·HWPX·DOC)', icon: 'download', onClick: () => run(() => { void exportAll() }) },
-        { divider: '공유 / 백업', label: '' },
-        { short: 'Gist', label: 'GitHub Gist 로 공유', icon: 'cloud', onClick: () => run(p.onGist) },
-        { label: '공유 링크', icon: 'link', onClick: () => run(p.onShare) },
-        { short: '백업 저장', label: 'JSON 백업 내보내기', icon: 'cloud', onClick: () => run(exportJsonBackup) },
-        { short: '백업 열기', label: 'JSON 백업 가져오기', icon: 'cloud', onClick: () => run(importJsonBackup) },
-        { label: 'v1 메모 가져오기', icon: 'undo', onClick: () => run(importV1) },
+        {
+          label: 'PDF 내보내기', short: 'PDF', icon: 'file-text',
+          onClick: () => run(exportPdf),
+          menu: [
+            { label: 'HTML 내보내기', short: 'HTML', icon: 'globe', onClick: () => run(exportHtml) },
+            { label: 'Markdown(.md) 저장', short: 'MD', icon: 'file-text', onClick: () => run(exportMd) },
+            { label: 'HWPX (한글) 내보내기', short: 'HWPX', icon: 'file-text', onClick: () => run(exportHwpx) },
+            { label: 'Word(.doc) 내보내기', short: 'DOC', icon: 'file-text', onClick: () => run(exportDocx) },
+            { label: 'LaTeX(.tex) 내보내기 — Overleaf 용', short: 'LaTeX', icon: 'file-text', onClick: () => run(exportTex) },
+            { label: '모든 형식 한꺼번에 (MD·HTML·LaTeX·HWPX·DOC)', short: '모두', icon: 'download', onClick: () => run(() => { void exportAll() }) },
+          ],
+        },
+        { divider: '공유 · 백업', label: '' },
+        {
+          label: '공유 링크 만들기', short: '공유', icon: 'link',
+          onClick: () => run(p.onShare),
+          menu: [
+            { label: 'GitHub Gist 로 공유', short: 'Gist', icon: 'cloud', onClick: () => run(p.onGist) },
+          ],
+        },
+        {
+          label: 'JSON 백업 내보내기', short: '백업', icon: 'cloud',
+          onClick: () => run(exportJsonBackup),
+          menu: [
+            { label: 'JSON 백업 가져오기', short: '백업 열기', icon: 'cloud', onClick: () => run(importJsonBackup) },
+            { label: 'v1 메모 가져오기', short: 'v1 가져오기', icon: 'undo', onClick: () => run(importV1) },
+          ],
+        },
         { divider: '관리', label: '' },
-        { label: '버전 기록', icon: 'undo', onClick: () => run(p.onVersions) },
-        { short: '잠금', label: '잠금 / 비밀번호', icon: 'lock', onClick: () => run(p.onLock) },
+        { short: '잠금', label: '비밀번호로 잠그기 (내용 암호화)', icon: 'lock', onClick: () => run(p.onLock) },
         { label: '휴지통', icon: 'box', onClick: () => run(p.onTrash) },
-        { short: '정보', label: '정보 / 버전', icon: 'info', onClick: () => run(p.onAbout) },
+        { short: '정보', label: '앱 정보 · 버전', icon: 'info', onClick: () => run(p.onAbout) },
       ],
     },
   ]
@@ -2049,19 +1983,57 @@ export function Toolbar(p: ToolbarProps) {
     items.filter((it) => !it.divider && labels.some((l) => it.label.startsWith(l)))
 
 
+  /* 편집 탭 = 글을 「손질」 하는 일 (서식 탭은 「모양」).
+     되돌리기·다시 실행은 늘 보이는 서식 줄에 있으므로 여기에 또 두지 않는다. */
   const editItems: MenuItem[] = [
-    { divider: '되돌리기', label: '' },
-    { label: '실행 취소', short: '되돌리기', hint: 'Ctrl+Z', icon: 'undo', onClick: () => run(() => editor.chain().focus().undo().run()) },
-    { label: '다시 실행', short: '다시실행', hint: 'Ctrl+Shift+Z', icon: 'redo', onClick: () => run(() => editor.chain().focus().redo().run()) },
+    { divider: '클립보드', label: '' },
+    {
+      label: '붙여넣기', short: '붙여넣기', icon: 'cards', hint: 'Ctrl+V',
+      onClick: () => run(() => { pasteAs(editor, 'keep') }),
+      menu: [
+        { label: '원본 서식 그대로', icon: 'cards', onClick: () => run(() => { pasteAs(editor, 'keep') }) },
+        { label: '지금 문단 서식에 맞춰', icon: 'cards', onClick: () => run(() => { pasteAs(editor, 'merge') }) },
+        { label: '글자만 (서식 버리고)', icon: 'file-text', onClick: () => run(() => { pasteAs(editor, 'text') }) },
+        { label: '표로 붙여넣기 (CSV·엑셀)', icon: 'table', onClick: () => run(() => { void insertTableFromCsv() }) },
+      ],
+    },
+    { label: '잘라내기', short: '잘라내기', icon: 'page-break', hint: 'Ctrl+X', onClick: () => run(() => document.execCommand('cut')) },
+    { label: '복사', short: '복사', icon: 'cards', hint: 'Ctrl+C', onClick: () => run(() => document.execCommand('copy')) },
+    {
+      label: '서식 복사', short: '서식 복사', icon: 'paint', hint: 'Ctrl+Shift+C',
+      onClick: () => run(() => window.dispatchEvent(new Event('jan-format-copy'))),
+      menu: [
+        { label: '서식 복사 (붓으로 담기)', short: '복사', icon: 'paint', hint: 'Ctrl+Shift+C', onClick: () => run(() => window.dispatchEvent(new Event('jan-format-copy'))) },
+        { label: '서식 붙여넣기 (담은 붓으로)', short: '붙임', icon: 'paint', hint: 'Ctrl+Shift+V', onClick: () => run(() => window.dispatchEvent(new Event('jan-format-paste'))) },
+      ],
+    },
+
     { divider: '선택 · 찾기', label: '' },
-    { label: '모두 선택', short: '모두선택', hint: 'Ctrl+A', icon: 'check', onClick: () => run(() => editor.chain().focus().selectAll().run()) },
+    {
+      label: '모두 선택', short: '선택', hint: 'Ctrl+A', icon: 'check',
+      onClick: () => run(() => { selectAll(editor) }),
+      menu: [
+        { label: '모두 선택', hint: 'Ctrl+A', icon: 'check', onClick: () => run(() => { selectAll(editor) }) },
+        { label: '비슷한 서식의 글 선택', icon: 'sparkle', onClick: () => run(() => { selectSimilarFormatting(editor) }) },
+        { label: '개체 선택 (그림·도형 목록)', hint: 'Alt+F10', icon: 'menu', onClick: () => run(() => window.dispatchEvent(new Event('jan-object-pane'))) },
+      ],
+    },
     { label: '찾기 · 바꾸기', short: '찾기', hint: 'Ctrl+F', icon: 'find', onClick: () => run(p.onFind) },
-    { label: '전체 문서 검색', short: '전체검색', icon: 'search', onClick: () => run(p.onSearch) },
+    { label: '모든 메모에서 찾기', short: '전체 검색', icon: 'search', onClick: () => run(p.onSearch) },
+
     { divider: '서식 지우기', label: '' },
-    { short: '서식 지움', label: '글자 서식 지우기', icon: 'close', onClick: () => run(() => editor.chain().focus().unsetAllMarks().run()) },
-    { short: '문단 초기화', label: '문단 서식 지우기 (본문으로)', icon: 'paragraph', onClick: () => run(() => editor.chain().focus().setParagraph().run()) },
+    {
+      label: '글자 서식 지우기', short: '서식 지움', icon: 'close',
+      onClick: () => run(() => editor.chain().focus().unsetAllMarks().run()),
+      menu: [
+        { label: '글자 서식만 지우기 (굵게·색·밑줄)', short: '글자만', icon: 'close', onClick: () => run(() => editor.chain().focus().unsetAllMarks().run()) },
+        { label: '문단까지 본문으로 되돌리기', short: '문단까지', icon: 'paragraph', onClick: () => run(() => editor.chain().focus().setParagraph().run()) },
+        { label: '글자·문단 서식 모두 지우기', short: '모두', icon: 'close', onClick: () => run(() => editor.chain().focus().unsetAllMarks().clearNodes().run()) },
+      ],
+    },
+
     { divider: '명령 찾기', label: '' },
-    { label: '명령 팔레트', short: '명령', hint: 'Ctrl+Shift+P', icon: 'cmd', onClick: () => run(cmdPalette) },
+    { label: '명령 팔레트 (이름으로 명령 찾기)', short: '명령', hint: 'Ctrl+Shift+P', icon: 'cmd', onClick: () => run(cmdPalette) },
   ]
   /* AI 는 우리 강점이라 별도 탭으로 올린다 — 도구·미디어에 섞여 있던 것을 옮긴다 */
   const AI_KEYS = ['AI ', 'OCR', '번역', '문서 건강 점수', '워드 클라우드', '마인드맵']
@@ -2075,7 +2047,7 @@ export function Toolbar(p: ToolbarProps) {
     { divider: '쓰기 도우미', label: '' },
     ...aiTools.filter((it) => it.label.startsWith('AI ')),
     { divider: '이미지 · 인식', label: '' },
-    ...aiFrom(pick('미디어')),
+    { short: 'AI 그림', label: 'AI 이미지 생성 (Pollinations)', icon: 'sparkle', onClick: () => run(() => { void aiImageStub() }) },
     ...aiTools.filter((it) => it.label.startsWith('OCR')),
   ]
 
@@ -2181,6 +2153,38 @@ export function Toolbar(p: ToolbarProps) {
   /* ── 표: 워드의 「레이아웃」 탭 ── */
   /* 표 레이아웃 — 워드 「표 레이아웃」 탭 그대로의 묶음:
      표 · 그리기 · 행 및 열 · 병합 · 셀 크기 · 맞춤 · 데이터 */
+  /**
+   * 묶음이 길면 낱낱의 명령을 「더보기」 ▾ 로 접는다.
+   * 그림·표처럼 명령이 예순 개까지 가는 상황 탭은 접지 않으면 리본이 화면을 두 배 넘어
+   * 첫 묶음이 밖으로 밀려난다 (예전에 삽입 탭에서 겪은 일). 명령은 하나도 버리지 않는다.
+   *
+   * 이미 ▾·색판·격자를 달고 있는 단추는 접지 않는다 — 하위 차림표 안에서는 그것들을
+   * 그려 줄 수 없어서, 접으면 눌러도 아무 일이 없는 죽은 항목이 된다.
+   */
+  const foldTail = (items: MenuItem[], keep: number): MenuItem[] => {
+    const rich = (it: MenuItem) => !!(it.menu || it.panel || it.grid)
+    const out: MenuItem[] = []
+    let cap = ''
+    let seg: MenuItem[] = []
+    const flush = () => {
+      if (!seg.length) return
+      const plain = seg.filter((it) => !rich(it))
+      if (plain.length > keep + 1) {
+        const fold = new Set(plain.slice(keep))
+        out.push(...seg.filter((it) => !fold.has(it)))
+        out.push({ label: `${cap} — 더보기`, short: '더보기', icon: 'menu', menu: [...fold] })
+      } else {
+        out.push(...seg)
+      }
+      seg = []
+    }
+    items.forEach((it) => {
+      if (it.divider) { flush(); cap = it.divider; out.push(it) } else seg.push(it)
+    })
+    flush()
+    return out
+  }
+
   const tableItems: MenuItem[] = [
     { divider: '표', label: '' },
     {
@@ -2200,9 +2204,9 @@ export function Toolbar(p: ToolbarProps) {
         }) },
       ],
     },
-    { label: '눈금선 보기', short: '눈금선', icon: 'table', small: true, onClick: () => run(() => window.dispatchEvent(new Event('jan-table-gridlines'))) },
-    { label: '표 너비·자리 (속성)', short: '속성', icon: 'settings', small: true, onClick: () => run(askTableWidth) },
-    { label: '표 서식 창 (테두리·채우기·맞춤)', short: '표 서식', icon: 'palette', small: true, onClick: () => run(() => window.dispatchEvent(new CustomEvent('jan-table-format', { detail: { tab: 'border' } }))) },
+    { label: '눈금선 보기', short: '눈금선', icon: 'table', onClick: () => run(() => window.dispatchEvent(new Event('jan-table-gridlines'))) },
+    { label: '표 너비·자리 (속성)', short: '속성', icon: 'settings', onClick: () => run(askTableWidth) },
+    { label: '표 서식 창 (테두리·채우기·맞춤)', short: '표 서식', icon: 'palette', onClick: () => run(() => window.dispatchEvent(new CustomEvent('jan-table-format', { detail: { tab: 'border' } }))) },
     {
       label: '텍스트 배치 · 표 자리', short: '배치', icon: 'align-justify',
       menu: [
@@ -2265,26 +2269,27 @@ export function Toolbar(p: ToolbarProps) {
         { label: '고정 열 너비', icon: 'columns', onClick: () => run(() => setTableAttr({ 'data-fit': 'fixed' }, '열 너비를 고정했습니다')) },
       ],
     },
-    { label: '행 높이 지정...', short: '행 높이', icon: 'table', small: true, onClick: () => run(askRowHeight) },
-    { label: '표 너비 지정...', short: '표 너비', icon: 'columns', small: true, onClick: () => run(askTableWidth) },
-    { label: '셀 여백 (표 전체)...', short: '표 여백', icon: 'box', small: true, onClick: () => run(askCellPadding) },
-    { label: '셀 여백...', short: '셀 여백', icon: 'box', small: true, onClick: () => run(() => window.dispatchEvent(new CustomEvent('jan-table-format', { detail: { tab: 'align' } }))) },
+    { label: '행 높이 지정 (창)', short: '행 높이', icon: 'table', onClick: () => run(askRowHeight) },
+    { label: '표 너비 지정 (창)', short: '표 너비', icon: 'columns', onClick: () => run(askTableWidth) },
+    { label: '셀 여백 — 표 전체 (창)', short: '표 여백', icon: 'box', onClick: () => run(askCellPadding) },
+    { label: '셀 여백 — 고른 칸 (창)', short: '셀 여백', icon: 'box', onClick: () => run(() => window.dispatchEvent(new CustomEvent('jan-table-format', { detail: { tab: 'align' } }))) },
     { label: '행 높이를 같게 (고른 행만)', short: '행 같게', icon: 'table', hint: 'Alt+Shift+E', onClick: () => run(() => { distributeRows(editor) }) },
     { label: '열 너비를 같게 (고른 열만)', short: '열 같게', icon: 'columns', hint: 'Alt+E', onClick: () => run(() => { distributeColumns(editor) }) },
-    { label: '열 너비 지정 지우기 (내용에 맞게)', short: '열 초기화', icon: 'refresh-cw', small: true, onClick: () => run(evenColumnWidths) },
-    { label: '열 너비 넓히기 (+8px)', short: '열 ＋', icon: 'chevron-right', small: true, onClick: () => run(() => { resizeColumns(editor, 8) }) },
-    { label: '열 너비 좁히기 (−8px)', short: '열 －', icon: 'chevron-left', small: true, onClick: () => run(() => { resizeColumns(editor, -8) }) },
-    { label: '행 높이 키우기 (+8px)', short: '행 ＋', icon: 'chevron-down', small: true, onClick: () => run(() => { resizeRows(editor, 8) }) },
-    { label: '행 높이 줄이기 (−8px)', short: '행 －', icon: 'chevron-up', small: true, onClick: () => run(() => { resizeRows(editor, -8) }) },
-    { label: '행을 위로 이동', short: '행 ↑', icon: 'chevron-up', hint: 'Shift+Alt+↑', small: true, onClick: () => run(() => { moveRow(editor, -1) }) },
-    { label: '행을 아래로 이동', short: '행 ↓', icon: 'chevron-down', hint: 'Shift+Alt+↓', small: true, onClick: () => run(() => { moveRow(editor, 1) }) },
+    { label: '열 너비 지정 지우기 (내용에 맞게)', short: '열 초기화', icon: 'refresh-cw', onClick: () => run(evenColumnWidths) },
+    { label: '열 너비 넓히기 (+8px)', short: '열 ＋', icon: 'chevron-right', onClick: () => run(() => { resizeColumns(editor, 8) }) },
+    { label: '열 너비 좁히기 (−8px)', short: '열 －', icon: 'chevron-left', onClick: () => run(() => { resizeColumns(editor, -8) }) },
+    { label: '행 높이 키우기 (+8px)', short: '행 ＋', icon: 'chevron-down', onClick: () => run(() => { resizeRows(editor, 8) }) },
+    { label: '행 높이 줄이기 (−8px)', short: '행 －', icon: 'chevron-up', onClick: () => run(() => { resizeRows(editor, -8) }) },
+    { label: '행을 위로 이동', short: '행 ↑', icon: 'chevron-up', hint: 'Shift+Alt+↑', onClick: () => run(() => { moveRow(editor, -1) }) },
+    { label: '행을 아래로 이동', short: '행 ↓', icon: 'chevron-down', hint: 'Shift+Alt+↓', onClick: () => run(() => { moveRow(editor, 1) }) },
 
     { divider: '맞춤', label: '' },
     {
-      label: '칸 맞춤 (아홉 칸)', short: '맞춤',
-      grid: {
-        cols: 3,
-        items: ([
+      /* 아홉 칸 격자를 리본에 펴 놓으면 그 탭만 22px 더 높아져, 표를 누를 때마다 본문이 툭 내려앉는다.
+         차림표로 접어 모든 탭 높이를 한 줄로 맞췄다 (골라 쓰는 아홉 자리는 그대로다). */
+      label: '칸 맞춤 (아홉 자리)', short: '맞춤', icon: 'align-center',
+      menu: (
+        ([
           ['top', 'left', '위 왼쪽'], ['top', 'center', '위 가운데'], ['top', 'right', '위 오른쪽'],
           ['middle', 'left', '가운데 왼쪽'], ['middle', 'center', '한가운데'], ['middle', 'right', '가운데 오른쪽'],
           ['bottom', 'left', '아래 왼쪽'], ['bottom', 'center', '아래 가운데'], ['bottom', 'right', '아래 오른쪽'],
@@ -2292,13 +2297,13 @@ export function Toolbar(p: ToolbarProps) {
           label,
           icon: h === 'left' ? 'align-left' : h === 'center' ? 'align-center' : 'align-right',
           onClick: () => run(() => { applyCellAlign(editor, h as 'left' | 'center' | 'right', v as 'top' | 'middle' | 'bottom') }),
-        })),
-      },
+        }))
+      ),
     },
-    { label: '칸 안 글 양쪽 맞춤', short: '양쪽', icon: 'align-justify', small: true, onClick: () => run(() => { applyCellAlign(editor, 'justify', 'middle') }) },
-    { label: '텍스트 방향 변경 (가로 ↔ 세로쓰기)', short: '텍스트 방향', icon: 'paragraph', small: true, onClick: () => run(() => { cycleCellTextDirection(editor) }) },
-    { label: '칸 안 글 들여쓰기', short: '들여쓰기', icon: 'chevron-right', small: true, onClick: () => run(() => { applyCellIndent(editor, 1) }) },
-    { label: '칸 안 글 내어쓰기', short: '내어쓰기', icon: 'chevron-left', small: true, onClick: () => run(() => { applyCellIndent(editor, -1) }) },
+    { label: '칸 안 글 양쪽 맞춤', short: '양쪽', icon: 'align-justify', onClick: () => run(() => { applyCellAlign(editor, 'justify', 'middle') }) },
+    { label: '텍스트 방향 변경 (가로 ↔ 세로쓰기)', short: '텍스트 방향', icon: 'paragraph', onClick: () => run(() => { cycleCellTextDirection(editor) }) },
+    { label: '칸 안 글 들여쓰기', short: '들여쓰기', icon: 'chevron-right', onClick: () => run(() => { applyCellIndent(editor, 1) }) },
+    { label: '칸 안 글 내어쓰기', short: '내어쓰기', icon: 'chevron-left', onClick: () => run(() => { applyCellIndent(editor, -1) }) },
 
     { divider: '데이터', label: '' },
     {
@@ -2312,9 +2317,9 @@ export function Toolbar(p: ToolbarProps) {
       const on = editor.getAttributes('table')['data-repeat-header'] ? null : '1'
       setTableAttr({ 'data-repeat-header': on }, on ? '쪽을 넘으면 제목 행을 반복합니다' : '제목 행 반복을 껐습니다')
     }) },
-    { label: '텍스트로 변환...', short: '텍스트로', icon: 'file-text', onClick: () => run(askTableToText) },
-    { label: '현재 열 합계', short: '열 합계', icon: 'hash', small: true, onClick: () => run(() => aggregateColumn(editor, 'sum')) },
-    { label: '현재 열 평균', short: '열 평균', icon: 'hash', small: true, onClick: () => run(() => aggregateColumn(editor, 'avg')) },
+    { label: '표를 글로 바꾸기 (창)', short: '텍스트로', icon: 'file-text', onClick: () => run(askTableToText) },
+    { label: '현재 열 합계', short: '열 합계', icon: 'hash', onClick: () => run(() => aggregateColumn(editor, 'sum')) },
+    { label: '현재 열 평균', short: '열 평균', icon: 'hash', onClick: () => run(() => aggregateColumn(editor, 'avg')) },
     {
       label: '수식 (fx)', short: '수식', icon: 'hash',
       menu: [
@@ -2334,12 +2339,12 @@ export function Toolbar(p: ToolbarProps) {
      표 스타일 옵션 · 표 스타일 · 음영 · 테두리 */
   const tableDesignItems: MenuItem[] = [
     { divider: '표 스타일 옵션', label: '' },
-    { label: '머리글 행', short: '머리글 행', icon: 'check', small: true, onClick: () => run(() => { toggleTableOption(editor, 'data-header-row') }) },
-    { label: '요약 행 (마지막 행 강조)', short: '요약 행', icon: 'check', small: true, onClick: () => run(() => { toggleTableOption(editor, 'data-last-row') }) },
-    { label: '줄무늬 행', short: '줄무늬 행', icon: 'check', small: true, onClick: () => run(() => { toggleTableOption(editor, 'data-banded-rows') }) },
-    { label: '첫째 열', short: '첫째 열', icon: 'check', small: true, onClick: () => run(() => { toggleTableOption(editor, 'data-first-col') }) },
-    { label: '마지막 열', short: '마지막 열', icon: 'check', small: true, onClick: () => run(() => { toggleTableOption(editor, 'data-last-col') }) },
-    { label: '줄무늬 열', short: '줄무늬 열', icon: 'check', small: true, onClick: () => run(() => { toggleTableOption(editor, 'data-banded-cols') }) },
+    { label: '머리글 행', short: '머리글 행', icon: 'check', onClick: () => run(() => { toggleTableOption(editor, 'data-header-row') }) },
+    { label: '요약 행 (마지막 행 강조)', short: '요약 행', icon: 'check', onClick: () => run(() => { toggleTableOption(editor, 'data-last-row') }) },
+    { label: '줄무늬 행', short: '줄무늬 행', icon: 'check', onClick: () => run(() => { toggleTableOption(editor, 'data-banded-rows') }) },
+    { label: '첫째 열', short: '첫째 열', icon: 'check', onClick: () => run(() => { toggleTableOption(editor, 'data-first-col') }) },
+    { label: '마지막 열', short: '마지막 열', icon: 'check', onClick: () => run(() => { toggleTableOption(editor, 'data-last-col') }) },
+    { label: '줄무늬 열', short: '줄무늬 열', icon: 'check', onClick: () => run(() => { toggleTableOption(editor, 'data-banded-cols') }) },
 
     { divider: '표 스타일', label: '' },
     ...TABLE_STYLES.slice(0, 3).map((st): MenuItem => ({
@@ -2398,9 +2403,9 @@ export function Toolbar(p: ToolbarProps) {
         { label: '테두리 및 음영...', icon: 'settings', onClick: () => run(() => window.dispatchEvent(new CustomEvent('jan-table-format', { detail: { tab: 'border' } }))) },
       ],
     },
-    { label: '테두리 복사 (본을 집어 다른 칸에 바른다)', short: '테두리 복사', icon: 'cards', small: true, onClick: () => run(() => { setPenMode('copy') }) },
-    { label: '지우개 (선 지우기)', short: '지우개', icon: 'fill', small: true, onClick: () => run(() => { setPenMode('erase') }) },
-    { label: '셀 대각선·표 그리기 창 열기', short: '테두리 창', icon: 'settings', small: true, onClick: () => run(() => window.dispatchEvent(new CustomEvent('jan-table-format', { detail: { tab: 'border' } }))) },
+    { label: '테두리 복사 (본을 집어 다른 칸에 바른다)', short: '테두리 복사', icon: 'cards', onClick: () => run(() => { setPenMode('copy') }) },
+    { label: '지우개 (선 지우기)', short: '지우개', icon: 'fill', onClick: () => run(() => { setPenMode('erase') }) },
+    { label: '셀 대각선·표 그리기 창 열기', short: '테두리 창', icon: 'settings', onClick: () => run(() => window.dispatchEvent(new CustomEvent('jan-table-format', { detail: { tab: 'border' } }))) },
   ]
 
   /* 그림 — 워드의 「그림 서식」 탭을 그대로 옮겼다.
@@ -2413,7 +2418,6 @@ export function Toolbar(p: ToolbarProps) {
     { label: '도형 바꾸기 (크기·서식은 그대로)', short: '도형 변경', icon: 'refresh-cw', onClick: () => run(() => window.dispatchEvent(new CustomEvent('jan-shape-dialog', { detail: { mode: 'format' } }))) },
     ...SHAPES.slice(0, 10).map((sh): MenuItem => ({ label: sh.label + ' 넣기', short: sh.label, icon: 'box', onClick: () => run(() => { insertShape(editor, 'shape', sh.key) }) })),
 
-    { divider: '도형 스타일', label: '' },
     ...SHAPE_STYLES.map((st): MenuItem => ({ label: '스타일: ' + st.label, short: st.label, icon: 'palette', onClick: () => run(() => { applyShapeStyle(editor, st.key) }) })),
     { label: '채우기 색 고르기', short: '채우기', icon: 'fill', onClick: () => run(() => {
       const color = window.prompt('채우기 색 (#RRGGBB · 빈 칸이면 채우기 없음)', '#dbeafe')
@@ -2465,14 +2469,13 @@ export function Toolbar(p: ToolbarProps) {
     { label: '뒤 문단으로 옮기기', short: '아래로', icon: 'chevron-down', hint: 'Alt+End', onClick: () => run(() => { moveShape(editor, 1) }) },
     { label: '개체 보호 켬/끔', short: '개체 보호', icon: 'lock', hint: 'Alt+L', onClick: () => run(() => { toggleShapeLock(editor) }) },
 
-    { divider: '크기와 돌리기', label: '' },
     { label: '크기·서식 대화상자', short: '속성', icon: 'maximize', hint: 'Alt+P', onClick: () => run(() => window.dispatchEvent(new CustomEvent('jan-shape-dialog', { detail: { mode: 'format' } }))) },
     { label: '오른쪽으로 90° 회전', short: '오른쪽 90°', icon: 'refresh-cw', hint: 'Alt+R', onClick: () => run(() => { rotateShape(editor, 90) }) },
     { label: '왼쪽으로 90° 회전', short: '왼쪽 90°', icon: 'refresh-cw', onClick: () => run(() => { rotateShape(editor, -90) }) },
     { label: '좌우 대칭', short: '좌우 대칭', icon: 'refresh-cw', hint: 'Alt+H', onClick: () => run(() => { flipShape(editor, 'h') }) },
     { label: '상하 대칭', short: '상하 대칭', icon: 'refresh-cw', hint: 'Alt+V', onClick: () => run(() => { flipShape(editor, 'v') }) },
 
-    { divider: '글맵시와 아이콘', label: '' },
+    { divider: '글맵시 · 아이콘 · 지우기', label: '' },
     ...WORDART.slice(0, 8).map((w): MenuItem => ({ label: '글맵시: ' + w.label, short: w.label, icon: 'sparkle', onClick: () => run(() => {
       const hit = currentShape(editor)
       if (hit && hit.node.attrs.kind === 'wordart') changeShape(editor, w.key)
@@ -2480,12 +2483,11 @@ export function Toolbar(p: ToolbarProps) {
     }) })),
     ...CLIPART.slice(0, 8).map((c): MenuItem => ({ label: '아이콘: ' + c.label, short: c.label, icon: 'star', onClick: () => run(() => { insertShape(editor, 'icon', c.key) }) })),
 
-    { divider: '지우기', label: '' },
     { label: '개체 삭제', short: '삭제', icon: 'trash', onClick: () => run(() => editor.chain().focus().deleteSelection().run()) },
   ]
 
   const imageItems: MenuItem[] = [
-    { divider: '조정', label: '' },
+    { divider: '모양 다듬기', label: '' },
     { label: '색 보정 (밝기·대비·채도·색조)', short: '색 보정', icon: 'settings', hint: 'Alt+T', onClick: () => run(() => imgDialog('adjust')) },
     ...RECOLORS.map((r): MenuItem => ({ label: '색: ' + r.label, short: r.label, icon: 'palette', onClick: () => run(() => { applyRecolor(editor, r.key) }) })),
     { label: '흰 배경 없애기', short: '배경 제거', icon: 'fill', onClick: () => run(() => { removeWhiteBackground(editor) }) },
@@ -2494,7 +2496,6 @@ export function Toolbar(p: ToolbarProps) {
     { label: '그림 원래대로 (서식만)', short: '원래대로', icon: 'refresh-cw', hint: 'Alt+Z', onClick: () => run(() => { resetImageFormat(editor) }) },
     { label: '그림과 크기 원래대로', short: '전부 원래대로', icon: 'refresh-cw', onClick: () => run(() => { resetImageFormat(editor, true) }) },
 
-    { divider: '그림 스타일', label: '' },
     ...IMAGE_STYLES.map((st): MenuItem => ({ label: '스타일: ' + st.label + ' — ' + st.hint, short: st.label, icon: 'image', onClick: () => run(() => { setImageStyle(editor, st.key, st.label) }) })),
     { label: '테두리 색·두께 정하기', short: '테두리', icon: 'box', onClick: () => run(() => {
       const color = window.prompt('테두리 색 (#RRGGBB · 빈 칸이면 없앤다)', '#333333')
@@ -2523,7 +2524,6 @@ export function Toolbar(p: ToolbarProps) {
     ...[25, 50, 75, 150, 200].map((n): MenuItem => ({ label: '원래 크기의 ' + n + '%', short: n + '%', icon: 'image', onClick: () => run(() => { scaleImage(editor, n) }) })),
     { label: '가로 세로 비율 고정 켬/끔', short: '비율 고정', icon: 'lock', hint: 'Alt+K', onClick: () => run(() => { toggleAspectLock(editor) }) },
 
-    { divider: '자르기', label: '' },
     { label: '자르기 손잡이 켜기/끄기', short: '자르기', icon: 'page-break', onClick: () => run(() => window.dispatchEvent(new Event('jan-image-crop-mode'))) },
     { label: '자르기 수치로 정하기', short: '자르기 값', icon: 'page-break', onClick: () => run(() => imgDialog('crop')) },
     ...([['1:1', 1], ['4:3', 4 / 3], ['3:2', 1.5], ['16:9', 16 / 9], ['3:4', 0.75], ['9:16', 9 / 16]] as [string, number][]).map(
@@ -2544,7 +2544,6 @@ export function Toolbar(p: ToolbarProps) {
     { label: '뒤 문단으로 옮기기', short: '아래로', icon: 'chevron-down', hint: 'Alt+End', onClick: () => run(() => { moveImage(editor, 1) }) },
     { label: '개체 보호 켬/끔 (크기·위치 잠금)', short: '개체 보호', icon: 'lock', hint: 'Alt+L', onClick: () => run(() => { toggleImageLock(editor) }) },
 
-    { divider: '돌리기', label: '' },
     { label: '오른쪽으로 90° 회전', short: '오른쪽 90°', icon: 'refresh-cw', hint: 'Alt+R', onClick: () => run(() => { rotateImage(editor, 90) }) },
     { label: '왼쪽으로 90° 회전', short: '왼쪽 90°', icon: 'refresh-cw', hint: 'Alt+Shift+R', onClick: () => run(() => { rotateImage(editor, -90) }) },
     { label: '좌우 대칭', short: '좌우 대칭', icon: 'refresh-cw', hint: 'Alt+H', onClick: () => run(() => { flipImage(editor, 'h') }) },
@@ -2554,13 +2553,12 @@ export function Toolbar(p: ToolbarProps) {
       if (deg !== null) setRotation(editor, Number(deg) || 0)
     }) },
 
-    { divider: '캡션과 접근성', label: '' },
+    { divider: '캡션 · 편집', label: '' },
     { label: '캡션 넣기 (그림과 함께 움직인다)', short: '캡션', icon: 'file-text', hint: 'Alt+C', onClick: () => run(() => imgDialog('caption')) },
     { label: '캡션 번호 다시 매기기', short: '번호 갱신', icon: 'hash', onClick: () => run(() => { numberImageCaptions(editor) }) },
     { label: '대체 텍스트 편집', short: '대체 텍스트', icon: 'info', hint: 'Alt+A', onClick: () => run(() => imgDialog('alt')) },
     { label: '다음 그림 고르기', short: '다음 그림', icon: 'chevron-down', hint: 'Alt+N', onClick: () => run(() => { selectNextImage(editor, 1) }) },
 
-    { divider: '편집', label: '' },
     { label: '그림판에서 주석 편집', short: '주석 편집', icon: 'paint', onClick: () => run(p.onPaint) },
     { label: '그림으로 저장', short: '저장', icon: 'download', onClick: () => run(() => { downloadImage(editor) }) },
     { label: '그림 삭제', short: '삭제', icon: 'trash', onClick: () => run(() => editor.chain().focus().deleteSelection().run()) },
@@ -2691,15 +2689,15 @@ export function Toolbar(p: ToolbarProps) {
 
     { divider: '메모', label: '' },
     { label: '새 메모 달기', short: '새 메모', icon: 'quote', hint: 'Ctrl+Alt+M', onClick: () => run(() => { void askNewComment() }) },
-    { label: '이전 메모로', short: '이전', icon: 'chevron-up', onClick: () => run(() => { gotoAdjacentComment(editor, -1) }) },
-    { label: '다음 메모로', short: '다음', icon: 'chevron-down', onClick: () => run(() => { gotoAdjacentComment(editor, 1) }) },
     {
+      /* 메모를 훑고 손보는 일은 한 단추에 모았다 — 리본이 한 줄을 넘지 않게 */
       label: '메모 목록 열고 닫기',
       short: '메모 목록',
       icon: 'menu',
       onClick: () => run(() => window.dispatchEvent(new Event('jan-comment-pane'))),
       menu: [
-        { label: '메모 목록 열고 닫기', short: '목록', icon: 'menu', onClick: () => run(() => window.dispatchEvent(new Event('jan-comment-pane'))) },
+        { label: '다음 메모로', short: '다음', icon: 'chevron-down', onClick: () => run(() => { gotoAdjacentComment(editor, 1) }) },
+        { label: '이전 메모로', short: '이전', icon: 'chevron-up', onClick: () => run(() => { gotoAdjacentComment(editor, -1) }) },
         { label: '이 메모 끝냄 / 되열기', short: '끝냄', icon: 'check', onClick: () => run(doneComment) },
         { label: '이 메모 지우기', short: '지우기', icon: 'trash', onClick: () => run(dropComment) },
         { label: '끝낸 메모 모두 걷기', short: '걷기', icon: 'close', onClick: () => run(() => { clearDoneComments(editor) }) },
@@ -2805,15 +2803,18 @@ export function Toolbar(p: ToolbarProps) {
   ]
 
   const groups: MenuGroup[] = [
-    { label: '파일', items: drop(pick('파일'), ['실행 취소', '다시 실행', '모두 선택', '찾기 · 바꾸기', '전체 문서 검색', '글자 서식 지우기', '문단 서식 지우기', '명령 팔레트', '인쇄']) },
+    { label: '파일', items: pick('파일') },
     { label: '편집', items: editItems },
     {
       label: '보기',
       items: [
         ...pick('보기'),
-        { divider: '시각화 · 집중', label: '' },
-        ...take(toolsRest, VIEW_KEYS),
-        ...take(aiFrom(pick('도구')), ['마인드맵', '워드 클라우드']),
+        { divider: '다르게 보기', label: '' },
+        {
+          /* 마인드맵·낱말 구름처럼 「문서를 다른 눈으로 보는」 것들 — 이름이 길어 한 자리에 모았다 */
+          label: '다르게 보기 (마인드맵 · 낱말 구름 · 플래시카드)', short: '다르게', icon: 'sparkle',
+          menu: [...take(toolsRest, VIEW_KEYS), ...take(aiFrom(pick('도구')), ['마인드맵', '워드 클라우드'])],
+        },
       ],
     },
     /* 워드와 같은 이름을 쓴다 — 한글은 「입력」, 워드는 「삽입」이다.
@@ -2826,22 +2827,17 @@ export function Toolbar(p: ToolbarProps) {
     /* 검수 탭이 워드 「검토」 자리다 — 이름만 우리 것으로 바꿨다 */
     { label: '검수', items: reviewItems },
     { label: 'AI', items: aiItems, extra: true },
-    /* 자료 탭이 워드 「참조」 자리다 — 학술 서식(논문)도 그 안의 한 묶음으로 품었다 */
-    {
-      label: '자료',
-      items: [
-        ...pick('자료'),
-        { divider: '학술 서식', label: '' },
-        ...drop(pick('논문'), ['문서 개요 패널', '각주 삽입', '페이지 구분 삽입', '다단 레이아웃']),
-      ],
-    },
+    /* 자료 탭이 워드 「참조」 자리다 — 예전 「논문」 탭의 학술 기능도 이 안에 녹였다
+       (목차·캡션·인용·번호 매기기가 두 군데로 갈라져 있던 것을 한 자리로 모았다) */
+    { label: '자료', items: pick('자료') },
     /* 워드처럼 표 안에서는 상황별 탭이 두 개 열린다 — 「표 디자인」(모양)과 「레이아웃」(구조) */
-    ...(inTable ? [{ label: '표 디자인', items: tableDesignItems, context: true }] : []),
-    ...(inTable ? [{ label: '표 레이아웃', items: tableItems, context: true }] : []),
-    ...(onImage ? [{ label: '그림', items: imageItems, context: true }] : []),
-    ...(onShape ? [{ label: '도형', items: shapeItems, context: true }] : []),
-    ...(onChart ? [{ label: '차트 도구', items: pick('차트 도구'), context: true }] : []),
-    ...(onSmart ? [{ label: '도해 도구', items: pick('도해 도구'), context: true }] : []),
+    /* 상황 탭은 명령이 많아 한 줄을 넘기 쉽다 — 묶음마다 앞의 것만 두고 나머지는 「더보기」 로 접는다 */
+    ...(inTable ? [{ label: '표 디자인', items: foldTail(tableDesignItems, 3), context: true }] : []),
+    ...(inTable ? [{ label: '표 레이아웃', items: foldTail(tableItems, 1), context: true }] : []),
+    ...(onImage ? [{ label: '그림', items: foldTail(imageItems, 3), context: true }] : []),
+    ...(onShape ? [{ label: '도형', items: foldTail(shapeItems, 3), context: true }] : []),
+    ...(onChart ? [{ label: '차트 도구', items: foldTail(pick('차트 도구'), 3), context: true }] : []),
+    ...(onSmart ? [{ label: '도해 도구', items: foldTail(pick('도해 도구'), 4), context: true }] : []),
   ]
 
   /* 묶음 오른쪽 아래 화살표 → 그 묶음의 전체 설정 창 (한글·워드의 대화상자 연결) */

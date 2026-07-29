@@ -28,11 +28,11 @@ test.describe('삽입 탭의 개체', () => {
     await insertTab(page)
     const caps = await page.locator('.jan-ribbon-group .jan-ribbon-cap').allInnerTexts()
     // 워드: 페이지 · 표 · 일러스트레이션 · 미디어 · 링크 · 메모 · 머리글/바닥글 · 텍스트 · 기호
-    // 워드처럼 대표 단추 + ▾ 로 묶고, 「텍스트·기호·꾸밈」 은 텍스트 탭으로 나눴다
-    expect(caps).toEqual(['페이지', '표', '일러스트레이션', '미디어', '링크', '메모'])
+    // 워드처럼 대표 단추 + ▾ 로 묶고, 「텍스트·기호·꾸밈」 은 텍스트 탭, 「메모」 는 검수 탭이 맡는다
+    expect(caps).toEqual(['페이지', '표', '일러스트레이션', '미디어', '링크'])
     await page.locator('.jan-ribbon-tab', { hasText: /^텍스트$/ }).first().click()
     const textCaps = await page.locator('.jan-ribbon-group .jan-ribbon-cap').allInnerTexts()
-    expect(textCaps).toEqual(['머리글/바닥글', '텍스트', '기호', '글자 꾸밈', '리스트 · 상자', '자동 입력'])
+    expect(textCaps).toEqual(['머리글 · 바닥글', '텍스트', '기호', '글자 꾸밈', '목록 · 상자', '자동 입력'])
   })
 
   test('차트를 넣으면 문서에 그림과 데이터가 함께 남는다', async ({ page }) => {
@@ -98,7 +98,7 @@ test.describe('삽입 탭의 개체', () => {
     await expect(editor.locator('table')).toHaveCount(1)
 
     await insertTab(page)
-    await page.locator('button[aria-label^="책갈피 · 상호 참조"]').first().click()
+    await page.locator('button[aria-label^="책갈피 삽입"] .jan-ribbon-caret').first().click()
     await page.locator('.jan-ribbon-dropdown button').filter({ hasText: '상호 참조' }).first().click()
     const dialog = page.locator('.jan-xrefdlg')
     await expect(dialog).toBeVisible()
@@ -177,7 +177,8 @@ test.describe('차트·도해 상황 탭 (워드 「차트 도구」·「SmartAr
     await expect(page.locator('.jan-ribbon-group .jan-ribbon-cap')).toHaveText(['종류와 데이터', '차트 스타일', '차트 요소', '크기와 자리'])
 
     // 종류·크기를 그 자리에서 바꾼다
-    await page.locator('button[aria-label^="차트 종류: 원"]').first().click()
+    await page.locator('button[aria-label="차트 종류 바꾸기"] .jan-ribbon-caret').first().click()
+    await page.locator('.jan-ribbon-dropdown button.jan-menu-item').filter({ hasText: '차트 종류: 원' }).first().click()
     await expect.poll(() => chart.getAttribute('data-spec')).toContain('"type":"pie"')
     const before = JSON.parse((await chart.getAttribute('data-spec')) || '{}').width
     await page.locator('button[aria-label^="차트 크게"]').first().click()
@@ -217,7 +218,8 @@ test.describe('차트·도해 상황 탭 (워드 「차트 도구」·「SmartAr
     await page.locator('button[aria-label^="도해에 항목 하나 더"]').first().click()
     await expect.poll(async () => JSON.parse((await smart.getAttribute('data-spec')) || '{}').items.length).toBe(4)
 
-    await page.locator('button[aria-label^="도해 배치: 원형 주기"]').first().click()
+    await page.locator('button[aria-label="도해 배치 고르기"] .jan-ribbon-caret').first().click()
+    await page.locator('.jan-ribbon-dropdown button.jan-menu-item').filter({ hasText: '원형 주기' }).first().click()
     await expect.poll(async () => JSON.parse((await smart.getAttribute('data-spec')) || '{}').layout).toBe('cycle-circle')
   })
 })

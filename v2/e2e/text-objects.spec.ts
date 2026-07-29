@@ -34,7 +34,7 @@ async function useTextCommand(page: Page, name: RegExp, owner?: string) {
      아무 단추나 눌러 가며 찾으면 엉뚱한 명령이 실행돼 고른 글이 풀린다 */
   const item = page.locator('.jan-ribbon-dropdown button').filter({ hasText: name }).first()
   if (owner) {
-    await page.locator(`.jan-ribbon-body button[aria-label^="${owner}"]`).first().dispatchEvent('click')
+    await page.locator(`.jan-ribbon-body button[aria-label^="${owner}"] .jan-ribbon-caret`).first().dispatchEvent('click')
     await page.waitForTimeout(200)
   }
   for (let tries = 0; tries < 4 && (await item.count()) === 0; tries += 1) {

@@ -30,7 +30,8 @@ async function selectLine(page: Page) {
 }
 
 const open = async (page: Page, label: string) => {
-  const button = page.locator(`.jan-ribbon-split[aria-label^="${label}"]`)
+  /* 워드처럼 몸통과 ▾ 가 나뉘어 있다 — 차림표는 ▾ 를 눌러 연다 */
+  const button = page.locator(`.jan-ribbon-split[aria-label^="${label}"] .jan-ribbon-caret`)
   const pop = page.locator('.jan-ribbon-dropdown')
   // 누를 때마다 열리고 닫히므로 열렸는지 보고 다시 누른다
   for (let tries = 0; tries < 3 && (await pop.count()) === 0; tries += 1) {
@@ -43,21 +44,23 @@ const open = async (page: Page, label: string) => {
 test.describe('서식 탭 — 워드 홈', () => {
   test('묶음이 워드 홈과 같은 갈래로 나뉜다', async ({ page }) => {
     await withText(page)
-    await expect(page.locator('.jan-ribbon-cap')).toHaveText(['클립보드', '글꼴', '단락', '스타일', '편집', '한국어 타이포'])
+    await expect(page.locator('.jan-ribbon-cap')).toHaveText(['글꼴', '단락', '스타일', '문서 기본값'])
   })
 
-  test('붙여넣기·선택·스타일 갤러리가 차림표로 열린다', async ({ page }) => {
+  test('붙여넣기·선택은 편집 탭, 스타일 갤러리는 서식 탭에서 열린다', async ({ page }) => {
     await withText(page)
-    await open(page, '붙여넣기')
+    /* 붙여넣기와 선택은 「편집」 탭이 맡는다 (서식 탭은 모양만) */
+    await page.getByRole('tab', { name: '편집', exact: true }).click()
+    await page.locator('.jan-ribbon-split[aria-label^="붙여넣기"] .jan-ribbon-caret').click()
     await expect(page.locator('.jan-ribbon-dropdown button')).toHaveText([
-      '원본 서식 유지', '서식 병합 (지금 문단에 맞춤)', '텍스트만 유지', '표로 붙여넣기 (CSV·엑셀)',
+      '원본 서식 그대로', '지금 문단 서식에 맞춰', '글자만 (서식 버리고)', '표로 붙여넣기 (CSV·엑셀)',
     ])
     await page.keyboard.press('Escape')
-
-    await open(page, '선택')
+    await page.locator('.jan-ribbon-split[aria-label^="모두 선택"] .jan-ribbon-caret').click()
     await expect(page.locator('.jan-ribbon-dropdown button')).toHaveCount(3)
     await page.keyboard.press('Escape')
 
+    await page.getByRole('tab', { name: '서식', exact: true }).click()
     await open(page, '스타일 갤러리')
     // 워드의 스타일 갤러리 열다섯 가지 (표준·간격 없음·제목 1~3·부제·강조 셋·인용 둘·참조 둘·책 제목·목록 단락)
     await expect(page.locator('.jan-ribbon-dropdown button')).toHaveCount(15)
@@ -84,7 +87,7 @@ test.describe('서식 탭 — 워드 홈', () => {
   test('글꼴 색·문자 음영·문자 테두리는 워드 색판으로 고른다', async ({ page }) => {
     await withText(page)
     await selectLine(page)
-    await open(page, '글꼴 색')
+    await open(page, '글자 색 자세히')
     await expect(page.locator('.jan-wcolor-theme button')).toHaveCount(60)
     await page.locator('.jan-wcolor-std button').nth(1).click() // 빨강
     expect(await page.evaluate(() => {
@@ -106,7 +109,7 @@ test.describe('서식 탭 — 워드 홈', () => {
   test('밑줄 모양을 고른다 (물결선까지)', async ({ page }) => {
     await withText(page)
     await selectLine(page)
-    await open(page, '밑줄')
+    await open(page, '밑줄 모양 고르기')
     await page.locator('.jan-ribbon-dropdown button', { hasText: '물결선' }).click()
 
     const el = page.locator('.ProseMirror [data-underline]')
@@ -117,24 +120,24 @@ test.describe('서식 탭 — 워드 홈', () => {
   test('줄 간격과 단락 앞뒤 공백', async ({ page }) => {
     await withText(page)
     await selectLine(page)
-    await open(page, '줄 간격')
+    await open(page, '줄 간격 · 문단 공백')
     await page.locator('.jan-ribbon-dropdown button', { hasText: '2.0' }).first().click()
     const p = page.locator('.ProseMirror p').first()
     await expect(p).toHaveAttribute('style', /line-height:\s*2/)
 
-    await open(page, '줄 간격')
-    await page.locator('.jan-ribbon-dropdown button', { hasText: '단락 앞에 공백 추가' }).click()
+    await open(page, '줄 간격 · 문단 공백')
+    await page.locator('.jan-ribbon-dropdown button', { hasText: '문단 앞에 공백 넣기' }).click()
     await expect(p).toHaveAttribute('style', /margin-top:\s*12px/)
   })
 
   test('글머리·번호 모양 라이브러리', async ({ page }) => {
     await withText(page)
     await selectLine(page)
-    await open(page, '글머리 기호')
+    await open(page, '글머리 모양 고르기')
     await page.locator('.jan-ribbon-dropdown button', { hasText: '체크' }).click()
     await expect(page.locator('.ProseMirror ul')).toHaveAttribute('data-bullet', 'check')
 
-    await open(page, '번호 매기기')
+    await open(page, '번호 모양 고르기')
     // 「i. ii. iii.」 도 함께 걸리므로 대문자 항목만 고른다
     await page.locator('.jan-ribbon-dropdown button').filter({ hasText: /^I\. II\. III\.$/ }).click()
     await expect(page.locator('.ProseMirror ol')).toHaveAttribute('data-number', 'upper-roman')
@@ -157,7 +160,7 @@ test.describe('서식 탭 — 워드 홈', () => {
 
     /* 예전에는 리본 단추가 초점을 가져가면서 고른 글이 풀려,
        색을 골라도 아무 데도 적용되지 않았다 (손으로 눌러 보고서야 드러났다) */
-    await open(page, '글꼴 색')
+    await open(page, '글자 색 자세히')
     await expect.poll(() => page.evaluate(() => window.getSelection()?.toString() || '')).not.toBe('')
 
     await page.locator('.jan-wcolor-std button').nth(1).click() // 빨강

@@ -59,7 +59,7 @@ test.describe('리본 묶음', () => {
     await page.locator('.ProseMirror table td').nth(0).click()
     await page.waitForTimeout(300)
 
-    await page.locator('.jan-ribbon-split[aria-label="선택"]').click()
+    await page.locator('.jan-ribbon-split[aria-label="선택"] .jan-ribbon-caret').click()
     const pop = page.locator('.jan-ribbon-dropdown')
     await expect(pop).toBeVisible()
 
@@ -109,7 +109,7 @@ test.describe('리본 묶음', () => {
     await page.locator('.jan-ribbon-split[aria-label="펜 색"]').click()
     await page.locator('.jan-wcolor-std button').nth(7).click() // 파랑 #0070c0
 
-    await page.locator('.jan-ribbon-split[aria-label="테두리"]').click()
+    await page.locator('.jan-ribbon-split[aria-label="테두리"] .jan-ribbon-caret').click()
     await page.locator('.jan-ribbon-dropdown button', { hasText: '모든 테두리' }).click()
 
     const cell = page.locator('.ProseMirror table td').first()
@@ -117,13 +117,15 @@ test.describe('리본 묶음', () => {
     expect(await cell.evaluate((el) => getComputedStyle(el).borderTop)).toBe('3px dashed rgb(0, 112, 192)')
   })
 
-  test('맞춤은 아홉 칸 격자로 고른다', async ({ page }) => {
+  test('칸 맞춤은 아홉 자리에서 고른다', async ({ page }) => {
     await tableEditor(page)
     await page.locator('.ProseMirror table td').nth(0).click()
     await page.waitForTimeout(300)
     await page.keyboard.press('Alt+s')
 
-    const grid = page.locator('.jan-ribbon-grid .jan-ribbon-gridbtn')
+    /* 아홉 자리는 차림표 안에 있다 — 리본에 펴 놓으면 그 탭만 높아져 본문이 툭 내려앉는다 */
+    await page.locator('.jan-ribbon-split[aria-label^="칸 맞춤"] .jan-ribbon-caret').click()
+    const grid = page.locator('.jan-ribbon-dropdown button.jan-menu-item')
     await expect(grid).toHaveCount(9)
     await grid.nth(8).click() // 아래 오른쪽
     const cell = page.locator('.ProseMirror table td').first()

@@ -7279,6 +7279,9 @@ body.jan-table-gridlines .ProseMirror td, body.jan-table-gridlines .ProseMirror 
 /* 분할 단추 — 이름 옆에 작은 ▾ */
 .jan-ribbon-split.is-open { background: rgba(0, 0, 0, .07); }
 .jan-ribbon-split span { display: inline-flex; align-items: center; gap: 2px; }
+/* ▾ 는 「차림표를 여는 자리」 — 몸통(대표 명령)과 눌리는 데를 나눈다 (워드와 같다) */
+.jan-ribbon-caret { display: inline-flex; align-items: center; padding: 2px 1px 2px 3px; margin-right: -2px; border-radius: 3px; }
+.jan-ribbon-split:hover .jan-ribbon-caret { background: rgba(0, 0, 0, .08); }
 /* 격자 — 아홉 칸 맞춤처럼 */
 .jan-ribbon-grid { display: grid; gap: 1px; align-content: center; }
 .jan-ribbon-gridbtn {

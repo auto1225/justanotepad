@@ -952,7 +952,9 @@ test.describe('줄 단위 문단 분할', () => {
     await page.waitForTimeout(400)
 
     await page.getByRole('tab', { name: '자료', exact: true }).click()
-    await page.locator('.jan-ribbon-body .jan-ribbon-btn').filter({ hasText: /APA/ }).first().click()
+    /* 학술 표준 양식은 「학술 양식 › 표준 양식 ▾」 안에 모여 있다 */
+    await page.locator('button[aria-label^="학술 표준 양식"] .jan-ribbon-caret').first().click()
+    await page.locator('.jan-ribbon-dropdown button.jan-menu-item').filter({ hasText: /APA/ }).first().click()
     await page.waitForTimeout(1500)
 
     const frames = await page.evaluate(() => (window as unknown as { __raf: number }).__raf)

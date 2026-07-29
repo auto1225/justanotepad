@@ -227,7 +227,7 @@ test.describe('표 서식과 상황 막대', () => {
     await page.getByRole('tab', { name: '표 레이아웃', exact: true }).dispatchEvent('click')
     await page.waitForTimeout(200)
     // 워드처럼 「삭제 ▾」 안에 들어 있다
-    await page.locator('.jan-ribbon-split[aria-label="삭제"]').click()
+    await page.locator('.jan-ribbon-split[aria-label="삭제"] .jan-ribbon-caret').click()
     await page.locator('.jan-ribbon-dropdown button', { hasText: '왼쪽으로 밀기' }).click()
 
     const rows = page.locator('.ProseMirror table tr')

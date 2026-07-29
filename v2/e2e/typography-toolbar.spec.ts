@@ -118,7 +118,7 @@ test.describe('글자 모양 도구 상자', () => {
     await page.goto('./')
     await page.locator('.ProseMirror').first().waitFor({ state: 'visible', timeout: 15000 })
     await page.getByRole('tab', { name: '서식', exact: true }).click()
-    await page.locator('.jan-ribbon-body .jan-ribbon-btn[aria-label="문서 스타일"]').click()
+    await page.locator('.jan-ribbon-body .jan-ribbon-btn[aria-label="문서 스타일 창 열기"]').click()
     await page.locator('.jan-typography-modal').waitFor()
 
     // 미리 정해 둔 눈금 밖의 값도 직접 넣을 수 있다 (예전 슬라이더는 10~22px 로 막혀 있었다)

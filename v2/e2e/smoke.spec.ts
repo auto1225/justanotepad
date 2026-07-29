@@ -24,7 +24,7 @@ async function useRibbonCommand(
 
   if (drop) {
     const item = page.locator('.jan-ribbon-dropdown button').filter({ hasText: loose }).first()
-    const button = page.locator(`.jan-ribbon-split[aria-label^="${drop}"]`)
+    const button = page.locator(`.jan-ribbon-split[aria-label^="${drop}"] .jan-ribbon-caret`)
     for (let tries = 0; tries < 4 && (await item.count()) === 0; tries += 1) {
       await button.click({ force: true })
       await page.waitForTimeout(250)
@@ -47,10 +47,16 @@ async function useRibbonCommand(
   const byLabel = body.locator(`button[aria-label^="${name}"]`).first()
   if (await byLabel.count()) { await byLabel.dispatchEvent('click'); return }
 
+  /* 상황 탭은 묶음마다 「… — 더보기」 ▾ 가 있다 — 찾을 때까지 차례로 열어 본다 */
   const item = page.locator('.jan-ribbon-dropdown button').filter({ hasText: loose }).first()
-  for (let tries = 0; tries < 4 && (await item.count()) === 0; tries += 1) {
-    await body.locator('button[aria-label$="더보기"]').first().dispatchEvent('click')
-    await page.waitForTimeout(250)
+  const mores = body.locator('button[aria-label$="더보기"] .jan-ribbon-caret')
+  const howMany = await mores.count()
+  for (let k = 0; k < howMany && (await item.count()) === 0; k += 1) {
+    await mores.nth(k).dispatchEvent('click')
+    await page.waitForTimeout(220)
+    if (await item.count()) break
+    await page.keyboard.press('Escape')
+    await page.waitForTimeout(80)
   }
   await expect(item).toHaveCount(1)
   await item.dispatchEvent('click')
@@ -144,11 +150,14 @@ test.describe('v2 smoke', () => {
     }
     await page.getByRole('tab', { name: '파일', exact: true }).click()
     await expect(page.locator('.jan-ribbon-body').getByRole('button', { name: '저장', exact: true })).toBeVisible()
-    await expect(page.locator('.jan-ribbon-body').getByRole('button', { name: /HWPX/ }).first()).toBeVisible()
-    await expect(page.locator('.jan-ribbon-body').getByRole('button', { name: /Markdown/ }).first()).toBeVisible()
+    await page.locator('.jan-ribbon-body button[aria-label^="PDF 내보내기"] .jan-ribbon-caret').first().click()
+    const exportMenu = page.locator('.jan-ribbon-dropdown button.jan-menu-item')
+    await expect(exportMenu.filter({ hasText: /HWPX/ }).first()).toBeVisible()
+    await expect(exportMenu.filter({ hasText: /Markdown/ }).first()).toBeVisible()
+    await page.keyboard.press('Escape')
     await page.getByRole('tab', { name: '레이아웃', exact: true }).click()
     await expect(page.locator('.jan-ribbon-body').getByRole('button', { name: /용지 크기/ })).toBeVisible()
-    await expect(page.locator('.jan-ribbon-body').getByRole('button', { name: /노트 배경 스타일/ })).toBeVisible()
+    await expect(page.locator('.jan-ribbon-body').getByRole('button', { name: /노트 배경 무늬/ })).toBeVisible()
     await page.locator('.jan-ribbon-body').getByRole('button', { name: /용지 크기/ }).click()
     await expect(page.locator('.jan-page-settings-modal')).toBeVisible()
   })
@@ -183,7 +192,7 @@ test.describe('v2 smoke', () => {
 
     const chooserPromise = page.waitForEvent('filechooser')
     await page.getByRole('tab', { name: '파일', exact: true }).click()
-    await page.getByRole('button', { name: '열기...', exact: true }).click()
+    await page.getByRole('button', { name: '열기', exact: true }).click()
     const chooser = await chooserPromise
     await chooser.setFiles({
       name: 'opened-fallback.html',
@@ -338,8 +347,8 @@ test.describe('v2 smoke', () => {
     await expect(pages).toHaveAttribute('data-page-orientation', 'landscape')
     await expect(pages).toHaveAttribute('data-page-columns', '2')
 
-    await page.getByRole('tab', { name: '레이아웃', exact: true }).click()
-    await page.locator('.jan-ribbon-body .jan-ribbon-btn').getByText('미리보기', { exact: true }).first().click()
+    await page.getByRole('tab', { name: '보기', exact: true }).click()
+    await page.locator('.jan-ribbon-body button[aria-label^="인쇄 미리보기"]').first().click()
     await expect(page.locator('.jan-print-title')).toContainText('B4 가로')
     await expect(page.locator('.jan-print-title')).toContainText('2단')
     const printSrcdoc = await page.locator('.jan-print-iframe').evaluate((iframe) => (iframe as HTMLIFrameElement).srcdoc)
@@ -458,13 +467,15 @@ test.describe('v2 smoke', () => {
 
     await expect(zoomValue).toHaveText('100%')
     await page.getByRole('tab', { name: '보기', exact: true }).click()
-    await page.locator('.jan-ribbon-body').getByRole('button', { name: '한 페이지 보기', exact: true }).click()
+    await page.locator('.jan-ribbon-body button[aria-label^="줌 100%"] .jan-ribbon-caret').first().click()
+    await page.locator('.jan-ribbon-dropdown button.jan-menu-item').filter({ hasText: '한 쪽 다 보이게' }).click()
     await expect.poll(readZoom).toBeLessThan(1)
     await expect(zoomValue).not.toHaveText('100%')
     const wholePageZoom = await readZoom()
 
     await page.getByRole('tab', { name: '보기', exact: true }).click()
-    await page.locator('.jan-ribbon-body').getByRole('button', { name: '페이지 너비에 맞춤', exact: true }).click()
+    await page.locator('.jan-ribbon-body button[aria-label^="줌 100%"] .jan-ribbon-caret').first().click()
+    await page.locator('.jan-ribbon-dropdown button.jan-menu-item').filter({ hasText: '쪽 너비에 맞춤' }).click()
     await expect.poll(readZoom).toBeGreaterThan(wholePageZoom)
     const widthZoom = await readZoom()
 
@@ -490,7 +501,7 @@ test.describe('v2 smoke', () => {
     await expect(page.locator('.jan-ruler-v').first()).toBeVisible()
 
     await page.getByRole('tab', { name: '보기', exact: true }).click()
-    await page.getByRole('button', { name: '눈금자 숨기기' }).click()
+    await page.getByRole('button', { name: '눈금자 켬/끔' }).click()
     await expect(pages).toHaveAttribute('data-rulers', 'false')
     await expect(page.getByRole('img', { name: /가로 눈금자/ })).toHaveCount(0)
     await expect(page.locator('.jan-ruler-v')).toHaveCount(0)
@@ -514,7 +525,9 @@ test.describe('v2 smoke', () => {
     await expect(pageStatus).toContainText('인쇄')
 
     await page.getByRole('tab', { name: '보기', exact: true }).click()
-    await page.getByRole('button', { name: '초안 레이아웃', exact: true }).click()
+    // 인쇄 모양 ↔ 초안 모양은 「문서 보기」 ▾ 안에서 고른다
+    await page.locator('button[aria-label^="문서 보기"] .jan-ribbon-caret').first().click()
+    await page.locator('.jan-ribbon-dropdown button.jan-menu-item', { hasText: '초안 모양' }).click()
     await expect(pages).toHaveAttribute('data-view-layout', 'draft')
     await expect(pages).toHaveAttribute('data-rulers', 'false')
     await expect(page.getByRole('img', { name: /가로 눈금자/ })).toHaveCount(0)
@@ -543,9 +556,8 @@ test.describe('v2 smoke', () => {
     await expect(breaks).toHaveCount(1)
     await expect(editor).toContainText('Second page')
 
-    await page.getByRole('tab', { name: '레이아웃', exact: true }).click()
-    await page.locator('.jan-ribbon-body').getByRole('button', { name: /나누기/ }).first().click()
-    await page.locator('.jan-ribbon-dropdown button').filter({ hasText: '페이지 나누기' }).first().click()
+    await page.getByRole('tab', { name: '삽입', exact: true }).click()
+    await page.locator('.jan-ribbon-body button[aria-label="페이지 나누기"]').first().click()
     await expect(breaks).toHaveCount(2)
 
     await page.keyboard.press('Control+Shift+P')
@@ -621,7 +633,7 @@ test.describe('v2 smoke', () => {
     await page.keyboard.type('Body text')
 
     await page.getByRole('tab', { name: '보기', exact: true }).click()
-    await page.getByRole('button', { name: /목차/ }).click()
+    await page.getByRole('button', { name: /문서 개요/ }).first().click()
     const outline = page.locator('.jan-outline')
     await expect(outline).toBeVisible()
     await expect(outline.locator('.jan-outline-head small')).toHaveText('2')
@@ -706,7 +718,7 @@ test.describe('v2 smoke', () => {
     await page.locator('.ProseMirror').first().waitFor({ state: 'visible', timeout: 15000 })
 
     await page.getByRole('tab', { name: '서식', exact: true }).click()
-    await page.locator('.jan-ribbon-body .jan-ribbon-btn[aria-label="문서 스타일"]').click()
+    await page.locator('.jan-ribbon-body .jan-ribbon-btn[aria-label="문서 스타일 창 열기"]').click()
     const modal = page.locator('.jan-typography-modal')
     await expect(modal).toBeVisible()
 
