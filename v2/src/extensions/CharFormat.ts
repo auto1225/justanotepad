@@ -41,6 +41,45 @@ export const CharFormat = Extension.create({
             renderHTML: (attrs: { letterSpacing?: string | null }) =>
               attrs.letterSpacing ? { style: `letter-spacing: ${attrs.letterSpacing}` } : {},
           },
+          /* 문자 테두리 — 워드 「글꼴 › 문자 테두리」 */
+          charBorder: {
+            default: null,
+            parseHTML: (el: HTMLElement) => el.getAttribute('data-char-border'),
+            renderHTML: (attrs: { charBorder?: string | null }) =>
+              attrs.charBorder
+                ? { 'data-char-border': attrs.charBorder, style: `border: 1px solid ${attrs.charBorder}; padding: 0 2px; border-radius: 2px` }
+                : {},
+          },
+          /* 문자 음영 — 워드 「글꼴 › 문자 음영」 */
+          charShading: {
+            default: null,
+            parseHTML: (el: HTMLElement) => el.getAttribute('data-char-shading'),
+            renderHTML: (attrs: { charShading?: string | null }) =>
+              attrs.charShading
+                ? { 'data-char-shading': attrs.charShading, style: `background-color: ${attrs.charShading}` }
+                : {},
+          },
+          /* 밑줄 모양·색 — 워드는 밑줄 단추 옆 ▾ 에서 고른다 */
+          underlineStyle: {
+            default: null,
+            parseHTML: (el: HTMLElement) => el.getAttribute('data-underline'),
+            renderHTML: (attrs: { underlineStyle?: string | null; underlineColor?: string | null }) => {
+              if (!attrs.underlineStyle) return {}
+              const color = attrs.underlineColor ? ` ${attrs.underlineColor}` : ''
+              return {
+                'data-underline': attrs.underlineStyle,
+                style: `text-decoration-line: underline; text-decoration-style: ${attrs.underlineStyle};` +
+                  (attrs.underlineColor ? ` text-decoration-color: ${attrs.underlineColor};` : '') +
+                  ` text-underline-offset: 2px;${color ? '' : ''}`,
+              }
+            },
+          },
+          underlineColor: {
+            default: null,
+            parseHTML: (el: HTMLElement) => el.getAttribute('data-underline-color'),
+            renderHTML: (attrs: { underlineColor?: string | null }) =>
+              attrs.underlineColor ? { 'data-underline-color': attrs.underlineColor } : {},
+          },
           charScale: {
             default: null,
             parseHTML: (el: HTMLElement) => {

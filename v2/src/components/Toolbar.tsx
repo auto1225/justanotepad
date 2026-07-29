@@ -1,4 +1,5 @@
 ﻿import { useState, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import type { Editor } from '@tiptap/react'
 import { useEditorState } from '@tiptap/react'
 import { downloadHwpx } from '../lib/hwpxExport'
@@ -24,6 +25,11 @@ import {
 } from '../lib/tableBorders'
 import { setPenMode } from '../extensions/TablePen'
 import { ColorPalette, LineStyleList, LineWidthList } from './WordPickers'
+import {
+  BULLET_MARKS, LINE_SPACINGS, NUMBER_MARKS, PARA_BORDERS, UNDERLINE_STYLES, changeCase, pasteAs,
+  selectAll, selectSimilarFormatting, setBulletStyle, setCharBorder, setCharShading, setLineSpacing,
+  setNumberStyle, setParagraphBorder, setParagraphShading, setParagraphSpace, setUnderlineStyle,
+} from '../lib/homeTab'
 import { deleteCellsShift } from '../lib/tableWord'
 import { EMPHASIS_MARKS, OVERLAP_FRAMES } from '../extensions/TextObjects'
 import { currentDropCap, insertOverlap, insertRuby, selectedText, setDropCap, setEmphasis } from '../lib/textObjects'
@@ -883,43 +889,186 @@ export function Toolbar(p: ToolbarProps) {
     /* 2. 서식 */
     {
       label: '서식', items: [
-        { label: '굵게', hint: 'Ctrl+B', icon: 'bold', onClick: () => run(() => editor.chain().focus().toggleBold().run()) },
-        { label: '기울임', hint: 'Ctrl+I', icon: 'italic', onClick: () => run(() => editor.chain().focus().toggleItalic().run()) },
-        { label: '밑줄', hint: 'Ctrl+U', icon: 'underline', onClick: () => run(() => editor.chain().focus().toggleUnderline().run()) },
-        { label: '취소선', icon: 'strike', onClick: () => run(() => editor.chain().focus().toggleStrike().run()) },
-        { label: '형광펜', icon: 'highlight', onClick: () => run(() => editor.chain().focus().toggleHighlight({ color: '#FFEB3B' }).run()) },
-        { divider: '제목', label: '' },
-        { label: '제목 1', hint: 'Ctrl+Alt+1', icon: 'h1', onClick: () => run(() => editor.chain().focus().toggleHeading({ level: 1 }).run()) },
-        { label: '제목 2', hint: 'Ctrl+Alt+2', icon: 'h2', onClick: () => run(() => editor.chain().focus().toggleHeading({ level: 2 }).run()) },
-        { label: '제목 3', hint: 'Ctrl+Alt+3', icon: 'h3', onClick: () => run(() => editor.chain().focus().toggleHeading({ level: 3 }).run()) },
-        { label: '일반 문단', icon: 'paragraph', onClick: () => run(() => editor.chain().focus().setParagraph().run()) },
-        { divider: '정렬', label: '' },
-        { label: '왼쪽 정렬', short: '왼쪽', hint: 'Ctrl+L', icon: 'align-left', onClick: () => run(() => editor.chain().focus().setTextAlign('left').run()) },
-        { label: '가운데 정렬', short: '가운데', hint: 'Ctrl+E', icon: 'align-center', onClick: () => run(() => editor.chain().focus().setTextAlign('center').run()) },
-        { label: '오른쪽 정렬', short: '오른쪽', hint: 'Ctrl+R', icon: 'align-right', onClick: () => run(() => editor.chain().focus().setTextAlign('right').run()) },
-        { label: '양쪽 정렬', short: '양쪽', hint: 'Ctrl+J', icon: 'align-justify', onClick: () => run(() => editor.chain().focus().setTextAlign('justify').run()) },
-        { divider: '한국어 타이포', label: '' },
-        { label: '문서 기본 자간', icon: 'palette', onClick: () => run(() => { void setDocLetterSpacing() }) },
-        { label: '문서 기본 장평', icon: 'palette', onClick: () => run(() => { void setDocCharScale() }) },
-        { label: '첫 줄 들여쓰기 (문서 기본)', icon: 'paragraph', onClick: () => run(() => { void setDocTextIndent() }) },
-        { label: '문서 기본 양쪽 정렬 켬/끔', icon: 'align-justify', onClick: () => run(toggleDocJustify) },
-        { short: '첫 줄', label: '첫 줄 들여쓰기 토글', icon: 'paragraph', onClick: () => run(toggleFirstLineIndent) },
-        { label: '단락 간격', icon: 'paragraph', onClick: () => run(setParagraphSpacing) },
-        { label: '글자 효과', icon: 'sparkle', onClick: () => run(setTextEffect) },
-        { short: '강조 상자', label: '강조 배경 상자', icon: 'highlight', onClick: () => run(insertHighlightBox) },
-        { divider: '서식 복사 · 내 스타일', label: '' },
-        { label: '서식 복사', hint: 'Ctrl+Shift+C', icon: 'wand', onClick: () => run(() => window.dispatchEvent(new Event('jan-format-copy'))) },
-        { label: '서식 붙여넣기', short: '붙여넣기', hint: 'Ctrl+Shift+V', icon: 'wand', onClick: () => run(() => window.dispatchEvent(new Event('jan-format-paste'))) },
-        { short: '스타일 저장', label: '현재 서식을 내 스타일로 저장', icon: 'save', onClick: () => run(async () => {
-          if (editor.state.selection.empty) { flash('먼저 서식이 적용된 텍스트를 선택하세요'); return }
-          const name = await askText('스타일 이름:', '', { placeholder: '예: 핵심 강조, 보고서 소제목' })
+        { divider: '클립보드', label: '' },
+        {
+          label: '붙여넣기', short: '붙여넣기', icon: 'cards', hint: 'Ctrl+V',
+          onClick: () => run(() => { pasteAs(editor, 'keep') }),
+          menu: [
+            { label: '원본 서식 유지', icon: 'cards', onClick: () => run(() => { pasteAs(editor, 'keep') }) },
+            { label: '서식 병합 (지금 문단에 맞춤)', icon: 'cards', onClick: () => run(() => { pasteAs(editor, 'merge') }) },
+            { label: '텍스트만 유지', icon: 'file-text', onClick: () => run(() => { pasteAs(editor, 'text') }) },
+            { label: '표로 붙여넣기 (CSV·엑셀)', icon: 'table', onClick: () => run(() => { void insertTableFromCsv() }) },
+          ],
+        },
+        { label: '잘라내기', short: '잘라내기', icon: 'page-break', hint: 'Ctrl+X', small: true, onClick: () => run(() => document.execCommand('cut')) },
+        { label: '복사', short: '복사', icon: 'cards', hint: 'Ctrl+C', small: true, onClick: () => run(() => document.execCommand('copy')) },
+        { label: '서식 복사', short: '서식 복사', icon: 'paint', hint: 'Ctrl+Shift+C', small: true, onClick: () => run(() => window.dispatchEvent(new Event('jan-format-copy'))) },
+        { label: '서식 붙여넣기', short: '서식 붙임', icon: 'paint', hint: 'Ctrl+Shift+V', small: true, onClick: () => run(() => window.dispatchEvent(new Event('jan-format-paste'))) },
+
+        { divider: '글꼴', label: '' },
+        { label: '굵게', short: '굵게', hint: 'Ctrl+B', icon: 'bold', onClick: () => run(() => editor.chain().focus().toggleBold().run()) },
+        { label: '기울임', short: '기울임', hint: 'Ctrl+I', icon: 'italic', onClick: () => run(() => editor.chain().focus().toggleItalic().run()) },
+        {
+          label: '밑줄', short: '밑줄', hint: 'Ctrl+U', icon: 'underline',
+          onClick: () => run(() => editor.chain().focus().toggleUnderline().run()),
+          menu: [
+            ...UNDERLINE_STYLES.map((u): MenuItem => ({
+              label: u.label, icon: 'underline', onClick: () => run(() => { setUnderlineStyle(editor, u.key) }),
+            })),
+            { divider: '색', label: '' },
+            { label: '빨강 밑줄', icon: 'underline', onClick: () => run(() => { setUnderlineStyle(editor, 'solid', '#ff0000') }) },
+            { label: '파랑 밑줄', icon: 'underline', onClick: () => run(() => { setUnderlineStyle(editor, 'solid', '#0070c0') }) },
+            { label: '밑줄 없애기', icon: 'close', onClick: () => run(() => { setUnderlineStyle(editor, null) }) },
+          ],
+        },
+        { label: '취소선', short: '취소선', icon: 'strike', onClick: () => run(() => editor.chain().focus().toggleStrike().run()) },
+        { label: '글자 크기 한 단계 크게', short: '크게', icon: 'zoom-in', small: true, onClick: () => run(() => stepFontSize(1)) },
+        { label: '글자 크기 한 단계 작게', short: '작게', icon: 'zoom-out', small: true, onClick: () => run(() => stepFontSize(-1)) },
+        {
+          label: '대/소문자 바꾸기', short: '대소문자', icon: 'h1',
+          menu: [
+            { label: '문장의 첫 글자만 대문자로', onClick: () => run(() => { changeCase(editor, 'sentence') }) },
+            { label: '모두 소문자로', onClick: () => run(() => { changeCase(editor, 'lower') }) },
+            { label: '모두 대문자로', onClick: () => run(() => { changeCase(editor, 'upper') }) },
+            { label: '각 낱말의 첫 글자를 대문자로', onClick: () => run(() => { changeCase(editor, 'capitalize') }) },
+            { label: '대소문자 뒤집기', onClick: () => run(() => { changeCase(editor, 'toggle') }) },
+          ],
+        },
+        {
+          label: '글꼴 색', short: '글자 색', icon: 'palette',
+          panel: () => <ColorPalette noneLabel="자동 (검정)" noneValue="#000000" onPick={(c) => { editor.chain().focus().setColor(c || '#000000').run() }} />,
+        },
+        {
+          label: '텍스트 강조 색', short: '형광펜', icon: 'highlight',
+          panel: () => <ColorPalette noneLabel="강조 없음" onPick={(c) => {
+            if (c) editor.chain().focus().toggleHighlight({ color: c }).run()
+            else editor.chain().focus().unsetHighlight().run()
+          }} />,
+        },
+        {
+          label: '문자 음영', short: '문자 음영', icon: 'fill',
+          panel: () => <ColorPalette noneLabel="음영 없음" onPick={(c) => { setCharShading(editor, c) }} />,
+        },
+        {
+          label: '문자 테두리', short: '문자 테두리', icon: 'box',
+          panel: () => <ColorPalette noneLabel="테두리 없음" onPick={(c) => { setCharBorder(editor, c) }} />,
+        },
+        { label: '위 첨자', short: '위 첨자', icon: 'sup', small: true, onClick: () => run(() => editor.chain().focus().toggleSuperscript().run()) },
+        { label: '아래 첨자', short: '아래 첨자', icon: 'sup', small: true, onClick: () => run(() => editor.chain().focus().toggleSubscript().run()) },
+        { label: '모든 서식 지우기', short: '서식 지우기', icon: 'close', small: true, onClick: () => run(() => editor.chain().focus().unsetAllMarks().clearNodes().run()) },
+        { label: '글자 효과 (그림자·외곽선)', short: '글자 효과', icon: 'sparkle', small: true, onClick: () => run(setTextEffect) },
+        { label: '글자 모양 창 (자간·장평·효과)', short: '글자 모양', icon: 'settings', small: true, onClick: () => run(p.onTypo) },
+
+        { divider: '단락', label: '' },
+        {
+          label: '글머리 기호', short: '글머리', icon: 'list-bullet',
+          onClick: () => run(() => editor.chain().focus().toggleBulletList().run()),
+          menu: BULLET_MARKS.map((b): MenuItem => ({
+            label: b.label, icon: 'list-bullet', onClick: () => run(() => { setBulletStyle(editor, b.key) }),
+          })),
+        },
+        {
+          label: '번호 매기기', short: '번호', icon: 'list-numbered',
+          onClick: () => run(() => editor.chain().focus().toggleOrderedList().run()),
+          menu: NUMBER_MARKS.map((n): MenuItem => ({
+            label: n.label, icon: 'list-numbered', onClick: () => run(() => { setNumberStyle(editor, n.key) }),
+          })),
+        },
+        { label: '체크리스트', short: '체크', icon: 'list-check', small: true, onClick: () => run(() => editor.chain().focus().toggleList('taskList', 'taskItem').run()) },
+        { label: '들여쓰기', short: '들여쓰기', icon: 'chevron-right', small: true, onClick: () => run(() => editor.chain().focus().indentParagraph().run()) },
+        { label: '내어쓰기', short: '내어쓰기', icon: 'chevron-left', small: true, onClick: () => run(() => editor.chain().focus().outdentParagraph().run()) },
+        {
+          label: '맞춤', short: '맞춤',
+          grid: {
+            cols: 4,
+            items: [
+              { label: '왼쪽 맞춤 (Ctrl+L)', icon: 'align-left', onClick: () => run(() => editor.chain().focus().setTextAlign('left').run()) },
+              { label: '가운데 맞춤 (Ctrl+E)', icon: 'align-center', onClick: () => run(() => editor.chain().focus().setTextAlign('center').run()) },
+              { label: '오른쪽 맞춤 (Ctrl+R)', icon: 'align-right', onClick: () => run(() => editor.chain().focus().setTextAlign('right').run()) },
+              { label: '양쪽 맞춤 (Ctrl+J)', icon: 'align-justify', onClick: () => run(() => editor.chain().focus().setTextAlign('justify').run()) },
+            ],
+          },
+        },
+        {
+          label: '줄 간격', short: '줄 간격', icon: 'paragraph',
+          menu: [
+            ...LINE_SPACINGS.map((v): MenuItem => ({
+              label: `${v.toFixed(2).replace(/\.00$/, '.0')}`, icon: 'paragraph',
+              onClick: () => run(() => { setLineSpacing(editor, v) }),
+            })),
+            { divider: '단락 공백', label: '' },
+            { label: '단락 앞에 공백 추가', icon: 'chevron-up', onClick: () => run(() => { setParagraphSpace(editor, 'before', 12) }) },
+            { label: '단락 앞 공백 제거', icon: 'close', onClick: () => run(() => { setParagraphSpace(editor, 'before', null) }) },
+            { label: '단락 뒤에 공백 추가', icon: 'chevron-down', onClick: () => run(() => { setParagraphSpace(editor, 'after', 12) }) },
+            { label: '단락 뒤 공백 제거', icon: 'close', onClick: () => run(() => { setParagraphSpace(editor, 'after', null) }) },
+            { label: '줄 간격 옵션... (문단 모양 창)', icon: 'settings', onClick: () => run(p.onTypo) },
+          ],
+        },
+        {
+          label: '단락 음영', short: '단락 음영', icon: 'fill',
+          panel: () => <ColorPalette noneLabel="음영 없음" onPick={(c) => { setParagraphShading(editor, c) }} />,
+        },
+        {
+          label: '단락 테두리', short: '단락 테두리', icon: 'box',
+          menu: PARA_BORDERS.map((b): MenuItem => ({
+            label: b.label, icon: 'box', onClick: () => run(() => { setParagraphBorder(editor, b.key) }),
+          })),
+        },
+        { label: '가나다순 정렬 (표에서)', short: '정렬', icon: 'list-numbered', small: true, onClick: () => run(() => { sortTableByCurrentColumn(editor, 'asc') }) },
+        { label: '엔터 표시(¶) 켬/끔', short: '¶', icon: 'paragraph', small: true, onClick: () => run(togglePilcrow) },
+        { label: '첫 줄 들여쓰기 토글', short: '첫 줄 토글', icon: 'chevron-right', small: true, onClick: () => run(toggleFirstLineIndent) },
+
+        { divider: '스타일', label: '' },
+        { label: '제목 1', short: '제목 1', icon: 'h1', onClick: () => run(() => editor.chain().focus().toggleHeading({ level: 1 }).run()) },
+        { label: '제목 2', short: '제목 2', icon: 'h2', onClick: () => run(() => editor.chain().focus().toggleHeading({ level: 2 }).run()) },
+        { label: '제목 3', short: '제목 3', icon: 'h3', onClick: () => run(() => editor.chain().focus().toggleHeading({ level: 3 }).run()) },
+        { label: '표준 (일반 문단)', short: '표준', icon: 'paragraph', onClick: () => run(() => editor.chain().focus().setParagraph().run()) },
+        {
+          label: '스타일 갤러리', short: '스타일', icon: 'sparkle',
+          menu: [
+            { label: '표준', icon: 'paragraph', onClick: () => run(() => editor.chain().focus().setParagraph().unsetAllMarks().run()) },
+            { label: '간격 없음', icon: 'paragraph', onClick: () => run(() => { setParagraphSpace(editor, 'before', null); setParagraphSpace(editor, 'after', null) }) },
+            { label: '제목 1', icon: 'h1', onClick: () => run(() => editor.chain().focus().setHeading({ level: 1 }).run()) },
+            { label: '제목 2', icon: 'h2', onClick: () => run(() => editor.chain().focus().setHeading({ level: 2 }).run()) },
+            { label: '제목 3', icon: 'h3', onClick: () => run(() => editor.chain().focus().setHeading({ level: 3 }).run()) },
+            { label: '부제 (연한 이탤릭)', icon: 'italic', onClick: () => run(() => editor.chain().focus().setParagraph().setItalic().setColor('#5b6270').run()) },
+            { label: '약한 강조 (이탤릭)', icon: 'italic', onClick: () => run(() => editor.chain().focus().setItalic().run()) },
+            { label: '강조 (굵게)', icon: 'bold', onClick: () => run(() => editor.chain().focus().setBold().run()) },
+            { label: '강한 강조 (굵은 이탤릭)', icon: 'bold', onClick: () => run(() => editor.chain().focus().setBold().setItalic().run()) },
+            { label: '인용', icon: 'quote', onClick: () => run(() => editor.chain().focus().toggleBlockquote().run()) },
+            { label: '강한 인용 (음영 인용)', icon: 'quote', onClick: () => run(() => { editor.chain().focus().toggleBlockquote().run(); setParagraphShading(editor, '#f2f4f7') }) },
+            { label: '약한 참조 (작은 회색)', icon: 'sup', onClick: () => run(() => editor.chain().focus().setColor('#8a8f98').setMark('textStyle', { fontSize: '9pt' }).run()) },
+            { label: '강한 참조 (작은 굵은 강조색)', icon: 'sup', onClick: () => run(() => editor.chain().focus().setBold().setColor('#D97757').setMark('textStyle', { fontSize: '9pt' }).run()) },
+            { label: '책 제목 (굵은 이탤릭 밑줄)', icon: 'file-text', onClick: () => run(() => { editor.chain().focus().setBold().setItalic().run(); setUnderlineStyle(editor, 'solid') }) },
+            { label: '목록 단락 (들여쓴 문단)', icon: 'list-bullet', onClick: () => run(() => editor.chain().focus().indentParagraph().run()) },
+          ],
+        },
+        { label: '현재 서식을 내 스타일로 저장', short: '스타일 저장', icon: 'star', small: true, onClick: () => run(async () => {
+          const name = await askText('스타일 이름', '내 스타일')
           if (name) saveCurrentAsStyle(editor, name)
         }) },
-        { short: '내 스타일', label: '내 스타일 적용 / 관리', icon: 'palette', onClick: () => run(() => showMyStylesPicker(editor)) },
-        { divider: '기타', label: '' },
-        { label: '문서 스타일', icon: 'palette', onClick: () => run(p.onTypo) },
-        { label: '서식 지우기', icon: 'wand', onClick: () => run(() => editor.chain().focus().unsetAllMarks().clearNodes().run()) },
-        { short: '엔터 표시', label: '엔터 표시(¶) 켬/끔', icon: 'paragraph', onClick: () => run(togglePilcrow) },
+        { label: '내 스타일 적용 / 관리', short: '내 스타일', icon: 'star-on', small: true, onClick: () => run(() => showMyStylesPicker(editor)) },
+        { label: '문서 스타일', short: '문서 스타일', icon: 'palette', onClick: () => run(p.onTypo) },
+
+        { divider: '편집', label: '' },
+        { label: '찾기', short: '찾기', icon: 'search', hint: 'Ctrl+F', onClick: () => run(p.onFind) },
+        { label: '바꾸기', short: '바꾸기', icon: 'replace', hint: 'Ctrl+H', onClick: () => run(p.onFind) },
+        {
+          label: '선택', short: '선택', icon: 'cmd',
+          menu: [
+            { label: '모두 선택', hint: 'Ctrl+A', icon: 'check', onClick: () => run(() => { selectAll(editor) }) },
+            { label: '비슷한 서식의 텍스트 선택', icon: 'sparkle', onClick: () => run(() => { selectSimilarFormatting(editor) }) },
+            { label: '개체 선택 (그림·도형 목록)', hint: 'Alt+F10', icon: 'menu', onClick: () => run(() => window.dispatchEvent(new Event('jan-object-pane'))) },
+          ],
+        },
+
+        { divider: '한국어 타이포', label: '' },
+        { label: '문서 기본 자간', short: '기본 자간', icon: 'paragraph', small: true, onClick: () => run(() => { void setDocLetterSpacing() }) },
+        { label: '문서 기본 장평', short: '기본 장평', icon: 'paragraph', small: true, onClick: () => run(() => { void setDocCharScale() }) },
+        { label: '첫 줄 들여쓰기 (문서 기본)', short: '첫 줄', icon: 'chevron-right', small: true, onClick: () => run(() => { void setDocTextIndent() }) },
+        { label: '문서 기본 양쪽 정렬 켬/끔', short: '기본 양쪽', icon: 'align-justify', small: true, onClick: () => run(toggleDocJustify) },
+        { label: '단락 간격', short: '단락 간격', icon: 'paragraph', small: true, onClick: () => run(setParagraphSpacing) },
+        { label: '강조 배경 상자', short: '강조 상자', icon: 'box', small: true, onClick: () => run(insertHighlightBox) },
       ],
     },
 
@@ -934,8 +1083,6 @@ export function Toolbar(p: ToolbarProps) {
         { label: '목차 (제목 기반 자동 생성)', icon: 'list-numbered', onClick: () => run(insertToc) },
         { label: '구분선', icon: 'minus', onClick: () => run(insertHr) },
         { divider: '리스트', label: '' },
-        { label: '글머리 기호', icon: 'list-bullet', onClick: () => run(() => editor.chain().focus().toggleBulletList().run()) },
-        { label: '번호 매기기', icon: 'list-numbered', onClick: () => run(() => editor.chain().focus().toggleOrderedList().run()) },
         { label: '체크리스트', icon: 'list-check', onClick: () => run(() => editor.chain().focus().toggleList('taskList', 'taskItem').run()) },
         { label: '인용', icon: 'quote', onClick: () => run(() => editor.chain().focus().toggleBlockquote().run()) },
         { label: '코드 블록', icon: 'code', onClick: () => run(() => editor.chain().focus().toggleCodeBlock().run()) },
@@ -1876,7 +2023,8 @@ export function Toolbar(p: ToolbarProps) {
 
       <span className="jan-spacer" />
 
-      {showLinkPop && (
+      {showLinkPop && createPortal(
+        /* 서식 줄 안에 두면 한 줄로 고정된 그 줄에 갇힌다 — 몸통에 그린다 */
         <div className="jan-link-popover" role="dialog" aria-label="링크 편집" style={{ position: 'fixed', top: 96, left: '50%', transform: 'translateX(-50%)', background: 'var(--jan-bg, #fff)', border: '1px solid rgba(0,0,0,0.15)', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.18)', padding: 12, zIndex: 500, display: 'flex', gap: 6, alignItems: 'center' }}>
           <input
             autoFocus
@@ -1893,7 +2041,8 @@ export function Toolbar(p: ToolbarProps) {
             <button onClick={() => { window.open(editor.getAttributes('link').href, '_blank', 'noopener'); }} style={{ padding: '6px 10px' }}>열기</button>
           )}
           <button onClick={() => setShowLinkPop(false)} aria-label="닫기" style={{ padding: '6px 10px' }}>취소</button>
-        </div>
+        </div>,
+        document.body
       )}
 
       {showSymbolPop && (

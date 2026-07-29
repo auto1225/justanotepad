@@ -144,7 +144,7 @@ test.describe('v2 smoke', () => {
     }
     await page.getByRole('tab', { name: '파일', exact: true }).click()
     await expect(page.locator('.jan-ribbon-body').getByRole('button', { name: '저장', exact: true })).toBeVisible()
-    await expect(page.locator('.jan-ribbon-body').getByRole('button', { name: /HWPX/ })).toBeVisible()
+    await expect(page.locator('.jan-ribbon-body').getByRole('button', { name: /HWPX/ }).first()).toBeVisible()
     await expect(page.locator('.jan-ribbon-body').getByRole('button', { name: /Markdown/ }).first()).toBeVisible()
     await page.getByRole('tab', { name: '쪽', exact: true }).click()
     await expect(page.locator('.jan-ribbon-body').getByRole('button', { name: /페이지 크기 설정/ })).toBeVisible()

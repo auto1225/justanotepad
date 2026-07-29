@@ -61,6 +61,41 @@ export const Indent = Extension.create({
             renderHTML: (attrs: { firstLine?: number }) =>
               attrs.firstLine ? { style: `text-indent: ${attrs.firstLine}px;` } : {},
           },
+          /* 단락 앞·뒤 공백 — 워드 「단락 앞에 공백 추가/제거」 */
+          spaceBefore: {
+            default: null,
+            parseHTML: (el: HTMLElement) => Math.round(parseFloat(el.style.marginTop || '0')) || null,
+            renderHTML: (attrs: { spaceBefore?: number | null }) =>
+              attrs.spaceBefore ? { style: `margin-top: ${attrs.spaceBefore}px;` } : {},
+          },
+          spaceAfter: {
+            default: null,
+            parseHTML: (el: HTMLElement) => Math.round(parseFloat(el.style.marginBottom || '0')) || null,
+            renderHTML: (attrs: { spaceAfter?: number | null }) =>
+              attrs.spaceAfter ? { style: `margin-bottom: ${attrs.spaceAfter}px;` } : {},
+          },
+          /* 단락 음영·테두리 — 워드 「단락」 묶음의 음영·테두리 */
+          shading: {
+            default: null,
+            parseHTML: (el: HTMLElement) => el.getAttribute('data-shading'),
+            renderHTML: (attrs: { shading?: string | null }) =>
+              attrs.shading
+                ? { 'data-shading': attrs.shading, style: `background-color: ${attrs.shading}; padding: 2px 6px;` }
+                : {},
+          },
+          border: {
+            default: null,
+            parseHTML: (el: HTMLElement) => el.getAttribute('data-para-border'),
+            renderHTML: (attrs: { border?: string | null }) => {
+              const where = attrs.border
+              if (!where) return {}
+              const line = '1px solid #98a2b3'
+              const css = where === 'all'
+                ? `border: ${line}; padding: 4px 8px;`
+                : `border-${where}: ${line}; padding: 4px 8px;`
+              return { 'data-para-border': where, style: css }
+            },
+          },
           indentRight: {
             default: 0,
             parseHTML: (el: HTMLElement) => Math.round(parseFloat(el.style.marginRight || '0')) || 0,

@@ -145,7 +145,7 @@ test.describe('표 서식과 상황 막대', () => {
     await page.keyboard.press('Control+End')
     await page.keyboard.type('양쪽으로 고르게 펴지는지 보는 문장이다.')
 
-    const justify = page.getByRole('button', { name: '양쪽 맞춤' })
+    const justify = page.locator('.jan-toolbar-row button[aria-label="양쪽 맞춤"]')
     await expect(justify).toHaveCount(1)
     await justify.click()
     const para = page.locator('.ProseMirror p').last()

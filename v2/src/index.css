@@ -7252,9 +7252,10 @@ body.jan-table-gridlines .ProseMirror td, body.jan-table-gridlines .ProseMirror 
 .jan-ribbon-group { display: flex; flex-direction: column; }
 .jan-ribbon-cap {
   text-align: center;
-  font-size: 10px;
-  line-height: 1.2;
-  padding-top: 1px;
+  font-size: 9.5px;
+  line-height: 1.05;
+  padding-top: 0;
+  margin-top: -1px;
   color: var(--jan-text-dim, #8a8f98);
   white-space: nowrap;
 }
@@ -7323,3 +7324,33 @@ body.jan-table-gridlines .ProseMirror td, body.jan-table-gridlines .ProseMirror 
 .jan-wline button.is-picked { background: rgba(59, 130, 246, .14); }
 .jan-wline-label { width: 42px; flex: none; color: var(--jan-text-dim, #5b6270); }
 .jan-wline-draw { flex: 1; height: 0; }
+
+/* ── 목록 모양 — 워드의 글머리·번호 라이브러리 ─────────────────────── */
+.ProseMirror ul[data-bullet='disc'] { list-style-type: disc; }
+.ProseMirror ul[data-bullet='circle'] { list-style-type: circle; }
+.ProseMirror ul[data-bullet='square'] { list-style-type: square; }
+.ProseMirror ul[data-bullet='dash'] { list-style-type: '– '; }
+.ProseMirror ul[data-bullet='check'] { list-style-type: '✓ '; }
+.ProseMirror ul[data-bullet='arrow'] { list-style-type: '➤ '; }
+.ProseMirror ol[data-number='decimal'] { list-style-type: decimal; }
+.ProseMirror ol[data-number='decimal-paren'] > li::marker { content: counter(list-item) ') '; }
+.ProseMirror ol[data-number='lower-alpha'] { list-style-type: lower-alpha; }
+.ProseMirror ol[data-number='upper-alpha'] { list-style-type: upper-alpha; }
+.ProseMirror ol[data-number='lower-roman'] { list-style-type: lower-roman; }
+.ProseMirror ol[data-number='upper-roman'] { list-style-type: upper-roman; }
+.ProseMirror ol[data-number='korean'] { list-style-type: hangul-consonant; }
+.ProseMirror ol[data-number='circled'] > li::marker { content: '① '; }
+.ProseMirror ol[data-number='circled'] > li:nth-child(2)::marker { content: '② '; }
+.ProseMirror ol[data-number='circled'] > li:nth-child(3)::marker { content: '③ '; }
+.ProseMirror ol[data-number='circled'] > li:nth-child(4)::marker { content: '④ '; }
+.ProseMirror ol[data-number='circled'] > li:nth-child(5)::marker { content: '⑤ '; }
+.ProseMirror ol[data-number='circled'] > li:nth-child(6)::marker { content: '⑥ '; }
+.ProseMirror ol[data-number='circled'] > li:nth-child(7)::marker { content: '⑦ '; }
+.ProseMirror ol[data-number='circled'] > li:nth-child(8)::marker { content: '⑧ '; }
+.ProseMirror ol[data-number='circled'] > li:nth-child(9)::marker { content: '⑨ '; }
+
+/* 링크 창·차림표가 떠 있는 동안에는 떠다니는 서식 막대를 숨긴다 —
+   겹치면 그 아래 단추를 누를 수 없다 */
+body:has(.jan-link-popover) .jan-bubble-toolbar,
+body:has(.jan-ribbon-dropdown) .jan-bubble-toolbar,
+body:has(.jan-modal-overlay) .jan-bubble-toolbar { display: none; }

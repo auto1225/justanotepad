@@ -21,12 +21,21 @@ async function freshEditor(page: Page) {
 async function useTextCommand(page: Page, name: RegExp) {
   await page.getByRole('tab', { name: '입력', exact: true }).dispatchEvent('click')
   await page.waitForTimeout(150)
+  /* 리본 단추에 보이는 글자는 짧은 이름이므로 aria-label 로도 찾는다 */
   const primary = page.locator('.jan-ribbon-body button').filter({ hasText: name }).first()
   if (await primary.count()) { await primary.dispatchEvent('click'); return }
+  const labelled = page.locator('.jan-ribbon-body button').filter({
+    has: page.locator('xpath=.'),
+  })
+  const count = await labelled.count()
+  for (let i = 0; i < count; i += 1) {
+    const aria = await labelled.nth(i).getAttribute('aria-label')
+    if (aria && name.test(aria)) { await labelled.nth(i).dispatchEvent('click'); return }
+  }
 
   const item = page.locator('.jan-ribbon-dropdown button').filter({ hasText: name }).first()
   for (let tries = 0; tries < 4 && (await item.count()) === 0; tries += 1) {
-    await page.locator('.jan-ribbon-body button[aria-label="글자 꾸밈 더보기"]').dispatchEvent('click')
+    await page.locator('.jan-ribbon-body button[aria-label$="더보기"]').first().dispatchEvent('click')
     await page.waitForTimeout(250)
   }
   await expect(item).toHaveCount(1)

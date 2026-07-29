@@ -81,7 +81,7 @@ function useCloseOnScroll(open: boolean, close: () => void) {
 }
 
 /** 묶음 안에서 큰 버튼으로 내보낼 최대 개수 — 나머지는 더보기로 */
-const MAX_PRIMARY = 6
+const MAX_PRIMARY = 9
 /** 작은 버튼은 세 개씩 층층이 쌓이므로 조금 더 담는다 */
 const MAX_SMALL = 9
 

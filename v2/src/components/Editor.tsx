@@ -15,6 +15,7 @@ import { ImageObject as Image } from '../extensions/ImageObject'
 import { ImageKeymap } from '../extensions/ImageKeymap'
 import { ShapeObject } from '../extensions/ShapeObject'
 import { CharOverlap, DropCapAttr, EmphasisDot, RubyText } from '../extensions/TextObjects'
+import { ListStyles } from '../extensions/ListStyles'
 import { CommentMark, FieldInput } from '../extensions/CommentField'
 import { PaginationPlus, PAGE_SIZES } from 'tiptap-pagination-plus'
 import { Collaboration } from '@tiptap/extension-collaboration'
@@ -410,6 +411,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       ImageKeymap,
       ShapeObject,
       DropCapAttr,
+      ListStyles,
       RubyText,
       EmphasisDot,
       CharOverlap,
