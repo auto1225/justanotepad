@@ -77,6 +77,7 @@ import { useSettingsStore } from '../store/settingsStore'
 import { dispatchWebhook } from '../lib/webhooks'
 import {
   DEFAULT_RUNNING_FOOTER,
+  DEFAULT_MEMO_PAGE_SETTINGS,
   effectiveMarginsMm,
   formatPageNumber,
   formatRunningText,
@@ -160,7 +161,7 @@ function watermarkSvg(text: string, w: number, h: number): string {
 
 export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   const { fileHandle, fileHandleMemoId, setFileHandle, setSavedAt, setEditor } = useDocStore()
-  const { currentId, current, newMemo, updateCurrent, updateMemo, updateMemoPageSettings } = useMemosStore()
+  const { currentId, current, newMemo, updateMemo, updateMemoPageSettings } = useMemosStore()
   const applyTheme = useThemeStore((s) => s.apply)
   const applyTypo = useTypographyStore((s) => s.apply)
   const aiAuto = useSettingsStore((s) => s.aiAutocomplete); void aiAuto
@@ -539,7 +540,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   }, [editor, usePageNodes])
 
   useEffect(() => {
-    if (!editor) return
+    if (!editor || editor.isDestroyed) return
     editor.view.dom.setAttribute('spellcheck', spellCheck ? 'true' : 'false')
   }, [editor, spellCheck])
 
@@ -789,7 +790,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   }, [flushPendingEditorContent])
 
   useEffect(() => {
-    if (!editor || !memo) return
+    if (!editor || editor.isDestroyed || !memo) return
     if (collab.ydoc) return
     // 독립 페이지 모델에서는 편집기 HTML 에 용지 래퍼가 들어 있어 저장본과 그대로
     // 비교하면 항상 불일치 → setContent 무한 반복이 된다. 래퍼를 벗겨 비교한다.
@@ -801,12 +802,12 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   }, [currentId, editor, collab.ydoc, memo])
 
   useEffect(() => {
-    if (!editor) return
+    if (!editor || editor.isDestroyed) return
     resolveBlobRefsInElement(editor.view.dom).catch(() => {})
   }, [editor, currentId, memo?.content])
 
   useEffect(() => {
-    if (!editor) return
+    if (!editor || editor.isDestroyed) return
     const root = editor.view.dom
     const onClick = (event: MouseEvent) => {
       const target = event.target as Element | null
@@ -898,7 +899,10 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
     const html = getSavableHtml(editor)
     // saveAs: 항상 새 위치를 묻는다. 아니면 이 메모의 핸들이 있을 때만 재사용
     const ownHandle = saveAs || (fileHandleMemoId && fileHandleMemoId !== currentId) ? null : fileHandle
-    const result = await saveToFile({ title, content: html, handle: ownHandle })
+    const result = await saveToFile({
+      title, content: html, handle: ownHandle,
+      pageSettings: pageSettingsFromUi(useUIStore.getState()), // 이 문서의 판형을 파일에 함께 넣는다
+    })
     if (result.ok) {
       setSavedAt(Date.now())
       if (result.handle) setFileHandle(result.handle, currentId)
@@ -917,8 +921,16 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
     try {
       const result = await openFile()
       if (!result) return
-      updateCurrent({ title: result.title, content: result.content })
-      setFileHandle(result.handle ?? null, currentId)
+      /* 파일은 언제나 제 문서로 연다 — 지금 보던 문서(예: 2단 논문)의 판형이
+         새로 연 문서에 묻어나면 안 된다. 파일에 판형이 적혀 있으면 그것을,
+         없으면 기본 판형을 쓴다 (워드가 문서마다 쪽 설정을 갖는 것과 같다) */
+      const id = newMemo()
+      const pageSettings = normalizeMemoPageSettings(result.pageSettings, DEFAULT_MEMO_PAGE_SETTINGS)
+      updateMemo(id, { title: result.title, content: result.content, pageSettings })
+      applyingMemoPageSettingsRef.current = true
+      useUIStore.getState().applyPageSettings(pageSettings)
+      applyingMemoPageSettingsRef.current = false
+      setFileHandle(result.handle ?? null, id)
       editor.commands.setContent(result.content)
       trackEvent('open_file')
     } catch (err) {

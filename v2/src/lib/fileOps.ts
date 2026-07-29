@@ -1,5 +1,6 @@
 import { errText } from './errText'
 import { DOC_EXPORT_CSS } from './docCss'
+import { resolveBlobRefsInHtml } from './blobRefs'
 
 
 /** File System Access API — lib.dom 에 아직 없어 쓰는 만큼만 타입을 둔다 */
@@ -21,6 +22,8 @@ export interface SaveOptions {
   title?: string
   content: string
   handle?: FileSystemFileHandle | null
+  /** 이 문서의 쪽 설정 — 파일 안에 함께 넣어 두면 다시 열 때 그대로 살아난다 */
+  pageSettings?: unknown
 }
 
 export interface SaveResult {
@@ -33,15 +36,23 @@ export interface OpenFileResult {
   content: string
   handle?: FileSystemFileHandle | null
   title: string
+  /** 파일에 적혀 있던 쪽 설정 (없으면 undefined — 기본 판형으로 연다) */
+  pageSettings?: unknown
 }
 
 export async function saveToFile(opts: SaveOptions): Promise<SaveResult> {
-  const { title = '새 메모', content, handle } = opts
+  const { title = '새 메모', content, handle, pageSettings } = opts
+  // 그림은 janref: 대신 실제 그림 자료를 넣는다 — 안 그러면 파일을 열었을 때 그림이 깨진다
+  const body = await resolveBlobRefsInHtml(content)
+  const file = wrapHtml(title, body, pageSettings)
 
   if (typeof fsaWindow().showSaveFilePicker === 'function') {
-    try {
-      let targetHandle = handle
-      if (!targetHandle) {
+    /* 자리 고르기와 쓰기를 나눠서 다룬다.
+       예전에는 하나로 묶여 있어, 자리를 고른 뒤 쓰기가 어긋나면 0KB 파일을 남긴 채
+       내려받기 창이 한 번 더 떴다 — 사용자에게는 "저장이 두 번" 되는 것으로 보였다. */
+    let targetHandle = handle ?? null
+    if (!targetHandle) {
+      try {
         targetHandle = await fsaWindow().showSaveFilePicker!({
           suggestedName: `${title}.html`,
           types: [{
@@ -49,19 +60,28 @@ export async function saveToFile(opts: SaveOptions): Promise<SaveResult> {
             accept: { 'text/html': ['.html', '.htm'] },
           }],
         })
+      } catch (err) {
+        if (isAbort(err)) return { ok: false, error: '취소됨' }
+        console.warn('[fileOps] 저장 위치 고르기 실패, 내려받기로 대신한다:', err)
+        targetHandle = null
       }
-      const writable = await targetHandle!.createWritable()
-      await writable.write(wrapHtml(title, content))
-      await writable.close()
-      return { ok: true, handle: targetHandle! }
-    } catch (err) {
-      if (isAbort(err)) return { ok: false, error: '취소됨' }
-      console.warn('[fileOps] FSA save failed, fallback:', err)
+    }
+    if (targetHandle) {
+      // 여기서부터는 사용자가 이미 자리를 골랐다 — 실패하면 창을 또 띄우지 않고 그대로 알린다
+      try {
+        const writable = await targetHandle.createWritable()
+        await writable.write(file)
+        await writable.close()
+        return { ok: true, handle: targetHandle }
+      } catch (err) {
+        if (isAbort(err)) return { ok: false, error: '취소됨' }
+        return { ok: false, error: errText(err) }
+      }
     }
   }
 
   try {
-    const blob = new Blob([wrapHtml(title, content)], { type: 'text/html' })
+    const blob = new Blob([file], { type: 'text/html' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -148,14 +168,35 @@ async function readOpenedFile(file: File, handle?: FileSystemFileHandle | null):
   const text = await file.text()
   const title = file.name.replace(/\.(html|htm)$/i, '')
   const content = extractBody(text)
-  return { content, handle, title }
+  return { content, handle, title, pageSettings: readPageSettings(text) }
 }
 
-function wrapHtml(title: string, content: string): string {
+/** 파일에 적힌 쪽 설정 — 없으면 undefined (부르는 쪽에서 기본 판형을 쓴다) */
+export function readPageSettings(html: string): unknown {
+  const head = html.slice(0, 8000)
+  const m = head.match(new RegExp(`<meta[^>]+name=["']${PAGE_SETTINGS_META}["'][^>]*content=["']([^"']*)["']`, 'i'))
+  if (!m) return undefined
+  try {
+    const json = m[1].replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+      .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+    const parsed = JSON.parse(json)
+    return parsed && typeof parsed === 'object' ? parsed : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** 쪽 설정을 파일 머리에 적어 둘 표 — 다시 열 때 이 문서만의 판형이 그대로 살아난다 */
+const PAGE_SETTINGS_META = 'jan-page-settings'
+
+export function wrapHtml(title: string, content: string, pageSettings?: unknown): string {
+  const meta = pageSettings
+    ? `\n<meta name="${PAGE_SETTINGS_META}" content="${escapeHtml(JSON.stringify(pageSettings))}">`
+    : ''
   return `<!DOCTYPE html>
 <html lang="ko">
 <head>
-<meta charset="UTF-8">
+<meta charset="UTF-8">${meta}
 <title>${escapeHtml(title)}</title>
 <style>${DOC_EXPORT_CSS}</style>
 </head>
