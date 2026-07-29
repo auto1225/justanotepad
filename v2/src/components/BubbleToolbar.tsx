@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { Editor } from '@tiptap/react'
+import { CellSelection } from 'prosemirror-tables'
 import { Icon } from './Icons'
 
 interface BubbleToolbarProps {
@@ -20,12 +21,24 @@ export function BubbleToolbar({ editor }: BubbleToolbarProps) {
       if (!editor) return
       const sel = editor.state.selection
       if (sel.empty) { setShow(false); return }
+      /* 칸을 고르는 중에는 뜨지 않는다 — 막대가 표를 덮으면 다음 칸을 누를 때
+         칸이 아니라 막대의 단추가 눌려 고른 칸이 풀려 버린다.
+         칸 서식은 리본의 「표 디자인·레이아웃」 과 오른쪽 클릭 메뉴에 있다. */
+      if (sel instanceof CellSelection) { setShow(false); return }
       try {
         const { from, to } = sel
         const start = editor.view.coordsAtPos(from)
         const end = editor.view.coordsAtPos(to)
         const x = (start.left + end.right) / 2
-        const y = Math.max(start.top - 44, 8)
+        let y = Math.max(start.top - 44, 8)
+        /* 표 안의 글을 고른 경우에는 표 위쪽 바깥에 띄운다 — 다른 칸을 가리지 않게 */
+        const dom = editor.view.domAtPos(from).node as HTMLElement | null
+        const el = dom?.nodeType === 1 ? (dom as HTMLElement) : dom?.parentElement
+        const table = el?.closest?.('table')
+        if (table) {
+          const box = table.getBoundingClientRect()
+          y = Math.max(box.top - 42, 8)
+        }
         setPos({ x, y })
         setShow(true)
       } catch {

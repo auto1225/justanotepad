@@ -12,7 +12,10 @@ import { VoiceButton } from './VoiceButton'
 import { Ribbon } from './Ribbon'
 import { aggregateColumn } from '../lib/tableUtils'
 import { TABLE_STYLES, blockCalc, copyTable, distributeColumns, distributeRows, moveRow, resizeColumns, resizeRows, setCellDiagonal, setCellPadding, setRowHeight, setTableStyle, setTableWrap, splitTable, tableToText, toggleTableOption } from '../lib/tableWord'
-import { moveTable, selectTableColumn, selectTableRow, selectWholeTable } from '../lib/tableSelect'
+import {
+  cellSelectionSize, collapseCellSelection, extendCellSelection, moveTable, selectCurrentCell,
+  selectTableColumn, selectTableRow, selectWholeTable,
+} from '../lib/tableSelect'
 import { IMAGE_SHAPES, IMAGE_STYLES, IMAGE_WRAPS } from '../extensions/ImageObject'
 import { CLIPART, SHAPES, WORDART } from '../lib/shapeLibrary'
 import { EMPHASIS_MARKS, OVERLAP_FRAMES } from '../extensions/TextObjects'
@@ -1281,9 +1284,17 @@ export function Toolbar(p: ToolbarProps) {
   /* ── 표: 워드의 「레이아웃」 탭 ── */
   const tableItems: MenuItem[] = [
     { divider: '선택', label: '' },
+    { label: '셀 선택 (커서가 든 칸 하나)', short: '셀', icon: 'box', hint: 'Alt+S', onClick: () => run(() => { selectCurrentCell(editor) }) },
     { label: '행 선택', short: '행', icon: 'table', hint: 'Alt+R', onClick: () => run(() => { selectTableRow(editor, currentRowIndex()) }) },
     { label: '열 선택', short: '열', icon: 'columns', hint: 'Alt+C', onClick: () => run(() => { selectTableColumn(editor, currentColIndex()) }) },
     { label: '표 전체 선택', short: '표', icon: 'table', hint: 'Alt+A', onClick: () => run(() => { selectWholeTable(editor) }) },
+    { label: '고른 칸 넓히기 — 오른쪽', short: '넓힘 →', icon: 'chevron-right', hint: 'Shift+→', onClick: () => run(() => { extendCellSelection(editor, 0, 1) }) },
+    { label: '고른 칸 넓히기 — 아래', short: '넓힘 ↓', icon: 'chevron-down', hint: 'Shift+↓', onClick: () => run(() => { extendCellSelection(editor, 1, 0) }) },
+    { label: '선택 풀기 (커서로)', short: '선택 풀기', icon: 'close', hint: 'Esc', onClick: () => run(() => { collapseCellSelection(editor) }) },
+    { label: '몇 칸 골랐는지 보기', short: '선택 크기', icon: 'info', hint: 'Alt+;', onClick: () => run(() => {
+      const size = cellSelectionSize(editor)
+      flash(size ? `${size.rows}행 ${size.cols}열 — ${size.rows * size.cols}칸 골랐다` : '고른 칸이 없다 — Alt+S 로 칸을 고른다')
+    }) },
     { divider: '행 및 열', label: '' },
     { label: '위에 행 삽입', short: '위 행', icon: 'plus', hint: 'Alt+Shift+I', onClick: () => run(() => editor.chain().focus().addRowBefore().run()) },
     { label: '아래에 행 삽입', short: '아래 행', icon: 'plus', hint: 'Alt+I', onClick: () => run(() => editor.chain().focus().addRowAfter().run()) },

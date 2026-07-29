@@ -30,7 +30,8 @@ export const ImageKeymap = Extension.create({
       const sel = editor.state.selection
       return sel instanceof NodeSelection ? sel.node.type.name : ''
     }
-    const picked = () => pickedType() === 'image'
+    const inTable = () => editor.isActive('table')
+    const picked = () => pickedType() === 'image' && !inTable()
     const pickedShape = () => pickedType() === 'janShape'
     const near = () => currentImage(editor) != null
     const nearShape = () => currentShape(editor) != null
@@ -106,8 +107,9 @@ export const ImageKeymap = Extension.create({
       'Shift-Tab': both(() => selectNextImage(editor, -1), () => selectNextShape(editor, -1)),
       'Alt-n': () => selectNextImage(editor, 1),
       'Alt-N': () => selectNextImage(editor, -1),
-      'Alt-s': () => selectNextShape(editor, 1),
-      'Alt-S': () => selectNextShape(editor, -1),
+      /* 표 안에서는 Alt+S 가 「칸 하나 고르기」 다 — 표 밖에서만 도형을 고른다 */
+      'Alt-s': () => (editor.isActive('table') ? false : selectNextShape(editor, 1)),
+      'Alt-S': () => (editor.isActive('table') ? false : selectNextShape(editor, -1)),
 
       /* ── 문서 안에서 자리 옮기기 ── */
       'Alt-Home': both(() => moveImage(editor, -1), () => moveShape(editor, -1)),

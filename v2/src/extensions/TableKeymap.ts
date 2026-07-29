@@ -1,7 +1,10 @@
 import { Extension } from '@tiptap/core'
 import { CellSelection } from 'prosemirror-tables'
 import { distributeColumns, distributeRows, moveRow, resizeColumns, resizeRows } from '../lib/tableWord'
-import { selectTableColumn, selectTableRow, selectWholeTable } from '../lib/tableSelect'
+import {
+  cellSelectionSize, collapseCellSelection, extendCellSelection, keepCellSelection,
+  selectCurrentCell, selectTableColumn, selectTableRow, selectWholeTable,
+} from '../lib/tableSelect'
 import { flash } from '../lib/flash'
 
 /**
@@ -72,10 +75,17 @@ export const TableKeymap = Extension.create({
 
     return {
       /* ── 크기: Alt + 방향키 (수식어 하나) ── */
-      'Alt-ArrowRight': guard(() => resizeColumns(this.editor, 8)),
-      'Alt-ArrowLeft': guard(() => resizeColumns(this.editor, -8)),
-      'Alt-ArrowDown': guard(() => resizeRows(this.editor, 8)),
-      'Alt-ArrowUp': guard(() => resizeRows(this.editor, -8)),
+      'Alt-ArrowRight': guard(() => keepCellSelection(this.editor, () => resizeColumns(this.editor, 8))),
+      'Alt-ArrowLeft': guard(() => keepCellSelection(this.editor, () => resizeColumns(this.editor, -8))),
+      'Alt-ArrowDown': guard(() => keepCellSelection(this.editor, () => resizeRows(this.editor, 8))),
+      'Alt-ArrowUp': guard(() => keepCellSelection(this.editor, () => resizeRows(this.editor, -8))),
+
+      /* ── 고른 칸 넓히기·좁히기 — 워드의 Shift+방향키 ── */
+      'Shift-ArrowRight': guard(() => extendCellSelection(this.editor, 0, 1)),
+      'Shift-ArrowLeft': guard(() => extendCellSelection(this.editor, 0, -1)),
+      'Shift-ArrowDown': guard(() => extendCellSelection(this.editor, 1, 0)),
+      'Shift-ArrowUp': guard(() => extendCellSelection(this.editor, -1, 0)),
+      Escape: guard(() => collapseCellSelection(this.editor)),
 
       /* ── 칸 사이 건너뛰기 — 워드와 같은 자리 ── */
       'Alt-Home': toEdgeCell('rowStart'),
@@ -91,6 +101,14 @@ export const TableKeymap = Extension.create({
       'Alt-r': guard(() => { const { row } = here(); return row >= 0 && selectTableRow(this.editor, row) }),
       'Alt-c': guard(() => { const { col } = here(); return col >= 0 && selectTableColumn(this.editor, col) }),
       'Alt-a': guard(() => selectWholeTable(this.editor)),
+      /* 칸 하나만 고르기 — 워드 「선택 › 셀 선택」 (표 안에서만 듣는다) */
+      'Alt-s': guard(() => selectCurrentCell(this.editor)),
+      /* 몇 칸을 골랐는지 알려 준다 */
+      'Alt-;': guard(() => {
+        const size = cellSelectionSize(this.editor)
+        flash(size ? `${size.rows}행 ${size.cols}열 — ${size.rows * size.cols}칸 골랐다` : '고른 칸이 없다 — Alt+S 로 칸을 고른다')
+        return true
+      }),
 
       /* ── 넣고 빼기 (Shift 를 더하면 반대쪽) ── */
       'Alt-i': guard(() => this.editor.chain().focus().addRowAfter().run()),
@@ -105,15 +123,16 @@ export const TableKeymap = Extension.create({
       'Alt-M': guard(() => this.editor.chain().focus().splitCell().run()),
 
       /* ── 크기 같게 (고른 열·행만) ── */
-      'Alt-e': guard(() => distributeColumns(this.editor)),
-      'Alt-E': guard(() => distributeRows(this.editor)),
+      'Alt-e': guard(() => keepCellSelection(this.editor, () => distributeColumns(this.editor))),
+      'Alt-E': guard(() => keepCellSelection(this.editor, () => distributeRows(this.editor))),
 
       /* ── 무엇을 쓸 수 있는지 ── */
       'Alt-/': guard(() => {
         flash(
           '표 단축키 (모두 Alt 하나) — ' +
           '←→ 열 너비 · ↑↓ 행 높이 · R/C/A 행·열·표 선택 · I 행 추가(Shift+I 위) · O 열 추가(Shift+O 왼쪽) · ' +
-          '⌫ 삭제 · M 병합(Shift+M 분할) · E 열 같게(Shift+E 행 같게) · Home/End·PgUp/PgDn 칸 끝 · ' +
+          '⌫ 삭제 · M 병합(Shift+M 분할) · E 열 같게(Shift+E 행 같게) · S 칸 하나 고르기 · '
+          + 'Shift+방향키 고른 칸 넓히기 · Esc 선택 풀기 · Home/End·PgUp/PgDn 칸 끝 · ' +
           'Shift+↑↓ 행 이동 · Shift+F10 메뉴',
           8000
         )
