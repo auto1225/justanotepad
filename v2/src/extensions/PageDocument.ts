@@ -325,19 +325,23 @@ function measure(view: EditorView, pagePos: number, contentHeight: number): Page
 
   if (geom.columns === 1) {
     const band: Band = { base: 0, top: geom.contentTop, height: contentHeight }
+    /* 높이를 더해 쌓지 않고 실제 놓인 자리로 잰다 —
+       도형처럼 한 줄에 나란히 놓이는 블록(인라인)은 높이를 더하면 줄 수만큼 부풀어,
+       자리가 남았는데도 문단을 쪼개거나 다음 쪽 내용을 당겨오지 못한다 */
     for (const child of Array.from(dom.children)) {
       const el = child as HTMLElement
       if (el.classList.contains('ProseMirror-widget')) continue
+      const rect = el.getBoundingClientRect()
       const style = window.getComputedStyle(el)
-      const marginY = (parseFloat(style.marginTop) || 0) + (parseFloat(style.marginBottom) || 0)
-      const h = el.getBoundingClientRect().height / geom.scale + marginY
-      starts.push(acc)
-      rooms.push(contentHeight - acc)
-      acc += h
-      ends.push(acc)
-      overflows.push(acc > contentHeight + 1)
+      const top = (rect.top - geom.contentTop) / geom.scale - (parseFloat(style.marginTop) || 0)
+      const bottom = (rect.bottom - geom.contentTop) / geom.scale + (parseFloat(style.marginBottom) || 0)
+      starts.push(top)
+      rooms.push(contentHeight - top)
+      ends.push(bottom)
+      overflows.push(bottom > contentHeight + 1)
       spanning.push(false)
       bands.push({ band, spanning: false })
+      acc = Math.max(acc, bottom)
     }
     const flow = bandFlow(geom, band, false)
     return {
@@ -571,6 +575,9 @@ function reflowOnce(view: EditorView, contentHeight: number): boolean {
     const { pos, node } = pages[i]
     const m = measure(view, pos, contentHeight)
     if (!m || m.used > NEARLY_EMPTY) continue
+    /* 손으로 넣은 쪽 나눔으로 끝나는 쪽은 비어 보여도 그대로 둔다 —
+       표지처럼 내용이 적은 쪽에서 다음 쪽 내용을 끌어올리면 안 된다 */
+    if (node.lastChild?.type.name === 'pageBreak') continue
     const next = pages[i + 1]
     if (!next.node.firstChild) continue
     const tr = state.tr
@@ -579,6 +586,25 @@ function reflowOnce(view: EditorView, contentHeight: number): boolean {
     tr.insert(at, moved)
     restoreSelection(tr, held, at) // 커서는 join 단계에서 자동으로 다시 매핑된다
     joinContinuedAt(tr, at)
+    tr.setMeta(reflowKey, true)
+    tr.setMeta('addToHistory', false)
+    view.dispatch(tr)
+    return true
+  }
+
+  /* 1.5) 손으로 넣은 쪽 나눔은 무조건 지킨다 — 워드·한글과 같다.
+     크기가 남아 있어도 그 뒤 내용은 다음 쪽에서 시작해야 한다.
+     (예전에는 넘침만 보고 나눠서, 표지 다음에 목차가 같은 쪽에 붙어 버렸다) */
+  for (let i = 0; i < pages.length; i++) {
+    const { node } = pages[i]
+    let cutAt = -1
+    node.forEach((child, _offset, index) => {
+      if (cutAt >= 0) return
+      if (child.type.name === 'pageBreak' && index < node.childCount - 1) cutAt = index
+    })
+    if (cutAt < 0) continue
+    const tr = state.tr
+    if (!pushRestToNextPage(tr, i, cutAt + 1, pageType)) continue
     tr.setMeta(reflowKey, true)
     tr.setMeta('addToHistory', false)
     view.dispatch(tr)
@@ -596,6 +622,10 @@ function reflowOnce(view: EditorView, contentHeight: number): boolean {
     // (첫 블록이라도 경계에 걸리면 줄 단위 분할 대상이므로 c===0 도 포함한다)
     const cutIndex0 = m.overflows.findIndex(Boolean)
     if (cutIndex0 < 0) continue
+    /* 쪽 끝의 쪽 나눔 표시 하나가 삐져나온 것뿐이면 그냥 둔다 —
+       이것만 다음 쪽으로 넘기면 나눔 하나만 있는 백지가 생기고,
+       그 나눔이 앞 쪽과 떨어져 다음 절이 앞으로 딸려 올라온다 */
+    if (cutIndex0 === node.childCount - 1 && node.lastChild?.type.name === 'pageBreak') continue
     let cutIndex = cutIndex0
     // 그 블록의 머리부터 지면 바닥까지 남은 자리 — 여기까지만 채우고 나머지를 넘긴다
     const roomForCut = m.rooms[cutIndex]
@@ -736,6 +766,9 @@ function reflowOnce(view: EditorView, contentHeight: number): boolean {
   // 4) 여유 → 다음 쪽에서 들어갈 만큼 당겨오기 (내용을 지웠을 때 빈 쪽·구멍이 남지 않게)
   for (let i = 0; i < pages.length - 1; i++) {
     const { pos, node } = pages[i]
+    /* 손으로 넣은 쪽 나눔으로 끝나는 쪽은 자리가 남아도 당겨오지 않는다 —
+       당겨오면 1.5) 가 다시 밀어내어 끝없이 오르내린다 (표지·목차 다음 쪽이 그랬다) */
+    if (node.lastChild?.type.name === 'pageBreak') continue
     const m = measure(view, pos, contentHeight)
     const next = pages[i + 1]
     const nm = measure(view, next.pos, contentHeight)
@@ -886,7 +919,7 @@ export const PageReflow = Extension.create<ReflowOptions>({
              거기서 손을 놓으면 마지막 표가 아래 여백을 뚫은 채로 남는다.
              맴돌기(수렴 실패)는 changed 가 false 가 되어 스스로 멈추므로, 이어달리기 횟수만 묶어 둔다. */
           let relays = 0
-          const MAX_RELAYS = 12
+          const MAX_RELAYS = 40
 
           const run = (view: EditorView) => {
             raf = 0

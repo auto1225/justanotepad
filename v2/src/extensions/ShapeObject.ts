@@ -51,7 +51,7 @@ function textStyle(a: Record<string, unknown>, def: { textBox?: [number, number,
   let css =
     `position:absolute;left:${area[0]}%;top:${area[1]}%;width:${area[2]}%;height:${area[3]}%;` +
     `display:flex;align-items:${justify};justify-content:center;text-align:${(a.textAlign as string) || 'center'};` +
-    'overflow:hidden;line-height:1.35;word-break:break-word;'
+    'overflow:hidden;line-height:1.35;word-break:break-word;white-space:pre-line;'
   css += `color:${(a.textColor as string) || '#1c1f26'};`
   css += `font-size:${num(a.fontSize, 15)}px;`
   if (a.fontFamily) css += `font-family:${a.fontFamily};`
