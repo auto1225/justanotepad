@@ -157,4 +157,24 @@ test.describe('표 칸 선택', () => {
     })
     expect(barBottom).toBeLessThanOrEqual(tableTop + 1)
   })
+  test('칸 왼쪽 끝을 누르면 그 칸 하나가 선택된다 — 워드와 같은 자리', async ({ page }) => {
+    await tableEditor(page)
+    const cell = page.locator('.ProseMirror table td').nth(4) // E
+    const box = await cell.boundingBox()
+    if (!box) throw new Error('칸을 찾지 못했다')
+
+    // 왼쪽 안쪽 끝(4px 안)을 누른다
+    await page.mouse.click(box.x + 4, box.y + box.height / 2)
+    await expect(picked(page)).toHaveText(['E'])
+
+    // 같은 칸의 가운데를 누르면 글을 쓰는 커서로 돌아간다
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
+    await expect(picked(page)).toHaveCount(0)
+  })
+
+  test('세 번 클릭해도 칸 하나가 선택된다', async ({ page }) => {
+    await tableEditor(page)
+    await page.locator('.ProseMirror table td').nth(4).click({ clickCount: 3 })
+    await expect(picked(page)).toHaveText(['E'])
+  })
 })

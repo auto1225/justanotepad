@@ -7125,3 +7125,14 @@ body.jan-split-dragging * { cursor: inherit !important; }
 .jan-cmtpane-text { font-size: 13px; }
 .jan-cmtpane-meta { font-size: 11px; color: var(--jan-text-dim, #5b6270); }
 .jan-cmtpane-row.is-done .jan-cmtpane-text { text-decoration: line-through; opacity: .65; }
+
+/* 칸 왼쪽 끝 — 워드처럼 여기를 누르면 그 칸이 통째로 선택된다.
+   마우스 모양을 바꿔 「고르는 자리」 임을 알린다. */
+.ProseMirror td, .ProseMirror th { position: relative; }
+.ProseMirror td::before, .ProseMirror th::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 8px;
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16'%3E%3Cpath d='M2 13 L2 2 L12 8 L7 8.5 L9.5 13 L7.5 14 L5 9.5 Z' fill='%23111' stroke='%23fff' stroke-width='1'/%3E%3C/svg%3E") 2 2, pointer;
+}

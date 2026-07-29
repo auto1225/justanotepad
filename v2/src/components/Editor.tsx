@@ -9,6 +9,7 @@ import { Table } from '@tiptap/extension-table'
 import { TableRow } from '@tiptap/extension-table-row'
 import { JanTableCell, JanTableHeader, TablePlacement, TableFormulaAuto } from '../extensions/TableCellExt'
 import { TableKeymap } from '../extensions/TableKeymap'
+import { CellPickEdge } from '../extensions/CellPickEdge'
 import { ImageObject as Image } from '../extensions/ImageObject'
 import { ImageKeymap } from '../extensions/ImageKeymap'
 import { ShapeObject } from '../extensions/ShapeObject'
@@ -393,6 +394,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       TablePlacement,
       TableFormulaAuto,
       TableKeymap,
+      CellPickEdge,
       TableRow,
       JanTableHeader,
       JanTableCell,
