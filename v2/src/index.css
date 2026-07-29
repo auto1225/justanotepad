@@ -7370,3 +7370,105 @@ body:has(.jan-modal-overlay) .jan-bubble-toolbar { display: none; }
 }
 .jan-ribbon-arrow.is-right { background: linear-gradient(to left, rgba(0, 0, 0, .05), transparent); }
 .jan-ribbon-arrow:hover { background: rgba(0, 0, 0, .1); }
+
+/* ── 차트 · 스마트 도해 · 서명란 · 상호 참조 · 3D 모델 ───────────────── */
+
+.jan-chart svg, .jan-smart svg { max-width: 100%; height: auto; }
+.jan-chart, .jan-smart { break-inside: avoid; }
+.ProseMirror .jan-chart.ProseMirror-selectednode,
+.ProseMirror .jan-smart.ProseMirror-selectednode,
+.ProseMirror .jan-signature.ProseMirror-selectednode,
+.ProseMirror .jan-model3d.ProseMirror-selectednode {
+  outline: 2px solid var(--jan-accent, #d97757);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.jan-xref {
+  color: #1d5fbf;
+  border-bottom: 1px dotted #1d5fbf;
+  cursor: pointer;
+}
+.jan-xref:hover { background: rgba(29, 95, 191, 0.08); }
+
+.jan-model3d canvas { background: linear-gradient(180deg, #f7f9fc, #eef2f7); }
+.jan-model3d canvas:focus-visible { outline: 2px solid var(--jan-accent, #d97757); outline-offset: 2px; }
+.jan-model3d-fail { padding: 20px; color: #b42318; font-size: 12px; background: #fef3f2; border-radius: 6px; }
+
+/* 차트 창 */
+.jan-chartdlg { width: min(1040px, 96vw); max-width: min(1040px, 96vw); }
+.jan-chartdlg-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; max-height: 66vh; overflow: auto; }
+.jan-chartdlg-types { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 10px; }
+.jan-chartdlg-types button {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 6px 4px; border: 1px solid var(--jan-border, #d8dce3); border-radius: 6px;
+  background: #fff; font-size: 11px; cursor: pointer;
+}
+.jan-chartdlg-types button.is-active { border-color: var(--jan-accent, #d97757); box-shadow: 0 0 0 2px rgba(217, 119, 87, 0.18); }
+.jan-chartdlg-mini svg { display: block; }
+.jan-chartdlg-preview { border: 1px solid var(--jan-border, #d8dce3); border-radius: 8px; padding: 6px; background: #fff; overflow: auto; }
+.jan-chartdlg-field { display: flex; flex-direction: column; gap: 3px; margin-bottom: 8px; font-size: 12px; }
+.jan-chartdlg-field > span { color: var(--jan-dim, #6b7684); }
+.jan-chartdlg-field input, .jan-chartdlg-field textarea, .jan-chartdlg-field select {
+  padding: 5px 7px; border: 1px solid var(--jan-border, #d8dce3); border-radius: 5px; font: inherit; font-size: 12px;
+}
+.jan-chartdlg-datahead { display: flex; align-items: baseline; gap: 8px; margin: 4px 0 4px; }
+.jan-chartdlg-hint { color: var(--jan-dim, #6b7684); font-size: 11px; }
+.jan-chartdlg-gridwrap { max-height: 190px; overflow: auto; border: 1px solid var(--jan-border, #d8dce3); border-radius: 6px; }
+.jan-chartdlg-grid { border-collapse: collapse; width: 100%; }
+.jan-chartdlg-grid td { border: 1px solid #e8ecf1; padding: 0; }
+.jan-chartdlg-grid input { width: 100%; min-width: 68px; border: 0; padding: 4px 6px; font: inherit; font-size: 12px; background: transparent; }
+.jan-chartdlg-grid input.is-head { background: #f6f8fb; font-weight: 600; }
+.jan-chartdlg-grid input:focus { outline: 2px solid var(--jan-accent, #d97757); outline-offset: -2px; }
+.jan-chartdlg-gridbtns { display: flex; gap: 6px; margin: 6px 0 10px; }
+.jan-chartdlg-gridbtns button { padding: 4px 8px; font-size: 11px; border: 1px solid var(--jan-border, #d8dce3); border-radius: 5px; background: #fff; cursor: pointer; }
+.jan-chartdlg-opts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 10px; }
+.jan-chartdlg-opts label { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.jan-chartdlg-opts label > span { color: var(--jan-dim, #6b7684); min-width: 54px; }
+.jan-chartdlg-opts input, .jan-chartdlg-opts select { flex: 1; min-width: 0; padding: 4px 6px; border: 1px solid var(--jan-border, #d8dce3); border-radius: 5px; font: inherit; font-size: 12px; }
+.jan-chartdlg-check { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.jan-chartdlg-check input { flex: none; }
+
+/* 스마트 도해 창 */
+.jan-smartdlg { width: min(960px, 96vw); max-width: min(960px, 96vw); }
+.jan-smartdlg-body { display: grid; grid-template-columns: minmax(0, 320px) minmax(0, 1fr); gap: 16px; max-height: 64vh; overflow: auto; }
+.jan-smartdlg-gallery { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; align-content: start; }
+.jan-smartdlg-gallery button {
+  display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 5px 3px;
+  border: 1px solid var(--jan-border, #d8dce3); border-radius: 6px; background: #fff; font-size: 11px; cursor: pointer;
+}
+.jan-smartdlg-gallery button.is-active { border-color: var(--jan-accent, #d97757); box-shadow: 0 0 0 2px rgba(217, 119, 87, 0.18); }
+.jan-smartdlg-preview { border: 1px solid var(--jan-border, #d8dce3); border-radius: 8px; padding: 6px; margin-bottom: 8px; background: #fff; overflow: auto; }
+.jan-smartdlg-warn { color: #b54708; font-size: 11px; margin: 2px 0 8px; }
+
+/* 서명란 창 */
+.jan-signdlg { width: min(880px, 96vw); max-width: min(880px, 96vw); }
+.jan-signdlg-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; max-height: 62vh; overflow: auto; }
+.jan-signdlg-typed { font-family: 'Segoe Script', 'Apple Chancery', cursive; font-size: 22px; padding: 4px 0 8px; }
+.jan-signdlg-inkhead { display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: var(--jan-dim, #6b7684); margin-bottom: 4px; }
+.jan-signdlg-inkhead button { padding: 3px 8px; font-size: 11px; border: 1px solid var(--jan-border, #d8dce3); border-radius: 5px; background: #fff; cursor: pointer; }
+.jan-signdlg-ink { width: 100%; height: 160px; border: 1px dashed var(--jan-border, #d8dce3); border-radius: 8px; touch-action: none; cursor: crosshair; background: #fff; }
+.jan-signature { break-inside: avoid; }
+
+/* 상호 참조 창 */
+.jan-xrefdlg { width: min(640px, 96vw); max-width: min(640px, 96vw); }
+.jan-xrefdlg-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.jan-xrefdlg-list { max-height: 240px; overflow: auto; border: 1px solid var(--jan-border, #d8dce3); border-radius: 6px; margin: 6px 0 10px; }
+.jan-xrefdlg-list button { display: block; width: 100%; text-align: left; padding: 6px 10px; border: 0; background: transparent; font: inherit; font-size: 12px; cursor: pointer; }
+.jan-xrefdlg-list button.is-active { background: rgba(217, 119, 87, 0.14); font-weight: 600; }
+.jan-xrefdlg-list button:hover { background: rgba(0, 0, 0, 0.04); }
+.jan-xrefdlg-empty { padding: 14px; color: var(--jan-dim, #6b7684); font-size: 12px; }
+.jan-xrefdlg-preview { font-size: 12px; margin-top: 8px; }
+
+/* 창 아래 단추 줄 — 힌트는 왼쪽, 단추는 오른쪽 (겹치지 않게) */
+.jan-modal-foot {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 18px; border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+.jan-modal-foot .jan-chartdlg-hint { margin-right: auto; }
+.jan-modal-foot button {
+  padding: 6px 14px; border: 1px solid var(--jan-border, #d8dce3);
+  border-radius: 5px; background: #fff; font: inherit; font-size: 12px; cursor: pointer;
+}
+.jan-modal-foot button.jan-primary { background: var(--jan-accent, #d97757); border-color: var(--jan-accent, #d97757); color: #fff; font-weight: 600; }
+.jan-modal-foot button:disabled { opacity: 0.5; cursor: not-allowed; }

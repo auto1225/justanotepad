@@ -34,6 +34,7 @@ export type IconName =
   | 'image-text' | 'page' | 'globe' | 'cloud'
   | 'maximize' | 'minimize' | 'focus' | 'tag' | 'hash'
   | 'cmd' | 'paragraph' | 'briefcase' | 'sync' | 'home' | 'shield' | 'clock' | 'page-break' | 'columns' | 'sup' | 'box' | 'qr' | 'history' | 'download' | 'upload' | 'dot' | 'send' | 'card' | 'cards' | 'sliders' | 'refresh-cw' | 'window-min' | 'window-max' | 'window-pin' | 'kanban'
+  | 'chart' | 'pen' | 'cube' | 'smart' | 'signature'
 
 const PATHS: Record<IconName, string> = {
   // 파일
@@ -158,6 +159,16 @@ const PATHS: Record<IconName, string> = {
   'window-max': 'M3 3h18v18H3z',
   'window-pin': 'M12 17v5 M9 7h6l1 9H8z',
   kanban: 'M3 3h6v18H3z M11 3h6v12h-6z M19 3h2v8h-2z',
+  // 차트 — 세로 막대 셋
+  chart: 'M4 20V10 M10 20V4 M16 20v-7 M22 20H2',
+  // 펜 (서명)
+  pen: 'M12 19l7-7a2.8 2.8 0 0 0-4-4l-7 7-1 5 5-1z M3 21h6',
+  // 3D 상자
+  cube: 'M12 2l9 5v10l-9 5-9-5V7z M12 12l9-5 M12 12v10 M12 12L3 7',
+  // 스마트 도해 — 위 하나, 아래 둘
+  smart: 'M9 2h6v5H9z M2 15h6v5H2z M16 15h6v5h-6z M12 7v4 M5 15v-2h14v2',
+  // 서명란 — 밑줄 위의 서명
+  signature: 'M3 17c3-6 5 2 8-2s4 1 7-3 M3 21h18',
 }
 
 export function Icon({ name, size = 16, className = '', strokeWidth = 2 }: IconProps) {

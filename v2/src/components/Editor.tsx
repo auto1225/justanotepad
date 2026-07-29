@@ -14,6 +14,12 @@ import { TablePen } from '../extensions/TablePen'
 import { ImageObject as Image } from '../extensions/ImageObject'
 import { ImageKeymap } from '../extensions/ImageKeymap'
 import { ShapeObject } from '../extensions/ShapeObject'
+import { ChartObject } from '../extensions/ChartObject'
+import { SmartArtObject } from '../extensions/SmartArtObject'
+import { SignatureObject } from '../extensions/SignatureObject'
+import { CrossRef } from '../extensions/CrossRef'
+import { RefTargets } from '../extensions/RefTargets'
+import { Model3D } from '../extensions/Model3D'
 import { CharOverlap, DropCapAttr, EmphasisDot, RubyText } from '../extensions/TextObjects'
 import { ListStyles } from '../extensions/ListStyles'
 import { CommentMark, FieldInput } from '../extensions/CommentField'
@@ -39,6 +45,10 @@ import { ImageHandles } from './ImageHandles'
 import { ImageContextMenu } from './ImageContextMenu'
 import { ImageDialog } from './ImageDialog'
 import { ShapePanel } from './ShapePanel'
+import { ChartPanel } from './ChartPanel'
+import { SmartArtPanel } from './SmartArtPanel'
+import { SignaturePanel } from './SignaturePanel'
+import { CrossRefPanel } from './CrossRefPanel'
 import { SymbolPanel } from './SymbolPanel'
 import { ObjectPane } from './ObjectPane'
 import { ObjectBar } from './ObjectBar'
@@ -192,6 +202,10 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   const [imgDialog, setImgDialog] = useState<string | null>(null)
   /* 도형 갤러리·도형 서식 — 넣을 때와 고칠 때 같은 창을 쓴다 */
   const [shapePanel, setShapePanel] = useState<'insert' | 'format' | null>(null)
+  const [chartPanel, setChartPanel] = useState<'insert' | 'edit' | null>(null)
+  const [smartPanel, setSmartPanel] = useState<'insert' | 'edit' | null>(null)
+  const [signPanel, setSignPanel] = useState<'insert' | 'sign' | null>(null)
+  const [xrefPanel, setXrefPanel] = useState(false)
   /* 문자표와 개체 목록 — 워드의 「기호」 대화상자와 「선택 창(Alt+F10)」 */
   const [showSymbols, setShowSymbols] = useState(false)
   const [showObjects, setShowObjects] = useState(false)
@@ -413,6 +427,12 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       Image.configure({ allowBase64: true }),
       ImageKeymap,
       ShapeObject,
+      ChartObject,
+      SmartArtObject,
+      SignatureObject,
+      CrossRef,
+      RefTargets,
+      Model3D,
       DropCapAttr,
       ListStyles,
       RubyText,
@@ -566,6 +586,10 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       input.click()
     }
     const onShape = (e: Event) => setShapePanel((e as CustomEvent<{ mode?: 'insert' | 'format' }>).detail?.mode || 'insert')
+    const onChart = (e: Event) => setChartPanel((e as CustomEvent<{ mode?: 'insert' | 'edit' }>).detail?.mode || 'insert')
+    const onSmart = (e: Event) => setSmartPanel((e as CustomEvent<{ mode?: 'insert' | 'edit' }>).detail?.mode || 'insert')
+    const onSign = (e: Event) => setSignPanel((e as CustomEvent<{ mode?: 'insert' | 'sign' }>).detail?.mode || 'insert')
+    const onXref = () => setXrefPanel(true)
     const onSymbols = () => setShowSymbols(true)
     const onObjects = () => setShowObjects((v) => !v)
     /* 개체 목록은 워드와 같은 자리(Alt+F10)에서 열고 닫는다 */
@@ -617,10 +641,18 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
     window.addEventListener('jan-image-dialog', onDialog)
     window.addEventListener('jan-image-replace', onReplace)
     window.addEventListener('jan-shape-dialog', onShape)
+    window.addEventListener('jan-chart-dialog', onChart)
+    window.addEventListener('jan-smart-dialog', onSmart)
+    window.addEventListener('jan-signature-dialog', onSign)
+    window.addEventListener('jan-xref-dialog', onXref)
     return () => {
       window.removeEventListener('jan-image-dialog', onDialog)
       window.removeEventListener('jan-image-replace', onReplace)
       window.removeEventListener('jan-shape-dialog', onShape)
+      window.removeEventListener('jan-chart-dialog', onChart)
+      window.removeEventListener('jan-smart-dialog', onSmart)
+      window.removeEventListener('jan-signature-dialog', onSign)
+      window.removeEventListener('jan-xref-dialog', onXref)
       window.removeEventListener('jan-symbol-panel', onSymbols)
       window.removeEventListener('jan-object-pane', onObjects)
       window.removeEventListener('jan-comment-pane', onComments)
@@ -1202,6 +1234,10 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       <ImageContextMenu editor={editor} />
       {imgDialog && <ImageDialog editor={editor} tab={imgDialog} onClose={() => setImgDialog(null)} />}
       {shapePanel && <ShapePanel editor={editor} mode={shapePanel} onClose={() => setShapePanel(null)} />}
+      {chartPanel && <ChartPanel editor={editor} mode={chartPanel} onClose={() => setChartPanel(null)} />}
+      {smartPanel && <SmartArtPanel editor={editor} mode={smartPanel} onClose={() => setSmartPanel(null)} />}
+      {signPanel && <SignaturePanel editor={editor} mode={signPanel} onClose={() => setSignPanel(null)} />}
+      {xrefPanel && <CrossRefPanel editor={editor} onClose={() => setXrefPanel(false)} />}
       {showSymbols && <SymbolPanel editor={editor} onClose={() => setShowSymbols(false)} />}
       {showObjects && <ObjectPane editor={editor} onClose={() => setShowObjects(false)} />}
       {showComments && <CommentPane editor={editor} onClose={() => setShowComments(false)} />}

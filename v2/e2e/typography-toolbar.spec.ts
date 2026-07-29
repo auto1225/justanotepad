@@ -231,7 +231,7 @@ test.describe('글자 모양 도구 상자', () => {
     // 리본 단추에도 붙는다 (안내를 적어 둔 것은 자세히, 나머지는 이름·단축키로)
     await page.mouse.move(600, 500)
     await page.getByRole('tab', { name: '삽입', exact: true }).click()
-    await page.locator('.jan-ribbon-btn').first().hover()
+    await page.locator('.jan-ribbon-btn[aria-label^="표 삽입"]').first().hover()
     await expect(card).toBeVisible({ timeout: 3000 })
     await expect(card.locator('.jan-help-title')).toHaveText('표 넣기')
 
