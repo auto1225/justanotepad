@@ -5,12 +5,19 @@
  *
  * 캐시 키는 /v2/* 만 — v1 (/app, /home) 은 영향 X.
  */
-const VERSION = 'jan-v2-sw-v22-ddgfirst'
+const VERSION = 'jan-v2-sw-v23-janfile'
 const STATIC_CACHE = `${VERSION}-static`
 
 const PRECACHE = [
   '/v2/',
   '/v2/index.html',
+  // 앱·문서 아이콘 — 설치와 파일 형식 표시에 쓰인다 (오프라인에서도 있어야 한다)
+  '/v2/manifest.webmanifest',
+  '/v2/icons/app-192.png',
+  '/v2/icons/app-512.png',
+  '/v2/icons/app-maskable-512.png',
+  '/v2/icons/jan-file-256.png',
+  '/v2/icons/jan-file-64.png',
 ]
 
 self.addEventListener('install', (event) => {

@@ -62,6 +62,7 @@ import { saveDataUrlAsBlobRef } from '../lib/blobRefs'
 import { fitPageZoom, setPageZoom } from '../lib/pageZoom'
 import { PAGE_BREAK_HTML } from '../lib/pageBreak'
 import { flash } from '../lib/flash'
+import { useInstallPrompt } from '../hooks/useInstallPrompt'
 import { askText, askConfirm } from '../lib/promptModal'
 import { computeDocHealth, showHealthReport, markBackupDone } from '../lib/docHealth'
 import { applyPaperFormat, PAPER_FORMATS } from '../lib/paperFormats'
@@ -186,6 +187,8 @@ export function Toolbar(p: ToolbarProps) {
   /* 커서가 표·그림 안에 있는지 — TipTap v3 는 트랜잭션마다 부모를 다시 그리지 않으므로
      직접 구독한다. (툴바의 굵게·정렬 같은 상태 표시도 이 구독으로 함께 최신이 된다) */
   const [contextTab, setContextTab] = useState<'표' | '그림' | '도형' | null>(null)
+  /* 앱으로 설치하면 운영체제가 .jan 을 이 앱에 이어 준다 — 그래야 두 번 눌러 열기가 된다 */
+  const install = useInstallPrompt()
   useEffect(() => {
     if (!editor) return
     const read = () => setContextTab(
@@ -747,6 +750,12 @@ export function Toolbar(p: ToolbarProps) {
   const runDocHealth = () => showHealthReport(computeDocHealth(editor))
 
   /* === 파일 / 백업 === */
+  const installApp = async () => {
+    const ok = await install.trigger()
+    flash(ok
+      ? '앱으로 설치했습니다 — 이제 .jan 파일을 두 번 누르면 여기서 열립니다'
+      : '설치를 취소했습니다', 2600)
+  }
   const memoTitle = () => (useMemosStore.getState().current()?.title || '메모').trim() || '메모'
   const exportHwpx = async () => { try { await downloadHwpx(getSavableHtml(editor), memoTitle()) } catch (e) { flash('HWPX 실패: ' + errText(e), 2600) } }
   const exportMd = () => { try { downloadMd(getSavableHtml(editor), memoTitle()) } catch (e) { flash('MD 실패: ' + errText(e), 2600) } }
@@ -1294,6 +1303,10 @@ export function Toolbar(p: ToolbarProps) {
         { label: '열기...', hint: 'Ctrl+O', icon: 'open', onClick: () => run(p.onOpen) },
         { label: '저장', hint: 'Ctrl+S', icon: 'save', onClick: () => run(p.onSave) },
         { short: '다른 이름', label: '다른 이름으로 저장...', icon: 'save', onClick: () => run(p.onSaveAs) },
+        /* 앱으로 설치해야 운영체제가 .jan 을 이 앱에 이어 준다 (두 번 눌러 열기) */
+        ...(install.canInstall
+          ? [{ short: '앱 설치', label: '앱으로 설치 (.jan 파일 연결)', icon: 'download' as const, onClick: () => run(() => { void installApp() }) }]
+          : []),
         { divider: '내보내기', label: '' },
         { label: '인쇄', hint: 'Ctrl+P', icon: 'print', onClick: () => run(() => window.print()) },
         { label: 'PDF 내보내기', icon: 'file-text', onClick: () => run(exportPdf) },

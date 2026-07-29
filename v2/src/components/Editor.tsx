@@ -49,6 +49,8 @@ import { useDocStore } from '../store/docStore'
 import { useMemosStore } from '../store/memosStore'
 import { useThemeStore } from '../store/themeStore'
 import { saveToFile, openFile } from '../lib/fileOps'
+import type { OpenFileResult } from '../lib/fileOps'
+import { onLaunchWithFile } from '../lib/launchFiles'
 import { installWordKeymap } from '../lib/keymap'
 import { tauriSyncOnBoot } from '../lib/justpin'
 import { trackEvent } from '../lib/analytics'
@@ -920,28 +922,43 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
     }
   }
 
+  /* 읽어들인 문서를 제 자리에 앉힌다 — 「열기」와 바탕화면에서 두 번 눌러 열기가 함께 쓴다.
+     파일은 언제나 제 문서로 연다: 지금 보던 문서(예: 2단 논문)의 판형이 묻어나면 안 된다.
+     파일에 판형이 적혀 있으면 그것을, 없으면 기본 판형을 쓴다 (워드와 같다) */
+  const placeOpenedDocument = useCallback((result: OpenFileResult) => {
+    if (!editor || editor.isDestroyed) return
+    const id = newMemo()
+    const pageSettings = normalizeMemoPageSettings(result.pageSettings, DEFAULT_MEMO_PAGE_SETTINGS)
+    updateMemo(id, { title: result.title, content: result.content, pageSettings })
+    applyingMemoPageSettingsRef.current = true
+    useUIStore.getState().applyPageSettings(pageSettings)
+    applyingMemoPageSettingsRef.current = false
+    setFileHandle(result.handle ?? null, id)
+    editor.commands.setContent(result.content)
+    trackEvent('open_file')
+  }, [editor, newMemo, setFileHandle, updateMemo])
+
   async function handleOpen() {
     if (!editor) return
     flushPendingEditorContent()
     try {
       const result = await openFile()
       if (!result) return
-      /* 파일은 언제나 제 문서로 연다 — 지금 보던 문서(예: 2단 논문)의 판형이
-         새로 연 문서에 묻어나면 안 된다. 파일에 판형이 적혀 있으면 그것을,
-         없으면 기본 판형을 쓴다 (워드가 문서마다 쪽 설정을 갖는 것과 같다) */
-      const id = newMemo()
-      const pageSettings = normalizeMemoPageSettings(result.pageSettings, DEFAULT_MEMO_PAGE_SETTINGS)
-      updateMemo(id, { title: result.title, content: result.content, pageSettings })
-      applyingMemoPageSettingsRef.current = true
-      useUIStore.getState().applyPageSettings(pageSettings)
-      applyingMemoPageSettingsRef.current = false
-      setFileHandle(result.handle ?? null, id)
-      editor.commands.setContent(result.content)
-      trackEvent('open_file')
+      placeOpenedDocument(result)
     } catch (err) {
       alert('열기 실패: ' + (err instanceof Error ? err.message : String(err)))
     }
   }
+
+  /* 바탕화면에서 .jan 을 두 번 눌러 연 경우 — 앱을 설치해 두면 운영체제가 여기로 이어 준다 */
+  useEffect(() => {
+    if (!editor) return
+    onLaunchWithFile((doc) => {
+      flushPendingEditorContent()
+      placeOpenedDocument(doc)
+      flash(`${doc.title} 을(를) 열었습니다`)
+    })
+  }, [editor, flushPendingEditorContent, placeOpenedDocument])
 
   function handleNewMemo() {
     flushPendingEditorContent()

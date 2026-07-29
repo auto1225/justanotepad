@@ -4,14 +4,34 @@
   "description": "빠르고 강력한 다국어 노트 — AI / 인쇄 / 협업 / HWPX",
   "start_url": "/v2/",
   "scope": "/v2/",
+  "id": "/v2/",
   "display": "standalone",
   "theme_color": "#D97757",
   "background_color": "#FFF8F1",
   "lang": "ko",
   "icons": [
-    { "src": "/v2/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+    { "src": "/v2/icons/app-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/v2/icons/app-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/v2/icons/app-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "/v2/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
   ],
   "shortcuts": [
     { "name": "새 메모", "short_name": "새 메모", "url": "/v2/?new=1" }
-  ]
+  ],
+  "file_handlers": [
+    {
+      "action": "/v2/",
+      "name": "JustANotepad 문서",
+      "accept": {
+        "application/x-justanotepad+zip": [".jan"],
+        "text/html": [".html", ".htm"]
+      },
+      "icons": [
+        { "src": "/v2/icons/jan-file-256.png", "sizes": "256x256", "type": "image/png" },
+        { "src": "/v2/icons/jan-file-64.png", "sizes": "64x64", "type": "image/png" }
+      ],
+      "launch_type": "single-client"
+    }
+  ],
+  "launch_handler": { "client_mode": "navigate-existing" }
 }

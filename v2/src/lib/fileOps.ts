@@ -238,7 +238,7 @@ export async function openFile(): Promise<OpenFileResult | null> {
         multiple: false,
       })
       const file = await handle.getFile()
-      return readOpenedFile(file, handle)
+      return readAnyDocumentFile(file, handle)
     } catch (err) {
       if (isAbort(err)) return null
       console.warn('[fileOps] FSA open failed, fallback:', err)
@@ -285,7 +285,7 @@ function openFileWithInput(): Promise<OpenFileResult | null> {
         settle(null)
         return
       }
-      readOpenedFile(file, null).then(settle).catch(fail)
+      readAnyDocumentFile(file, null).then(settle).catch(fail)
     }
 
     input.addEventListener('change', onChange)
@@ -295,7 +295,8 @@ function openFileWithInput(): Promise<OpenFileResult | null> {
   })
 }
 
-async function readOpenedFile(file: File, handle?: FileSystemFileHandle | null): Promise<OpenFileResult> {
+/** 파일 하나를 우리 문서로 읽어들인다 (.jan 묶음 · HTML 한 장 모두) */
+export async function readAnyDocumentFile(file: File, handle?: FileSystemFileHandle | null): Promise<OpenFileResult> {
   const nameTitle = file.name.replace(/\.(jan|html|htm)$/i, '')
   // 우리 형식은 묶음(zip)이다 — 이름이나 파일 첫머리(PK)로 알아본다
   if (isJanName(file.name) || await looksLikeZip(file)) {
