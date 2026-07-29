@@ -67,6 +67,8 @@ import {
   DESIGN_EFFECTS, PAGE_BORDER_STYLES, PAGE_COLORS, PARA_SPACING_SETS, STYLE_SETS, THEME_COLORS, THEME_FONTS,
 } from '../lib/docDesign'
 import { LINE_NUMBER_MODES, MANUSCRIPT_PRESETS } from '../lib/docLayout'
+import { CHART_PALETTES, CHART_STYLES, CHART_TYPES, NUMBER_FORMATS as CHART_NUMBER_FORMATS, TREND_LINES } from '../lib/chartSpec'
+import { SMART_LAYOUTS, SMART_PALETTES } from '../lib/smartArt'
 import { askText, askConfirm } from '../lib/promptModal'
 import { computeDocHealth, showHealthReport, markBackupDone } from '../lib/docHealth'
 import { applyPaperFormat, PAPER_FORMATS } from '../lib/paperFormats'
@@ -190,7 +192,7 @@ export function Toolbar(p: ToolbarProps) {
   useEffect(() => { try { localStorage.setItem('jan-v2-ribbon-collapsed', ribbonCollapsed ? '1' : '0') } catch { /* 무시 */ } }, [ribbonCollapsed])
   /* 커서가 표·그림 안에 있는지 — TipTap v3 는 트랜잭션마다 부모를 다시 그리지 않으므로
      직접 구독한다. (툴바의 굵게·정렬 같은 상태 표시도 이 구독으로 함께 최신이 된다) */
-  const [contextTab, setContextTab] = useState<'표' | '그림' | '도형' | null>(null)
+  const [contextTab, setContextTab] = useState<'표' | '그림' | '도형' | '차트' | '도해' | null>(null)
   /* 앱으로 설치하면 운영체제가 .jan 을 이 앱에 이어 준다 — 그래야 두 번 눌러 열기가 된다 */
   const install = useInstallPrompt()
   /* 문서 디자인 — 워드 「디자인」 탭이 쓰는 값과 명령 */
@@ -205,7 +207,9 @@ export function Toolbar(p: ToolbarProps) {
       editor.isActive('table') ? '표'
         : editor.isActive('image') ? '그림'
           : editor.isActive('janShape') ? '도형'
-            : null
+            : editor.isActive('janChart') ? '차트'
+              : editor.isActive('janSmart') ? '도해'
+                : null
     )
     read()
     editor.on('selectionUpdate', read)
@@ -221,6 +225,8 @@ export function Toolbar(p: ToolbarProps) {
      그래서 표를 골라도 표 메뉴가 뜨지 않았다. */
   const OBJECT_TABS: Record<string, string[]> = {
     표: ['표 레이아웃', '표 디자인'],
+    차트: ['차트 도구'],
+    도해: ['도해 도구'],
     그림: ['그림'],
     도형: ['도형'],
   }
@@ -399,6 +405,32 @@ export function Toolbar(p: ToolbarProps) {
     flash(`제목 ${items.length}개로 목차를 만들었습니다`)
   }
   const insertHr = () => editor.chain().focus().setHorizontalRule().run()
+
+  /* === 차트·도해 상황 탭이 쓰는 손잡이 === */
+  const resizeChart = (delta: number) => {
+    const spec = editor.getAttributes('janChart').spec as { width?: number; height?: number } | undefined
+    if (!spec) { flash('먼저 차트를 고른다'); return }
+    const width = Math.max(200, Math.min(900, (spec.width || 460) + delta))
+    const height = Math.max(140, Math.min(700, Math.round(width * ((spec.height || 280) / (spec.width || 460)))))
+    editor.chain().focus().updateChart({ width, height }).run()
+  }
+  const resizeSmart = (delta: number) => {
+    const spec = editor.getAttributes('janSmart').spec as { width?: number; height?: number } | undefined
+    if (!spec) { flash('먼저 도해를 고른다'); return }
+    const width = Math.max(240, Math.min(900, (spec.width || 520) + delta))
+    const height = Math.max(120, Math.min(600, Math.round(width * ((spec.height || 200) / (spec.width || 520)))))
+    editor.chain().focus().updateSmartArt({ width, height }).run()
+  }
+  /** 도해 항목을 늘리거나 줄인다 (워드 「도형 추가」) */
+  const changeSmartItems = (delta: number) => {
+    const spec = editor.getAttributes('janSmart').spec as { items?: string[] } | undefined
+    if (!spec?.items) { flash('먼저 도해를 고른다'); return }
+    const items = delta > 0
+      ? [...spec.items, `항목 ${spec.items.length + 1}`]
+      : spec.items.slice(0, Math.max(1, spec.items.length - 1))
+    editor.chain().focus().updateSmartArt({ items }).run()
+    flash(delta > 0 ? '항목을 더했다' : '항목을 뺐다')
+  }
 
   /* === 워드 「레이아웃」 탭 — 개체 다루기 === */
   /** 지금 고른 개체(그림·도형·차트·도해)를 쪽 안에서 어디에 둘까 */
@@ -1289,6 +1321,105 @@ export function Toolbar(p: ToolbarProps) {
       ],
     },
 
+    /* 3.4 차트 상황 탭 — 차트를 고르면 뜬다 (워드 「차트 디자인·서식」) */
+    {
+      label: '차트 도구', items: [
+        { divider: '종류와 데이터', label: '' },
+        { short: '데이터', label: '데이터 고치기 (표·종류·서식 창)', icon: 'table', onClick: () => run(openChart) },
+        ...CHART_TYPES.map((t): MenuItem => ({
+          short: t.label, label: `차트 종류: ${t.label} — ${t.hint}`, icon: 'chart',
+          onClick: () => run(() => { editor.chain().focus().updateChart({ type: t.key }).run(); flash(`차트 — ${t.label}`) }),
+        })),
+
+        { divider: '차트 스타일', label: '' },
+        ...CHART_STYLES.map((st): MenuItem => ({
+          short: st.label, label: `차트 스타일: ${st.label}`, icon: 'sparkle',
+          onClick: () => run(() => { editor.chain().focus().updateChart({ ...st.patch, chartStyle: st.key }).run(); flash(`차트 스타일 — ${st.label}`) }),
+        })),
+        {
+          short: '색', label: '차트 색 바꾸기', icon: 'palette',
+          menu: Object.keys(CHART_PALETTES).map((k): MenuItem => ({
+            short: k, label: `차트 색: ${k}`, icon: 'palette',
+            onClick: () => run(() => { editor.chain().focus().updateChart({ palette: k }).run(); flash(`차트 색 — ${k}`) }),
+          })),
+        },
+
+        { divider: '차트 요소', label: '' },
+        {
+          short: '범례', label: '범례 자리', icon: 'menu',
+          menu: [
+            { short: '아래', label: '범례: 아래', icon: 'menu', onClick: () => run(() => editor.chain().focus().updateChart({ legend: 'bottom' }).run()) },
+            { short: '위', label: '범례: 위', icon: 'menu', onClick: () => run(() => editor.chain().focus().updateChart({ legend: 'top' }).run()) },
+            { short: '오른쪽', label: '범례: 오른쪽', icon: 'menu', onClick: () => run(() => editor.chain().focus().updateChart({ legend: 'right' }).run()) },
+            { short: '없음', label: '범례: 없음', icon: 'close', onClick: () => run(() => editor.chain().focus().updateChart({ legend: 'none' }).run()) },
+          ],
+        },
+        { short: '값 표시', label: '데이터 레이블 켜고 끄기', icon: 'hash', onClick: () => run(() => {
+          const now = !!(editor.getAttributes('janChart').spec as { valueLabels?: boolean } | undefined)?.valueLabels
+          editor.chain().focus().updateChart({ valueLabels: !now }).run()
+          flash(now ? '값 표시를 껐다' : '값을 표시한다')
+        }) },
+        { short: '눈금선', label: '눈금선 켜고 끄기', icon: 'table', onClick: () => run(() => {
+          const now = (editor.getAttributes('janChart').spec as { grid?: boolean } | undefined)?.grid !== false
+          editor.chain().focus().updateChart({ grid: !now }).run()
+        }) },
+        {
+          short: '추세선', label: '추세선 추가', icon: 'chart',
+          menu: TREND_LINES.map((t): MenuItem => ({
+            short: t.label, label: `추세선: ${t.label}${t.hint ? ' — ' + t.hint : ''}`, icon: 'chart',
+            onClick: () => run(() => { editor.chain().focus().updateChart({ trend: t.key }).run(); flash(`추세선 — ${t.label}`) }),
+          })),
+        },
+        {
+          short: '숫자 표기', label: '축 숫자 표기', icon: 'hash',
+          menu: CHART_NUMBER_FORMATS.map((f): MenuItem => ({
+            short: f.label, label: `숫자 표기: ${f.label} (${f.hint})`, icon: 'hash',
+            onClick: () => run(() => { editor.chain().focus().updateChart({ numberFormat: f.key }).run() }),
+          })),
+        },
+        { short: '쌓기', label: '쌓아 보기 켜고 끄기', icon: 'columns', small: true, onClick: () => run(() => {
+          const now = !!(editor.getAttributes('janChart').spec as { stacked?: boolean } | undefined)?.stacked
+          editor.chain().focus().updateChart({ stacked: !now }).run()
+        }) },
+
+        { divider: '크기와 자리', label: '' },
+        { short: '크게', label: '차트 크게 (+60px)', icon: 'zoom-in', small: true, onClick: () => run(() => resizeChart(60)) },
+        { short: '작게', label: '차트 작게 (-60px)', icon: 'zoom-out', small: true, onClick: () => run(() => resizeChart(-60)) },
+        { short: '왼쪽', label: '차트를 왼쪽에', icon: 'align-left', small: true, onClick: () => run(() => alignObject('left')) },
+        { short: '가운데', label: '차트를 가운데에', icon: 'align-center', small: true, onClick: () => run(() => alignObject('center')) },
+        { short: '오른쪽', label: '차트를 오른쪽에', icon: 'align-right', small: true, onClick: () => run(() => alignObject('right')) },
+      ],
+    },
+
+    /* 3.45 도해 상황 탭 — 스마트 도해를 고르면 뜬다 */
+    {
+      label: '도해 도구', items: [
+        { divider: '배치', label: '' },
+        { short: '글 고치기', label: '도해 글·배치 고치기 (창 열기)', icon: 'smart', onClick: () => run(openSmartArt) },
+        ...SMART_LAYOUTS.slice(0, 8).map((l): MenuItem => ({
+          short: l.label, label: `도해 배치: ${l.label} — ${l.hint}`, icon: 'smart',
+          onClick: () => run(() => { editor.chain().focus().updateSmartArt({ layout: l.key }).run(); flash(`도해 — ${l.label}`) }),
+        })),
+
+        { divider: '색', label: '' },
+        ...Object.keys(SMART_PALETTES).map((k): MenuItem => ({
+          short: k, label: `도해 색: ${k}`, icon: 'palette',
+          onClick: () => run(() => { editor.chain().focus().updateSmartArt({ palette: k }).run(); flash(`도해 색 — ${k}`) }),
+        })),
+
+        { divider: '항목', label: '' },
+        { short: '항목 추가', label: '도해에 항목 하나 더', icon: 'plus', onClick: () => run(() => changeSmartItems(1)) },
+        { short: '항목 빼기', label: '도해에서 마지막 항목 빼기', icon: 'minus', onClick: () => run(() => changeSmartItems(-1)) },
+
+        { divider: '크기와 자리', label: '' },
+        { short: '크게', label: '도해 크게 (+60px)', icon: 'zoom-in', small: true, onClick: () => run(() => resizeSmart(60)) },
+        { short: '작게', label: '도해 작게 (-60px)', icon: 'zoom-out', small: true, onClick: () => run(() => resizeSmart(-60)) },
+        { short: '왼쪽', label: '도해를 왼쪽에', icon: 'align-left', small: true, onClick: () => run(() => alignObject('left')) },
+        { short: '가운데', label: '도해를 가운데에', icon: 'align-center', small: true, onClick: () => run(() => alignObject('center')) },
+        { short: '오른쪽', label: '도해를 오른쪽에', icon: 'align-right', small: true, onClick: () => run(() => alignObject('right')) },
+      ],
+    },
+
     /* 3.5 디자인 — 워드 「디자인」 탭 (문서 서식 · 테마 · 페이지 배경) */
     {
       label: '디자인', items: [
@@ -1662,6 +1793,8 @@ export function Toolbar(p: ToolbarProps) {
   const inTable = contextTab === '표'
   const onImage = contextTab === '그림'
   const onShape = contextTab === '도형'
+  const onChart = contextTab === '차트'
+  const onSmart = contextTab === '도해'
   /* 커서가 든 행·열 번호 (선택 명령이 쓴다) */
   const currentRowIndex = () => {
     const { $from } = editor.state.selection
@@ -2204,6 +2337,8 @@ export function Toolbar(p: ToolbarProps) {
     ...(inTable ? [{ label: '표 레이아웃', items: tableItems, context: true }] : []),
     ...(onImage ? [{ label: '그림', items: imageItems, context: true }] : []),
     ...(onShape ? [{ label: '도형', items: shapeItems, context: true }] : []),
+    ...(onChart ? [{ label: '차트 도구', items: pick('차트 도구'), context: true }] : []),
+    ...(onSmart ? [{ label: '도해 도구', items: pick('도해 도구'), context: true }] : []),
   ]
 
   /* 묶음 오른쪽 아래 화살표 → 그 묶음의 전체 설정 창 (한글·워드의 대화상자 연결) */

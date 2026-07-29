@@ -154,3 +154,65 @@ test.describe('삽입 탭의 개체', () => {
     }), { timeout: 8000 }).toBeGreaterThan(200)
   })
 })
+
+test.describe('차트·도해 상황 탭 (워드 「차트 도구」·「SmartArt 도구」)', () => {
+  test('차트를 고르면 차트 도구 탭이 저절로 뜨고, 그 자리에서 고쳐진다', async ({ page }) => {
+    await ready(page)
+    await insertTab(page)
+    await page.locator('button[aria-label^="차트 (막대"]').first().click()
+    await page.locator('.jan-chartdlg').getByRole('button', { name: '넣기', exact: true }).click()
+
+    const chart = page.locator('.ProseMirror figure[data-jan-chart]')
+    await expect(chart).toHaveCount(1)
+    await chart.click()
+
+    // 상황 탭이 뜨고 골라진다 (워드와 같다)
+    const toolTab = page.locator('.jan-ribbon-tab', { hasText: /^차트 도구$/ })
+    await expect(toolTab).toHaveAttribute('aria-selected', 'true')
+    await expect(page.locator('.jan-ribbon-group .jan-ribbon-cap')).toHaveText(['종류와 데이터', '차트 스타일', '차트 요소', '크기와 자리'])
+
+    // 종류·크기를 그 자리에서 바꾼다
+    await page.locator('button[aria-label^="차트 종류: 원"]').first().click()
+    await expect.poll(() => chart.getAttribute('data-spec')).toContain('"type":"pie"')
+    const before = JSON.parse((await chart.getAttribute('data-spec')) || '{}').width
+    await page.locator('button[aria-label^="차트 크게"]').first().click()
+    await expect.poll(async () => JSON.parse((await chart.getAttribute('data-spec')) || '{}').width).toBeGreaterThan(before)
+  })
+
+  test('차트 서식 — 축 범위·추세선·계열 색을 창에서 정한다', async ({ page }) => {
+    await ready(page)
+    await insertTab(page)
+    await page.locator('button[aria-label^="차트 (막대"]').first().click()
+    const dialog = page.locator('.jan-chartdlg')
+    await dialog.getByRole('tab', { name: /서식/ }).click()
+
+    await expect(dialog.locator('.jan-design-card')).toHaveCount(6)      // 차트 스타일 여섯 벌
+    await dialog.locator('input[aria-label="값 축 최대"]').fill('10')
+    await dialog.locator('select[aria-label="추세선"]').selectOption('linear')
+    await dialog.getByRole('button', { name: '넣기', exact: true }).click()
+
+    const chart = page.locator('.ProseMirror figure[data-jan-chart]')
+    const spec = JSON.parse((await chart.getAttribute('data-spec')) || '{}')
+    expect(spec.axisMax).toBe(10)
+    expect(spec.trend).toBe('linear')
+    expect(await chart.innerHTML()).toContain('stroke-dasharray')  // 추세선이 실제로 그려졌다
+  })
+
+  test('도해를 고르면 도해 도구 탭에서 배치·색·항목을 바꾼다', async ({ page }) => {
+    await ready(page)
+    await insertTab(page)
+    await page.locator('button[aria-label^="스마트 도해"]').first().click()
+    await page.locator('.jan-smartdlg').getByRole('button', { name: '넣기', exact: true }).click()
+
+    const smart = page.locator('.ProseMirror figure[data-jan-smart]')
+    await expect(smart).toHaveCount(1)
+    await smart.click()
+    await expect(page.locator('.jan-ribbon-tab', { hasText: /^도해 도구$/ })).toHaveAttribute('aria-selected', 'true')
+
+    await page.locator('button[aria-label^="도해에 항목 하나 더"]').first().click()
+    await expect.poll(async () => JSON.parse((await smart.getAttribute('data-spec')) || '{}').items.length).toBe(4)
+
+    await page.locator('button[aria-label^="도해 배치: 원형 주기"]').first().click()
+    await expect.poll(async () => JSON.parse((await smart.getAttribute('data-spec')) || '{}').layout).toBe('cycle-circle')
+  })
+})
