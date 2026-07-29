@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { openFile, readPageSettings, saveToFile, wrapHtml } from './fileOps'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { allowFsaWriteAgain, openFile, readPageSettings, saveToFile, wrapHtml } from './fileOps'
 
 /** 테스트에서 File System Access API 를 갈아끼우기 위한 창 타입 */
 const fsaTestWindow = () => window as unknown as { showOpenFilePicker?: unknown }
@@ -91,9 +91,29 @@ describe('파일에 담기는 쪽 설정', () => {
 describe('파일 저장', () => {
   const fsaSaveWindow = () => window as unknown as { showSaveFilePicker?: unknown }
 
+  beforeEach(() => allowFsaWriteAgain())
   afterEach(() => {
     vi.restoreAllMocks()
     delete fsaSaveWindow().showSaveFilePicker
+    allowFsaWriteAgain()
+  })
+
+  it('그 환경이 파일 쓰기를 막으면, 다음 저장부터는 창을 한 번만 띄운다', async () => {
+    const picker = vi.fn(async () => ({
+      createWritable: async () => { throw new DOMException('platform', 'NotAllowedError') },
+    }))
+    fsaSaveWindow().showSaveFilePicker = picker
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+
+    // 처음 한 번은 자리 고르기 창 → 막힘 → 내려받기 (창 두 번)
+    await saveToFile({ title: '보고서', content: '<p>본문</p>' })
+    expect(picker).toHaveBeenCalledTimes(1)
+
+    // 두 번째부터는 자리 고르기를 건너뛰고 곧장 내려받기 (창 한 번)
+    const second = await saveToFile({ title: '보고서', content: '<p>본문</p>' })
+    expect(picker).toHaveBeenCalledTimes(1)
+    expect(second.ok).toBe(true)
+    expect(click).toHaveBeenCalledTimes(2)
   })
 
   it('쓰기가 실패해도 내려받기 창을 다시 띄우지 않고 실패를 알린다', async () => {

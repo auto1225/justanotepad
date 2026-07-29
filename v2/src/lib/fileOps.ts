@@ -22,6 +22,33 @@ const isAbort = (e: unknown) => e instanceof DOMException && e.name === 'AbortEr
 const isPermissionError = (e: unknown) =>
   e instanceof DOMException && (e.name === 'NotAllowedError' || e.name === 'SecurityError')
 
+/* 어떤 브라우저·환경은 자리를 고르게 해 놓고도 그 파일에 쓰는 것을 막는다
+   (내장 브라우저·정책 제한 등: "not allowed by the user agent or the platform").
+   한 번 막힌 것을 기억해 두어야 저장할 때마다 창이 두 번 뜨지 않는다. */
+const FSA_BLOCKED_KEY = 'jan:v2:fsa-write-blocked'
+let fsaBlockedMemo: boolean | null = null
+
+function fsaWriteBlocked(): boolean {
+  if (fsaBlockedMemo !== null) return fsaBlockedMemo
+  try {
+    fsaBlockedMemo = localStorage.getItem(FSA_BLOCKED_KEY) === '1'
+  } catch {
+    fsaBlockedMemo = false
+  }
+  return fsaBlockedMemo
+}
+
+function markFsaWriteBlocked(): void {
+  fsaBlockedMemo = true
+  try { localStorage.setItem(FSA_BLOCKED_KEY, '1') } catch { /* 저장소가 막혀 있어도 이 세션 동안은 기억한다 */ }
+}
+
+/** 다시 쓸 수 있게 된 환경을 위해 되돌리는 길도 둔다 (설정에서 부른다) */
+export function allowFsaWriteAgain(): void {
+  fsaBlockedMemo = false
+  try { localStorage.removeItem(FSA_BLOCKED_KEY) } catch { /* 무시 */ }
+}
+
 /** 파일 손잡이에 쓰기 허락 받기 — 이미 있으면 묻지 않는다 */
 async function ensureWritePermission(handle: FileSystemFileHandle, mayAsk: boolean): Promise<boolean> {
   const fs = handle as unknown as {
@@ -71,7 +98,7 @@ export async function saveToFile(opts: SaveOptions): Promise<SaveResult> {
   const { title = '새 메모', content, handle, pageSettings, silent = false } = opts
 
   let targetHandle = handle ?? null
-  if (typeof fsaWindow().showSaveFilePicker === 'function') {
+  if (typeof fsaWindow().showSaveFilePicker === 'function' && !(!targetHandle && fsaWriteBlocked())) {
     /* 자리 고르기가 먼저다 — 그림을 실제 자료로 바꾸는 일(수백 KB)을 앞에 두면
        그 사이에 "사용자가 방금 누름" 상태가 풀려 브라우저가 창을 막는다.
        (Failed to execute 'createWritable' … not allowed … in the current context) */
@@ -104,13 +131,18 @@ export async function saveToFile(opts: SaveOptions): Promise<SaveResult> {
         const writable = await targetHandle.createWritable()
         await writable.write(file)
         await writable.close()
+        allowFsaWriteAgain() // 이 환경은 잘 쓴다 — 예전에 막혔던 기억은 지운다
         return { ok: true, handle: targetHandle }
       } catch (err) {
         if (isAbort(err)) return { ok: false, error: '취소됨' }
         if (!isPermissionError(err)) return { ok: false, error: errText(err) }
+        // 이 환경은 고른 자리에 쓸 수 없다 — 다음부터는 자리 고르기를 건너뛴다 (창이 두 번 뜨지 않게)
+        markFsaWriteBlocked()
         console.warn('[fileOps] 쓰기 허락이 없어 내려받기로 대신한다:', err)
       }
     }
+    /* 사용자가 허락을 거절한 것뿐이라면 환경 탓이 아니다 —
+       그때는 기억해 두지 않고(다음에 다시 물을 수 있게) 이번만 내려받기로 건넨다 */
     /* 여기까지 왔으면 그 자리에는 쓸 수 없다 —
        자동 저장이면 조용히 넘기고(내려받기 폭탄 방지), 사람이 누른 저장이면 내려받기로 건넨다 */
     if (silent) return { ok: false, error: '이 파일에 쓸 권한이 없다 — 「다른 이름」으로 다시 저장해라', needsPermission: true }
