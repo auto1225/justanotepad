@@ -33,6 +33,7 @@ const CORNERS: { key: Corner; x: number; y: number; cursor: string }[] = [
  */
 export function ImageHandles({ editor }: Props) {
   const [layout, setLayout] = useState<Layout | null>(null)
+  const shown = useRef(false)
   const [cropping, setCropping] = useState(false)
   const dragRef = useRef<{
     kind: 'size' | 'rotate' | 'crop'
@@ -63,10 +64,20 @@ export function ImageHandles({ editor }: Props) {
     })
   }, [editor])
 
+  /* 손잡이가 떠 있는지 — 그리는 중에 만지면 안 되므로 효과에서만 적어 둔다 */
+  useEffect(() => { shown.current = layout != null }, [layout])
+
   useEffect(() => {
     if (!editor) return
     let raf = 0
-    const onChange = () => { window.cancelAnimationFrame(raf); raf = window.requestAnimationFrame(measure) }
+    /* 그림을 고르지도 않았고 손잡이도 안 떠 있으면 프레임을 잡지 않는다 */
+    const onChange = () => {
+      const sel = editor.state.selection
+      const onImage = sel instanceof NodeSelection && sel.node.type.name === 'image'
+      if (!onImage && !shown.current) return
+      window.cancelAnimationFrame(raf)
+      raf = window.requestAnimationFrame(measure)
+    }
     onChange()
     editor.on('selectionUpdate', onChange)
     editor.on('update', onChange)

@@ -10,6 +10,7 @@ import { TableRow } from '@tiptap/extension-table-row'
 import { JanTableCell, JanTableHeader, TablePlacement, TableFormulaAuto } from '../extensions/TableCellExt'
 import { TableKeymap } from '../extensions/TableKeymap'
 import { CellPickEdge } from '../extensions/CellPickEdge'
+import { TablePen } from '../extensions/TablePen'
 import { ImageObject as Image } from '../extensions/ImageObject'
 import { ImageKeymap } from '../extensions/ImageKeymap'
 import { ShapeObject } from '../extensions/ShapeObject'
@@ -39,6 +40,8 @@ import { ImageDialog } from './ImageDialog'
 import { ShapePanel } from './ShapePanel'
 import { SymbolPanel } from './SymbolPanel'
 import { ObjectPane } from './ObjectPane'
+import { ObjectBar } from './ObjectBar'
+import { TableFormatPanel } from './TableFormatPanel'
 import { CommentPane } from './CommentPane'
 import { ModalSkeleton } from './ModalSkeleton'
 import { useDocStore } from '../store/docStore'
@@ -190,6 +193,8 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   const [showObjects, setShowObjects] = useState(false)
   /* 메모 목록 — 워드에서 문서 옆에 뜨는 메모 자리 */
   const [showComments, setShowComments] = useState(false)
+  /* 표 서식 창 — 테두리·채우기·맞춤 */
+  const [tableFormat, setTableFormat] = useState<string | null>(null)
   const [showHelp, setShowHelp] = useState(false)
   const [showOutline, setShowOutline] = useState(false)
   const [showAbout, setShowAbout] = useState(false)
@@ -395,6 +400,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       TableFormulaAuto,
       TableKeymap,
       CellPickEdge,
+      TablePen,
       TableRow,
       JanTableHeader,
       JanTableCell,
@@ -572,6 +578,14 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       }
     }
     const onComments = () => setShowComments((v) => !v)
+    const onTableFormat = (e: Event) => setTableFormat((e as CustomEvent<{ tab?: string }>).detail?.tab || 'border')
+    /* 눈금선 보기 — 테두리가 없는 표에도 흐린 안내선을 보여 준다 (워드와 같다) */
+    const onGridlines = () => {
+      const on = document.body.classList.toggle('jan-table-gridlines')
+      import('../lib/flash').then((m) => m.flash(on ? '눈금선을 켰다 — 인쇄에는 나오지 않는다' : '눈금선을 껐다'))
+    }
+    window.addEventListener('jan-table-gridlines', onGridlines)
+    window.addEventListener('jan-table-format', onTableFormat)
     /* 누름틀을 누르면 그 자리에 바로 쓴다 (한글과 같은 느낌).
        편집기 DOM 이 아직 없을 수도 있어 문서에 붙이고 안에서 살핀다 —
        editor.view 를 붙일 때 건드리면 아직 안 붙은 순간에 터진다. */
@@ -605,6 +619,8 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       window.removeEventListener('jan-symbol-panel', onSymbols)
       window.removeEventListener('jan-object-pane', onObjects)
       window.removeEventListener('jan-comment-pane', onComments)
+      window.removeEventListener('jan-table-format', onTableFormat)
+      window.removeEventListener('jan-table-gridlines', onGridlines)
       document.removeEventListener('click', onFieldClick, true)
       document.removeEventListener('keydown', onKey, true)
     }
@@ -1144,6 +1160,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       <TableHandles editor={editor} />
       <TableContextMenu editor={editor} />
       <BubbleToolbar editor={editor} />
+      <ObjectBar editor={editor} />
       <ImageMenu editor={editor} />
       <ImageHandles editor={editor} />
       <ImageContextMenu editor={editor} />
@@ -1152,6 +1169,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       {showSymbols && <SymbolPanel editor={editor} onClose={() => setShowSymbols(false)} />}
       {showObjects && <ObjectPane editor={editor} onClose={() => setShowObjects(false)} />}
       {showComments && <CommentPane editor={editor} onClose={() => setShowComments(false)} />}
+      {tableFormat && <TableFormatPanel editor={editor} tab={tableFormat} onClose={() => setTableFormat(null)} />}
       <Suspense fallback={<ModalSkeleton />}>
         {showAi && <AiHelper editor={editor} onClose={() => setShowAi(false)} />}
         {showSettings && <SettingsModal onClose={() => setShowSettings(false)} focusSection={settingsFocus} />}

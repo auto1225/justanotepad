@@ -1,4 +1,5 @@
 import type { Editor } from '@tiptap/react'
+import { Fragment } from '@tiptap/pm/model'
 import type { Node as PMNode } from '@tiptap/pm/model'
 import { flash } from './flash'
 import { cellNumber, formatNumber } from './tableFormula'
@@ -490,4 +491,70 @@ export function blockCalc(editor: Editor, kind: 'sum' | 'avg' | 'count'): boolea
   const label = kind === 'sum' ? '합계' : kind === 'avg' ? '평균' : '개수'
   flash(`${label} ${formatNumber(value, '#,##0.##')} (숫자 ${numbers.length}칸)`, 4000)
   return true
+}
+
+/**
+ * 셀만 지우고 남은 칸을 밀어 넣는다 — 워드의 「셀 삭제…」.
+ * 왼쪽으로 밀기: 오른쪽 칸들이 당겨 온다. 위로 밀기: 아래 칸들이 올라온다.
+ * (표 구조가 어긋나지 않도록, 밀고 남는 자리는 빈 칸으로 채운다)
+ */
+export function deleteCellsShift(editor: Editor, direction: 'left' | 'up'): boolean {
+  const table = currentTable(editor)
+  if (!table) { flash('표 안에 커서를 두고 하세요'); return false }
+  const cells = pickCells(table.node, table.pos)
+  const picked = selectedRowsCols(editor, cells)
+  const rows = Math.max(...cells.map((c) => c.row)) + 1
+  const cols = Math.max(...cells.map((c) => c.col)) + 1
+
+  const targetRows = picked?.rows.length ? picked.rows : [cells.find((c) => c.pos === caretCell(editor))?.row ?? 0]
+  const targetCols = picked?.cols.length ? picked.cols : [cells.find((c) => c.pos === caretCell(editor))?.col ?? 0]
+
+  /* 글만 옮긴다 — 칸 자체를 없애면 표가 어긋나므로, 워드가 보여 주는 결과
+     (뒤 칸이 당겨 오고 마지막 자리는 빈 칸)를 글을 밀어 만든다. */
+  const textAt = new Map<string, PMNode | null>()
+  for (const cell of cells) textAt.set(`${cell.row},${cell.col}`, cell.node)
+
+  let tr = editor.state.tr
+  const empty = editor.schema.nodes.paragraph.createAndFill()
+  if (!empty) return false
+
+  const moveInto = (from: { row: number; col: number } | null, to: { row: number; col: number }) => {
+    const target = cells.find((c) => c.row === to.row && c.col === to.col)
+    if (!target) return
+    const source = from ? textAt.get(`${from.row},${from.col}`) : null
+    const content = source ? source.content : Fragment.from(empty)
+    tr = tr.replaceWith(tr.mapping.map(target.pos + 1), tr.mapping.map(target.pos + target.node.nodeSize - 1), content)
+  }
+
+  if (direction === 'left') {
+    for (const row of targetRows) {
+      const gone = targetCols.length
+      for (let col = Math.min(...targetCols); col < cols; col += 1) {
+        const src = col + gone < cols ? { row, col: col + gone } : null
+        moveInto(src, { row, col })
+      }
+    }
+  } else {
+    for (const col of targetCols) {
+      const gone = targetRows.length
+      for (let row = Math.min(...targetRows); row < rows; row += 1) {
+        const src = row + gone < rows ? { row: row + gone, col } : null
+        moveInto(src, { row, col })
+      }
+    }
+  }
+
+  if (!tr.docChanged) return false
+  editor.view.dispatch(tr)
+  flash(direction === 'left' ? '칸을 지우고 오른쪽 칸을 당겨 왔다' : '칸을 지우고 아래 칸을 올렸다')
+  return true
+}
+
+/** 커서가 든 칸의 문서 위치 */
+function caretCell(editor: Editor): number {
+  const { $from } = editor.state.selection
+  for (let d = $from.depth; d > 0; d--) {
+    if (/^table(Cell|Header)$/.test($from.node(d).type.name)) return $from.before(d)
+  }
+  return -1
 }

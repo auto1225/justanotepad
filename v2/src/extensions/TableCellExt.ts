@@ -5,6 +5,28 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { TableCell } from '@tiptap/extension-table-cell'
 import { TableHeader } from '@tiptap/extension-table-header'
 
+/** 한 변의 테두리 속성을 만든다 — 저장본에는 data-* 로, 화면에는 인라인 스타일로 */
+function borderSide(name: string, data: string, css: string) {
+  return {
+    [name]: {
+      default: null as string | null,
+      parseHTML: (el: HTMLElement) => el.getAttribute(data),
+      renderHTML: (attrs: Record<string, unknown>) => {
+        const value = attrs[name]
+        if (!value) return {}
+        const text = String(value)
+        const style = text === 'none'
+          ? `${css}: none`
+          : (() => {
+              const [w, kind, color] = text.split('|')
+              return `${css}: ${w}px ${kind || 'solid'} ${color || '#333'}`
+            })()
+        return { [data]: text, style }
+      },
+    },
+  }
+}
+
 /** 셀 속성 — 워드식 표 음영·세로 맞춤·수식. setCellAttribute(...) 로 적용 */
 const backgroundColorAttr = {
   backgroundColor: {
@@ -34,6 +56,26 @@ const backgroundColorAttr = {
     renderHTML: (attrs: Record<string, unknown>) =>
       attrs['data-diag'] ? { 'data-diag': attrs['data-diag'] } : {},
   },
+  /** 칸 안 글자 방향 — 워드의 「텍스트 방향 변경」 */
+  'data-text-dir': {
+    default: null as string | null,
+    parseHTML: (el: HTMLElement) => el.getAttribute('data-text-dir'),
+    renderHTML: (attrs: Record<string, unknown>) =>
+      attrs['data-text-dir'] ? { 'data-text-dir': String(attrs['data-text-dir']) } : {},
+  },
+  /** 칸 안쪽 여백 — 워드의 「셀 여백」 (고른 칸에만 따로 줄 수 있다) */
+  'data-pad': {
+    default: null as string | null,
+    parseHTML: (el: HTMLElement) => el.getAttribute('data-pad'),
+    renderHTML: (attrs: Record<string, unknown>) =>
+      attrs['data-pad'] ? { 'data-pad': String(attrs['data-pad']), style: `padding: ${attrs['data-pad']}` } : {},
+  },
+  /* 네 변의 테두리 — 'width|style|color' 또는 'none'.
+     워드의 「펜 색·두께·모양 + 어디에 그을지」 를 칸 속성으로 담는다. */
+  ...borderSide('borderTop', 'data-bt', 'border-top'),
+  ...borderSide('borderRight', 'data-br', 'border-right'),
+  ...borderSide('borderBottom', 'data-bb', 'border-bottom'),
+  ...borderSide('borderLeft', 'data-bl', 'border-left'),
   /** 수식 결과의 번호 형식 (#,##0.00 등) */
   numFormat: {
     default: null as string | null,
