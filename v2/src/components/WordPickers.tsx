@@ -21,7 +21,7 @@ interface ColorProps {
 /** 워드의 색 고르개 — 테마 색 · 표준 색 · 색 없음 · 다른 색 */
 export function ColorPalette({ value, onPick, noneLabel = '색 없음', noneValue = null }: ColorProps) {
   return (
-    <div className="jan-wcolor" role="group" aria-label="색 고르기">
+    <div className="jan-wcolor" role="group" aria-label="색 고르기" onMouseDown={(e) => e.preventDefault()}>
       <button type="button" className="jan-wcolor-none" onClick={() => onPick(noneValue)}>
         <span className="jan-wcolor-nonebox" aria-hidden="true" />
         {noneLabel}
@@ -72,7 +72,7 @@ export function ColorPalette({ value, onPick, noneLabel = '색 없음', noneValu
 /** 선 두께 고르개 — 실제 굵기를 그려 준다 */
 export function LineWidthList({ value, color = '#333', onPick }: { value?: number; color?: string; onPick: (px: number) => void }) {
   return (
-    <div className="jan-wline" role="group" aria-label="선 두께">
+    <div className="jan-wline" role="group" aria-label="선 두께" onMouseDown={(e) => e.preventDefault()}>
       {LINE_WIDTHS.map((w) => (
         <button
           key={w.label}
@@ -92,7 +92,7 @@ export function LineWidthList({ value, color = '#333', onPick }: { value?: numbe
 /** 선 모양 고르개 — 실선·파선·점선·이중선을 그려 준다 */
 export function LineStyleList({ value, color = '#333', onPick }: { value?: string; color?: string; onPick: (style: string) => void }) {
   return (
-    <div className="jan-wline" role="group" aria-label="선 모양">
+    <div className="jan-wline" role="group" aria-label="선 모양" onMouseDown={(e) => e.preventDefault()}>
       {BORDER_STYLES.map((st) => (
         <button
           key={st.key}

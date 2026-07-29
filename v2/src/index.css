@@ -7354,3 +7354,19 @@ body.jan-table-gridlines .ProseMirror td, body.jan-table-gridlines .ProseMirror 
 body:has(.jan-link-popover) .jan-bubble-toolbar,
 body:has(.jan-ribbon-dropdown) .jan-bubble-toolbar,
 body:has(.jan-modal-overlay) .jan-bubble-toolbar { display: none; }
+
+/* 리본이 창보다 넓을 때 — 좌우로 밀어 보는 화살표 (묶음이 잘려 안 보이면 못 쓴다) */
+.jan-ribbon-scroll { display: flex; align-items: stretch; }
+.jan-ribbon-scroll .jan-ribbon-body { flex: 1; min-width: 0; }
+.jan-ribbon-arrow {
+  flex: none;
+  width: 20px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: linear-gradient(to right, rgba(0, 0, 0, .05), transparent);
+  color: #857c75;
+  cursor: pointer;
+}
+.jan-ribbon-arrow.is-right { background: linear-gradient(to left, rgba(0, 0, 0, .05), transparent); }
+.jan-ribbon-arrow:hover { background: rgba(0, 0, 0, .1); }

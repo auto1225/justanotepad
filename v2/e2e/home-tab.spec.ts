@@ -30,8 +30,14 @@ async function selectLine(page: Page) {
 }
 
 const open = async (page: Page, label: string) => {
-  await page.locator(`.jan-ribbon-split[aria-label^="${label}"]`).click()
-  await expect(page.locator('.jan-ribbon-dropdown')).toBeVisible()
+  const button = page.locator(`.jan-ribbon-split[aria-label^="${label}"]`)
+  const pop = page.locator('.jan-ribbon-dropdown')
+  // 누를 때마다 열리고 닫히므로 열렸는지 보고 다시 누른다
+  for (let tries = 0; tries < 3 && (await pop.count()) === 0; tries += 1) {
+    await button.click()
+    await page.waitForTimeout(200)
+  }
+  await expect(pop).toBeVisible()
 }
 
 test.describe('서식 탭 — 워드 홈', () => {
@@ -144,5 +150,40 @@ test.describe('서식 탭 — 워드 홈', () => {
     await open(page, '단락 테두리')
     await page.locator('.jan-ribbon-dropdown button', { hasText: '아래쪽 테두리' }).click()
     await expect(page.locator('.ProseMirror p[data-para-border]').first()).toHaveAttribute('data-para-border', 'bottom')
+  })
+  test('색판으로 고른 색이 정말 글자에 먹는다 — 리본이 선택을 뺏지 않는다', async ({ page }) => {
+    const editor = await withText(page, '색이 먹는지 보는 문장')
+    await selectLine(page)
+
+    /* 예전에는 리본 단추가 초점을 가져가면서 고른 글이 풀려,
+       색을 골라도 아무 데도 적용되지 않았다 (손으로 눌러 보고서야 드러났다) */
+    await open(page, '글꼴 색')
+    await expect.poll(() => page.evaluate(() => window.getSelection()?.toString() || '')).not.toBe('')
+
+    await page.locator('.jan-wcolor-std button').nth(1).click() // 빨강
+    const color = await page.evaluate(() => {
+      const el = document.querySelector('.ProseMirror p span[style*="color"]') as HTMLElement
+      return el ? getComputedStyle(el).color : ''
+    })
+    expect(color).toBe('rgb(255, 0, 0)')
+    await expect(editor).toContainText('색이 먹는지')
+  })
+
+  test('리본이 창보다 넓으면 좌우 화살표로 나머지 묶음을 본다', async ({ page }) => {
+    await withText(page)
+    await page.setViewportSize({ width: 900, height: 900 })
+    await page.waitForTimeout(300)
+
+    const overflows = await page.evaluate(() => {
+      const b = document.querySelector('.jan-ribbon-body') as HTMLElement
+      return b.scrollWidth > b.clientWidth
+    })
+    expect(overflows).toBe(true)
+
+    await expect(page.locator('.jan-ribbon-arrow')).toHaveCount(2)
+    const before = await page.evaluate(() => (document.querySelector('.jan-ribbon-body') as HTMLElement).scrollLeft)
+    await page.locator('.jan-ribbon-arrow.is-right').click()
+    await expect.poll(() => page.evaluate(() => (document.querySelector('.jan-ribbon-body') as HTMLElement).scrollLeft))
+      .toBeGreaterThan(before)
   })
 })

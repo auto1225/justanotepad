@@ -136,6 +136,7 @@ function OverflowMenu({ items, caption }: { items: RibbonItem[]; caption: string
       <button
         ref={btnRef}
         type="button"
+        onMouseDown={(e) => e.preventDefault()}
         className={'jan-ribbon-btn is-more' + (open ? ' is-open' : '')}
         onClick={() => { setSpot(popoverSpot(btnRef.current)); setOpen((v) => !v) }}
         title={`${caption} 더보기`}
@@ -147,7 +148,13 @@ function OverflowMenu({ items, caption }: { items: RibbonItem[]; caption: string
         <span>더보기</span>
       </button>
       {open && spot && createPortal(
-        <div className="jan-ribbon-dropdown" role="menu" ref={popRef} style={{ position: 'fixed', left: spot.left, top: spot.top }}>
+        <div
+          className="jan-ribbon-dropdown"
+          role="menu"
+          ref={popRef}
+          onMouseDown={(e) => e.preventDefault()}
+          style={{ position: 'fixed', left: spot.left, top: spot.top }}
+        >
           {items.map((it, i) => (
             <button
               key={i}
@@ -206,6 +213,7 @@ function DropButton({ item, caption }: { item: RibbonItem; caption: string }) {
       <button
         ref={btnRef}
         type="button"
+        onMouseDown={(e) => e.preventDefault()}
         className={'jan-ribbon-btn jan-ribbon-split' + (open ? ' is-open' : '')}
         onClick={() => { if (item.onClick) item.onClick(); setSpot(popoverSpot(btnRef.current)); setOpen((v) => !v) }}
         title={item.hint ? `${item.label} (${item.hint})` : item.label}
@@ -224,6 +232,9 @@ function DropButton({ item, caption }: { item: RibbonItem; caption: string }) {
           className={'jan-ribbon-dropdown' + (item.panel ? ' is-panel' : '')}
           role="menu"
           ref={popRef}
+          /* 초점을 가져가지 않는다 — 가져가면 편집기에서 고른 글이 풀려
+             색·서식이 「아무 데도」 적용되지 않는다 */
+          onMouseDown={(e) => e.preventDefault()}
           style={{ position: 'fixed', left: spot.left, top: spot.top }}
         >
           {item.panel ? <div onClick={() => setOpen(false)}>{item.panel()}</div> : (item.menu || []).map((sub, i) => (
@@ -260,6 +271,7 @@ function GridBlock({ item }: { item: RibbonItem }) {
           key={sub.label + i}
           type="button"
           className="jan-ribbon-gridbtn"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={sub.onClick}
           title={sub.label}
           aria-label={sub.label}
@@ -298,6 +310,8 @@ export function Ribbon({
 }) {
   const active = tabs.find((t) => t.label === activeTab) || tabs[0]
   const sections = splitSections(active?.items || [])
+  /* 리본이 창보다 넓을 때 좌우로 밀어 보는 화살표가 쓴다 */
+  const bodyRef = useRef<HTMLDivElement | null>(null)
 
   return (
     <div className={'jan-ribbon' + (collapsed ? ' is-collapsed' : '')}>
@@ -344,7 +358,18 @@ export function Ribbon({
         </button>
       </div>
       {!collapsed && (
-        <div className="jan-ribbon-body" role="tabpanel" aria-label={`${active?.label} 리본`}>
+        <div className="jan-ribbon-scroll">
+          <button
+            type="button"
+            className="jan-ribbon-arrow is-left"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => bodyRef.current?.scrollBy({ left: -240, behavior: 'smooth' })}
+            title="왼쪽 묶음 보기"
+            aria-label="왼쪽 묶음 보기"
+          >
+            <Icon name="chevron-left" size={14} />
+          </button>
+        <div className="jan-ribbon-body" ref={bodyRef} role="tabpanel" aria-label={`${active?.label} 리본`}>
           {sections.map((sec, si) => {
             /* 작은 단추·격자·분할 단추는 자리를 적게 먹으므로 큰 단추와 따로 센다 */
             const bigs = sec.items.filter((it) => !it.small)
@@ -383,6 +408,7 @@ export function Ribbon({
                           key={i}
                           type="button"
                           className="jan-ribbon-small"
+                          onMouseDown={(e) => e.preventDefault()}
                           onClick={it.onClick}
                           title={it.hint ? `${it.label} (${it.hint})` : it.label}
                           aria-label={it.label}
@@ -413,6 +439,17 @@ export function Ribbon({
               </div>
             )
           })}
+        </div>
+          <button
+            type="button"
+            className="jan-ribbon-arrow is-right"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => bodyRef.current?.scrollBy({ left: 240, behavior: 'smooth' })}
+            title="오른쪽 묶음 보기"
+            aria-label="오른쪽 묶음 보기"
+          >
+            <Icon name="chevron-right" size={14} />
+          </button>
         </div>
       )}
     </div>
