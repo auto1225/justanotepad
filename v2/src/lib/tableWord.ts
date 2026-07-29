@@ -128,7 +128,11 @@ export function setTableStyle(editor: Editor, style: string): boolean {
 }
 
 /** 표 스타일 옵션 — 첫째 열·마지막 행 강조 (워드의 「표 스타일 옵션」) */
-export function toggleTableOption(editor: Editor, name: 'data-first-col' | 'data-last-row'): boolean {
+export type TableOption =
+  | 'data-header-row' | 'data-last-row' | 'data-banded-rows'
+  | 'data-first-col' | 'data-last-col' | 'data-banded-cols'
+
+export function toggleTableOption(editor: Editor, name: TableOption): boolean {
   const table = currentTable(editor)
   if (!table) return false
   const on = table.node.attrs[name] ? null : '1'

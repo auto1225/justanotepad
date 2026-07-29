@@ -25,6 +25,18 @@ export const BORDER_STYLES: { key: string; label: string }[] = [
 
 export const BORDER_WIDTHS = [0.5, 0.75, 1, 1.5, 2, 2.5, 3, 4.5, 6]
 
+/** 워드의 선 두께 — pt 로 적고 픽셀로 그린다 (1pt ≈ 1.333px) */
+export const LINE_WIDTHS: { label: string; px: number }[] = [
+  { label: '½ pt', px: 0.67 },
+  { label: '¾ pt', px: 1 },
+  { label: '1 pt', px: 1.33 },
+  { label: '1½ pt', px: 2 },
+  { label: '2¼ pt', px: 3 },
+  { label: '3 pt', px: 4 },
+  { label: '4½ pt', px: 6 },
+  { label: '6 pt', px: 8 },
+]
+
 /** 어느 변에 그을지 — 워드의 「테두리」 드롭다운 */
 export type BorderWhere =
   | 'all' | 'outer' | 'inner' | 'inner-h' | 'inner-v'

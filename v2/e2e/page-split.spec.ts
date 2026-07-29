@@ -660,11 +660,19 @@ test.describe('줄 단위 문단 분할', () => {
       const w = document.querySelector('.ProseMirror .tableWrapper') as HTMLElement
       return { attr: w.getAttribute('data-wrap'), float: getComputedStyle(w).float, display: getComputedStyle(w).display }
     })
+    /* 텍스트 배치는 워드처럼 「텍스트 배치 · 표 자리 ▾」 안에 묶여 있다 */
     const use = async (name: RegExp) => {
       const tab = page.getByRole('tab', { name: '레이아웃', exact: true })
       if ((await tab.getAttribute('aria-selected')) !== 'true') await tab.dispatchEvent('click')
-      await page.getByRole('button', { name }).first().dispatchEvent('click')
-      await page.waitForTimeout(200)
+      await page.waitForTimeout(150)
+      const drop = page.locator('.jan-ribbon-split[aria-label^="텍스트 배치"]')
+      const item = page.locator('.jan-ribbon-dropdown button').filter({ hasText: name }).first()
+      for (let tries = 0; tries < 4 && (await item.count()) === 0; tries += 1) {
+        await drop.dispatchEvent('click')
+        await page.waitForTimeout(200)
+      }
+      await item.dispatchEvent('click')
+      await page.waitForTimeout(250)
     }
 
     await use(/왼쪽에 두고 글 흐르기/)

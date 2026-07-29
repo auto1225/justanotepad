@@ -5,13 +5,13 @@ import { test, expect } from '@playwright/test'
  * 라이브 https://justanotepad.com/v2/ 또는 로컬 dev 서버.
  */
 
-/** 리본 명령 실행 — 묶음마다 큰 단추 수가 정해져 있어 뒤쪽 명령은 「…더보기」 안에 들어간다.
- *  group 을 주면 그 묶음의 더보기를 열고 고른다. */
+/** 리본 명령 실행 — 워드처럼 묶음마다 「▾」 안에 들어간 것이 있다.
+ *  drop 을 주면 그 펼침 단추를 열고 고른다. */
 async function useRibbonCommand(
   page: import('@playwright/test').Page,
   tab: string,
   name: string,
-  group?: string
+  drop?: string
 ) {
   const tabButton = page.getByRole('tab', { name: tab, exact: true })
   await expect(tabButton).toHaveCount(1)
@@ -19,21 +19,41 @@ async function useRibbonCommand(
   await page.waitForTimeout(150)
 
   const body = page.locator('.jan-ribbon-body')
-  if (group) {
-    // 라벨 안의 공백이 줄바꿈 없는 공백일 수 있어 느슨하게 맞춘다
-    const loose = new RegExp(name.split(/\s+/).join('[\\s\\u00a0]*'))
+  // \ub77c\ubca8 \uc0ac\uc774 \uacf5\ubc31\uc774 \uc904\ubc14\uafc8 \uc5c6\ub294 \uacf5\ubc31\uc77c \uc218 \uc788\uc5b4 \ub290\uc2a8\ud558\uac8c \ub9de\ucd98\ub2e4
+  const loose = new RegExp(name.split(/\s+/).join('[\\s\\u00a0]*'))
+
+  if (drop) {
     const item = page.locator('.jan-ribbon-dropdown button').filter({ hasText: loose }).first()
-    const more = body.locator(`button[aria-label="${group} 더보기"]`)
-    // 누를 때마다 열리고 닫히므로, 열렸는지 보고 다시 누른다
+    const button = page.locator(`.jan-ribbon-split[aria-label^="${drop}"]`)
     for (let tries = 0; tries < 4 && (await item.count()) === 0; tries += 1) {
-      await more.dispatchEvent('click')
+      await button.click({ force: true })
       await page.waitForTimeout(250)
     }
-    await expect(item).toHaveCount(1)
+    if ((await item.count()) === 0) {
+      const dbg = await page.evaluate(() => ({
+        splits: [...document.querySelectorAll('.jan-ribbon-split')].map((b) => b.getAttribute('aria-label')),
+        drops: document.querySelectorAll('.jan-ribbon-dropdown').length,
+        tab: [...document.querySelectorAll('[role=tab]')].filter((t) => t.getAttribute('aria-selected') === 'true').map((t) => t.textContent).join(','),
+      }))
+      throw new Error(`「${name}」 을 「${drop}」 안에서 찾지 못했다 ${JSON.stringify(dbg)}`)
+    }
     await item.dispatchEvent('click')
     return
   }
-  await body.getByRole('button', { name, exact: true }).first().dispatchEvent('click')
+
+  const primary = body.locator('button').filter({ hasText: loose }).first()
+  if (await primary.count()) { await primary.dispatchEvent('click'); return }
+  // aria-label 로도 찾아본다 — 리본 단추에 보이는 글자는 짧은 이름이다
+  const byLabel = body.locator(`button[aria-label^="${name}"]`).first()
+  if (await byLabel.count()) { await byLabel.dispatchEvent('click'); return }
+
+  const item = page.locator('.jan-ribbon-dropdown button').filter({ hasText: loose }).first()
+  for (let tries = 0; tries < 4 && (await item.count()) === 0; tries += 1) {
+    await body.locator('button[aria-label$="더보기"]').first().dispatchEvent('click')
+    await page.waitForTimeout(250)
+  }
+  await expect(item).toHaveCount(1)
+  await item.dispatchEvent('click')
 }
 
 test.describe('v2 smoke', () => {
@@ -639,7 +659,7 @@ test.describe('v2 smoke', () => {
 
     for (let i = 0; i < 4; i += 1) await page.keyboard.press('Shift+Tab')
     // 표 조작은 워드처럼 리본의 「레이아웃」 탭에서 한다 (표 위 단추 막대는 칸을 가려서 없앴다)
-    await useRibbonCommand(page, '레이아웃', '오름차순 정렬', '데이터')
+    await useRibbonCommand(page, '레이아웃', '오름차순 정렬', '정렬')
     const rows = page.locator('.ProseMirror table tr')
     await expect(rows.nth(0)).toContainText('Name')
     await expect(rows.nth(1)).toContainText('Alpha')

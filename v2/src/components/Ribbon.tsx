@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Icon } from './Icons'
 import type { IconName } from './Icons'
 import { shortLabel } from '../lib/ribbonLabel'
@@ -22,6 +23,14 @@ export interface RibbonItem {
   icon?: IconName
   divider?: string
   onClick?: () => void
+  /** 이 단추를 누르면 열리는 아래 차림표 — 워드의 「▾」 가 붙은 단추 */
+  menu?: RibbonItem[]
+  /** 작은 단추로 (아이콘+글자 한 줄). 큰 단추 대신 세 개씩 층층이 쌓인다 */
+  small?: boolean
+  /** 격자로 늘어놓을 항목들 — 아홉 칸 맞춤·색판처럼 */
+  grid?: { cols: number; items: RibbonItem[] }
+  /** 펼쳤을 때 보일 것을 직접 그린다 — 워드의 색판·선 두께 고르개처럼 */
+  panel?: () => React.ReactNode
 }
 
 export interface RibbonTab {
@@ -46,8 +55,42 @@ interface Section {
   items: RibbonItem[]
 }
 
+/**
+ * 펼친 차림표를 화면 맨 위층에 띄운다.
+ *
+ * 리본 본문은 가로로 밀어 보는 상자(overflow-x:auto)라, 그 안에 놓인 차림표는
+ * 잘려서 보이지 않는다. 그래서 몸통(body)에 따로 그리고 자리만 계산해 붙인다.
+ */
+function popoverSpot(el: HTMLElement | null): { left: number; top: number } | null {
+  if (!el) return null
+  const r = el.getBoundingClientRect()
+  return { left: Math.max(4, Math.min(r.left, window.innerWidth - 360)), top: r.bottom + 2 }
+}
+
+/** 펼친 동안 문서를 밀면 자리가 어긋나므로 닫는다 (워드도 그렇게 한다) */
+function useCloseOnScroll(open: boolean, close: () => void) {
+  useEffect(() => {
+    if (!open) return
+    window.addEventListener('scroll', close, true)
+    window.addEventListener('resize', close)
+    return () => {
+      window.removeEventListener('scroll', close, true)
+      window.removeEventListener('resize', close)
+    }
+  }, [open, close])
+}
+
 /** 묶음 안에서 큰 버튼으로 내보낼 최대 개수 — 나머지는 더보기로 */
 const MAX_PRIMARY = 6
+/** 작은 버튼은 세 개씩 층층이 쌓이므로 조금 더 담는다 */
+const MAX_SMALL = 9
+
+/** 작은 단추를 세 개씩 나눈다 */
+function smallColumns(items: RibbonItem[]): RibbonItem[][] {
+  const cols: RibbonItem[][] = []
+  for (let i = 0; i < items.length; i += 3) cols.push(items.slice(i, i + 3))
+  return cols
+}
 
 function splitSections(items: RibbonItem[]): Section[] {
   const out: Section[] = []
@@ -58,7 +101,7 @@ function splitSections(items: RibbonItem[]): Section[] {
       cur = { caption: it.divider, items: [] }
       return
     }
-    if (!it.onClick) return
+    if (!it.onClick && !it.menu && !it.grid && !it.panel) return
     cur.items.push(it)
   })
   if (cur.items.length) out.push(cur)
@@ -68,10 +111,16 @@ function splitSections(items: RibbonItem[]): Section[] {
 function OverflowMenu({ items, caption }: { items: RibbonItem[]; caption: string }) {
   const [open, setOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement | null>(null)
+  const btnRef = useRef<HTMLButtonElement | null>(null)
+  const popRef = useRef<HTMLDivElement | null>(null)
+  const [spot, setSpot] = useState<{ left: number; top: number } | null>(null)
+  useCloseOnScroll(open, () => setOpen(false))
+
   useEffect(() => {
     if (!open) return
     const close = (e: MouseEvent) => {
-      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false)
+      const t = e.target as Node
+      if (!wrapRef.current?.contains(t) && !popRef.current?.contains(t)) setOpen(false)
     }
     const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
     document.addEventListener('mousedown', close)
@@ -81,39 +130,143 @@ function OverflowMenu({ items, caption }: { items: RibbonItem[]; caption: string
       document.removeEventListener('keydown', esc)
     }
   }, [open])
+
   return (
     <div className="jan-ribbon-more" ref={wrapRef}>
       <button
+        ref={btnRef}
         type="button"
         className={'jan-ribbon-btn is-more' + (open ? ' is-open' : '')}
-        onClick={() => setOpen((v) => !v)}
-        title={`${caption || '이 묶음'} 더보기 (${items.length}개)`}
-        aria-label={`${caption || '이 묶음'} 더보기`}
+        onClick={() => { setSpot(popoverSpot(btnRef.current)); setOpen((v) => !v) }}
+        title={`${caption} 더보기`}
+        aria-label={`${caption} 더보기`}
+        aria-haspopup="menu"
         aria-expanded={open}
       >
         <Icon name="chevron-down" size={16} />
         <span>더보기</span>
       </button>
-      {open && (
-        <div className="jan-ribbon-dropdown" role="menu">
+      {open && spot && createPortal(
+        <div className="jan-ribbon-dropdown" role="menu" ref={popRef} style={{ position: 'fixed', left: spot.left, top: spot.top }}>
           {items.map((it, i) => (
             <button
               key={i}
               type="button"
-              className="jan-menu-item"
               role="menuitem"
-              onClick={() => {
-                setOpen(false)
-                it.onClick?.()
-              }}
+              className="jan-menu-item"
+              onClick={() => { it.onClick?.(); setOpen(false) }}
             >
               {it.icon && <Icon name={it.icon} size={14} />}
               <span className="jan-menu-label">{it.label}</span>
               {it.hint && <span className="jan-menu-hint">{it.hint}</span>}
             </button>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
+    </div>
+  )
+}
+
+/** 눌러서 펼치는 단추 — 워드의 「테두리 ▾」·「삭제 ▾」 처럼 */
+function DropButton({ item, caption }: { item: RibbonItem; caption: string }) {
+  const [open, setOpen] = useState(false)
+  const wrapRef = useRef<HTMLDivElement | null>(null)
+  const btnRef = useRef<HTMLButtonElement | null>(null)
+  const popRef = useRef<HTMLDivElement | null>(null)
+  const [spot, setSpot] = useState<{ left: number; top: number } | null>(null)
+  useCloseOnScroll(open, () => setOpen(false))
+
+  useEffect(() => {
+    if (!open) return
+    const close = (e: MouseEvent) => {
+      const t = e.target as Node
+      if (!wrapRef.current?.contains(t) && !popRef.current?.contains(t)) setOpen(false)
+    }
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
+    document.addEventListener('mousedown', close)
+    document.addEventListener('keydown', esc)
+    return () => {
+      document.removeEventListener('mousedown', close)
+      document.removeEventListener('keydown', esc)
+    }
+  }, [open])
+
+  /* 위아래 화살표로 항목을 옮겨 다닌다 — 마우스 없이도 쓸 수 있어야 한다 */
+  const onKey = (e: React.KeyboardEvent) => {
+    const buttons = [...(popRef.current?.querySelectorAll('button') ?? [])] as HTMLButtonElement[]
+    if (!buttons.length) return
+    const i = buttons.indexOf(document.activeElement as HTMLButtonElement)
+    if (e.key === 'ArrowDown') { e.preventDefault(); buttons[(i + 1) % buttons.length].focus() }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); buttons[(i - 1 + buttons.length) % buttons.length].focus() }
+  }
+
+  return (
+    <div className="jan-ribbon-more" ref={wrapRef} onKeyDown={onKey}>
+      <button
+        ref={btnRef}
+        type="button"
+        className={'jan-ribbon-btn jan-ribbon-split' + (open ? ' is-open' : '')}
+        onClick={() => { if (item.onClick) item.onClick(); setSpot(popoverSpot(btnRef.current)); setOpen((v) => !v) }}
+        title={item.hint ? `${item.label} (${item.hint})` : item.label}
+        aria-label={item.label}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        data-help={`ribbon:${item.label}`}
+        data-help-hint={item.hint || undefined}
+        data-help-group={caption || undefined}
+      >
+        <Icon name={item.icon || 'file-text'} size={18} />
+        <span>{shortLabel(item)} <Icon name="chevron-down" size={9} /></span>
+      </button>
+      {open && spot && createPortal(
+        <div
+          className={'jan-ribbon-dropdown' + (item.panel ? ' is-panel' : '')}
+          role="menu"
+          ref={popRef}
+          style={{ position: 'fixed', left: spot.left, top: spot.top }}
+        >
+          {item.panel ? <div onClick={() => setOpen(false)}>{item.panel()}</div> : (item.menu || []).map((sub, i) => (
+            sub.divider
+              ? <div key={'d' + i} className="jan-menu-sep">{sub.divider}</div>
+              : (
+                <button
+                  key={sub.label + i}
+                  type="button"
+                  role="menuitem"
+                  className="jan-menu-item"
+                  onClick={() => { sub.onClick?.(); setOpen(false) }}
+                >
+                  {sub.icon && <Icon name={sub.icon} size={14} />}
+                  <span className="jan-menu-label">{sub.label}</span>
+                  {sub.hint && <span className="jan-menu-hint">{sub.hint}</span>}
+                </button>
+              )
+          ))}
+        </div>,
+        document.body
+      )}
+    </div>
+  )
+}
+
+/** 격자 — 아홉 칸 맞춤처럼 작은 단추를 줄맞춰 놓는다 */
+function GridBlock({ item }: { item: RibbonItem }) {
+  const grid = item.grid!
+  return (
+    <div className="jan-ribbon-grid" role="group" aria-label={item.label} style={{ gridTemplateColumns: `repeat(${grid.cols}, 22px)` }}>
+      {grid.items.map((sub, i) => (
+        <button
+          key={sub.label + i}
+          type="button"
+          className="jan-ribbon-gridbtn"
+          onClick={sub.onClick}
+          title={sub.label}
+          aria-label={sub.label}
+        >
+          <Icon name={sub.icon || 'dot'} size={13} />
+        </button>
+      ))}
     </div>
   )
 }
@@ -193,27 +346,55 @@ export function Ribbon({
       {!collapsed && (
         <div className="jan-ribbon-body" role="tabpanel" aria-label={`${active?.label} 리본`}>
           {sections.map((sec, si) => {
-            const primary = sec.items.slice(0, MAX_PRIMARY)
-            const rest = sec.items.slice(MAX_PRIMARY)
+            /* 작은 단추·격자·분할 단추는 자리를 적게 먹으므로 큰 단추와 따로 센다 */
+            const bigs = sec.items.filter((it) => !it.small)
+            const smalls = sec.items.filter((it) => it.small)
+            const primary = [...bigs.slice(0, MAX_PRIMARY), ...smalls.slice(0, MAX_SMALL)]
+            const rest = [...bigs.slice(MAX_PRIMARY), ...smalls.slice(MAX_SMALL)]
             return (
               <div className="jan-ribbon-group" key={si}>
                 <div className="jan-ribbon-items">
                   {primary.map((it, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      className="jan-ribbon-btn"
-                      onClick={it.onClick}
-                      title={it.hint ? `${it.label} (${it.hint})` : it.label}
-                      aria-label={it.label}
-                      /* 설명 카드 — 따로 적어 둔 안내가 있으면 그것을, 없으면 이름·단축키로 만든다 */
-                      data-help={`ribbon:${it.label}`}
-                      data-help-hint={it.hint || undefined}
-                      data-help-group={sec.caption || undefined}
-                    >
-                      <Icon name={it.icon || 'file-text'} size={18} />
-                      <span>{shortLabel(it)}</span>
-                    </button>
+                    it.grid ? <GridBlock key={i} item={it} />
+                      : (it.menu || it.panel) ? <DropButton key={i} item={it} caption={sec.caption} />
+                        : it.small ? null : (
+                          <button
+                            key={i}
+                            type="button"
+                            className="jan-ribbon-btn"
+                            onClick={it.onClick}
+                            title={it.hint ? `${it.label} (${it.hint})` : it.label}
+                            aria-label={it.label}
+                            /* 설명 카드 — 따로 적어 둔 안내가 있으면 그것을, 없으면 이름·단축키로 만든다 */
+                            data-help={`ribbon:${it.label}`}
+                            data-help-hint={it.hint || undefined}
+                            data-help-group={sec.caption || undefined}
+                          >
+                            <Icon name={it.icon || 'file-text'} size={18} />
+                            <span>{shortLabel(it)}</span>
+                          </button>
+                        )
+                  ))}
+                  {/* 작은 단추는 세 개씩 층층이 — 워드가 자리를 아끼는 방식 */}
+                  {smallColumns(primary.filter((it) => it.small && !it.menu && !it.grid)).map((col, ci) => (
+                    <div className="jan-ribbon-smallcol" key={'sc' + ci}>
+                      {col.map((it, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          className="jan-ribbon-small"
+                          onClick={it.onClick}
+                          title={it.hint ? `${it.label} (${it.hint})` : it.label}
+                          aria-label={it.label}
+                          data-help={`ribbon:${it.label}`}
+                          data-help-hint={it.hint || undefined}
+                          data-help-group={sec.caption || undefined}
+                        >
+                          <Icon name={it.icon || 'dot'} size={13} />
+                          <span>{shortLabel(it)}</span>
+                        </button>
+                      ))}
+                    </div>
                   ))}
                   {rest.length > 0 && <OverflowMenu items={rest} caption={sec.caption} />}
                   {launchers[sec.caption] && (
@@ -228,6 +409,7 @@ export function Ribbon({
                     </button>
                   )}
                 </div>
+                {sec.caption && <div className="jan-ribbon-cap">{sec.caption}</div>}
               </div>
             )
           })}
