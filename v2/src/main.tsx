@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 import { ErrorBoundary } from './components/ErrorBoundary'
-import { registerV2ServiceWorker } from './lib/swRegister'
+import { recoverFromStaleChunks, registerV2ServiceWorker } from './lib/swRegister'
 import { startMultiTabSync } from './lib/multiTabSync'
 import { readShareFragment } from './lib/shareLink'
 import { handleByocOAuthRedirectIfNeeded } from './lib/byocSync'
@@ -37,6 +37,7 @@ async function main() {
   )
 
   registerV2ServiceWorker()
+  recoverFromStaleChunks()
   startMultiTabSync()
   startByocAutosync()
   handleByocOAuthRedirectIfNeeded().catch((error: unknown) => {
