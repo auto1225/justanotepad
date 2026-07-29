@@ -152,7 +152,7 @@ test.describe('local-first memo storage', () => {
     await page.locator('.jan-settings-modal').getByRole('button', { name: '닫기' }).click()
 
     // 리본 — 좁은 화면에서도 탭과 명령이 화면 안에 들어온다
-    await page.getByRole('tab', { name: '쪽', exact: true }).click()
+    await page.getByRole('tab', { name: '레이아웃', exact: true }).click()
     const ribbon = page.locator('.jan-ribbon-body')
     await expect(ribbon).toBeVisible()
     const box = await ribbon.boundingBox()

@@ -1,4 +1,8 @@
 import { create } from 'zustand'
+import { DEFAULT_DESIGN, applyDesign } from '../lib/docDesign'
+import { DEFAULT_LAYOUT, applyLayout, normalizeLayout } from '../lib/docLayout'
+import type { DocLayout } from '../lib/docLayout'
+import type { DocDesign } from '../lib/docDesign'
 import { persist } from 'zustand/middleware'
 
 export type PaperStyle = 'lined' | 'grid' | 'dot' | 'blank' | 'music' | 'cornell'
@@ -40,6 +44,10 @@ export interface MemoPageSettings {
   firstPageRunningOff: boolean
   /** 워터마크 텍스트 (빈 문자열 = 끔) */
   watermarkText: string
+  /** 문서 디자인 한 벌 — 워드 「디자인」 탭 (문서 서식·테마 색·글꼴·간격·효과·쪽 색·쪽 테두리) */
+  design: DocDesign
+  /** 쪽 배치 — 워드 「레이아웃」 탭 (텍스트 방향·줄 번호·하이픈·원고지) */
+  layout: DocLayout
 }
 
 export const DEFAULT_MEMO_PAGE_SETTINGS: MemoPageSettings = {
@@ -59,6 +67,8 @@ export const DEFAULT_MEMO_PAGE_SETTINGS: MemoPageSettings = {
   pageNumberStart: 1,
   firstPageRunningOff: false,
   watermarkText: '',
+  design: DEFAULT_DESIGN,
+  layout: DEFAULT_LAYOUT,
 }
 
 /** 워드식 이름 있는 여백 프리셋 */
@@ -245,6 +255,42 @@ export function normalizeMemoPageSettings(value: unknown, fallback: MemoPageSett
     pageNumberStart: normalizePageNumberStart(raw.pageNumberStart ?? fallback.pageNumberStart),
     firstPageRunningOff: typeof raw.firstPageRunningOff === 'boolean' ? raw.firstPageRunningOff : fallback.firstPageRunningOff,
     watermarkText: typeof raw.watermarkText === 'string' ? raw.watermarkText.trim().slice(0, 40) : fallback.watermarkText,
+    design: normalizeDesign(raw.design, fallback.design),
+    layout: normalizeLayout(raw.layout, fallback.layout),
+  }
+}
+
+/** 저장본에서 온 디자인 값을 믿을 수 있는 모양으로 다듬는다 */
+export function normalizeDesign(value: unknown, fallback: DocDesign = DEFAULT_DESIGN): DocDesign {
+  const raw = isRecord(value) ? value : {}
+  const border = isRecord(raw.pageBorder) ? raw.pageBorder : {}
+  const mark = isRecord(raw.watermark) ? raw.watermark : {}
+  const str = (v: unknown, def: string) => (typeof v === 'string' && v ? v : def)
+  const num = (v: unknown, def: number, min: number, max: number) => {
+    const n = Number(v)
+    return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : def
+  }
+  return {
+    styleSet: str(raw.styleSet, fallback.styleSet),
+    themeColor: str(raw.themeColor, fallback.themeColor),
+    themeFont: str(raw.themeFont, fallback.themeFont),
+    paraSpacing: str(raw.paraSpacing, fallback.paraSpacing),
+    effect: str(raw.effect, fallback.effect),
+    pageColor: str(raw.pageColor, fallback.pageColor),
+    pageBorder: {
+      style: str(border.style, fallback.pageBorder.style),
+      color: /^#[0-9a-f]{3,8}$/i.test(String(border.color)) ? String(border.color) : fallback.pageBorder.color,
+      width: num(border.width, fallback.pageBorder.width, 0.5, 12),
+      padding: num(border.padding, fallback.pageBorder.padding, 0, 48),
+      first: typeof border.first === 'boolean' ? border.first : fallback.pageBorder.first,
+    },
+    watermark: {
+      text: typeof mark.text === 'string' ? mark.text.slice(0, 40) : fallback.watermark.text,
+      color: /^#[0-9a-f]{3,8}$/i.test(String(mark.color)) ? String(mark.color) : fallback.watermark.color,
+      opacity: num(mark.opacity, fallback.watermark.opacity, 2, 100),
+      angle: num(mark.angle, fallback.watermark.angle, -90, 90),
+      size: num(mark.size, fallback.watermark.size, 12, 200),
+    },
   }
 }
 
@@ -266,6 +312,8 @@ export function pageSettingsFromUi(state: Pick<UIState, keyof MemoPageSettings>)
     pageNumberStart: state.pageNumberStart,
     firstPageRunningOff: state.firstPageRunningOff,
     watermarkText: state.watermarkText,
+    design: state.design,
+    layout: state.layout,
   })
 }
 
@@ -290,7 +338,9 @@ export function sameMemoPageSettings(a: unknown, b: unknown): boolean {
     left.pageNumberFormat === right.pageNumberFormat &&
     left.pageNumberStart === right.pageNumberStart &&
     left.firstPageRunningOff === right.firstPageRunningOff &&
-    left.watermarkText === right.watermarkText
+    left.watermarkText === right.watermarkText &&
+    JSON.stringify(left.design) === JSON.stringify(right.design) &&
+    JSON.stringify(left.layout) === JSON.stringify(right.layout)
 }
 
 export function formatRunningText(template: string, page = 1, total = 1): string {
@@ -349,6 +399,10 @@ interface UIState {
   pageNumberStart: number
   firstPageRunningOff: boolean
   watermarkText: string
+  /** 문서 디자인 한 벌 — 워드 「디자인」 탭 */
+  design: DocDesign
+  /** 쪽 배치 — 워드 「레이아웃」 탭 */
+  layout: DocLayout
   toggleFocus: () => void
   setFocus: (v: boolean) => void
   toggleReading: () => void
@@ -383,11 +437,23 @@ interface UIState {
   paperFormat: string
   setPaperFormat: (key: string) => void
   applyPageSettings: (settings: Partial<MemoPageSettings>) => void
+  setDesign: (patch: Partial<DocDesign>) => void
+  setLayout: (patch: Partial<DocLayout>) => void
 }
 
 export const useUIStore = create<UIState>()(
   persist(
     (set, get) => ({
+      /* 새 문서의 디자인 — 「기본값으로 설정」 해 둔 것이 있으면 그것으로 시작한다 */
+      design: (() => {
+        try {
+          const saved = localStorage.getItem('jan-v2-design-default')
+          return saved ? normalizeDesign(JSON.parse(saved)) : DEFAULT_DESIGN
+        } catch {
+          return DEFAULT_DESIGN
+        }
+      })(),
+      layout: DEFAULT_LAYOUT,
       focusMode: false,
       readingMode: false,
       typewriterMode: false,
@@ -483,7 +549,23 @@ export const useUIStore = create<UIState>()(
           pageNumberStart: next.pageNumberStart,
           firstPageRunningOff: next.firstPageRunningOff,
           watermarkText: next.watermarkText,
+          design: next.design,
+          layout: next.layout,
         })
+        applyDesign(next.design) // 화면(그리고 인쇄)에 바로 입힌다
+        applyLayout(next.layout)
+      },
+      /** 쪽 배치 한 가지만 바꾼다 — 워드 「레이아웃」 탭의 단추들이 쓴다 */
+      setLayout: (patch) => {
+        const next = normalizeLayout({ ...get().layout, ...patch }, get().layout)
+        set({ layout: next })
+        applyLayout(next)
+      },
+      /** 디자인 한 가지만 바꾼다 — 워드 「디자인」 탭의 단추들이 쓴다 */
+      setDesign: (patch) => {
+        const next = normalizeDesign({ ...get().design, ...patch }, get().design)
+        set({ design: next })
+        applyDesign(next)
       },
     }),
     {

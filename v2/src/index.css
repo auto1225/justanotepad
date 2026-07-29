@@ -7472,3 +7472,138 @@ body:has(.jan-modal-overlay) .jan-bubble-toolbar { display: none; }
 }
 .jan-modal-foot button.jan-primary { background: var(--jan-accent, #d97757); border-color: var(--jan-accent, #d97757); color: #fff; font-weight: 600; }
 .jan-modal-foot button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── 문서 디자인 (워드 「디자인」 탭) ───────────────────────────────
+   고른 「문서 서식」 한 벌이 CSS 변수로 내려오고, 본문·제목이 그것을 따른다.
+   내용은 그대로 두고 옷만 갈아입는 방식이라, 되돌리기가 안전하다. */
+
+.jan-page-node {
+  background: var(--jan-doc-page-color, #fff);
+}
+/* 편집기 기본 글꼴 규칙(.jan-editor-pages .ProseMirror …)보다 뒤에 와야 이긴다 —
+   그래서 같은 깊이로 감싸 무게를 맞춘다 */
+.jan-editor-pages .ProseMirror :where(p, li, td, th, blockquote) {
+  font-family: var(--jan-doc-body-font, inherit);
+  font-size: var(--jan-doc-body-size, inherit);
+}
+.jan-editor-pages .ProseMirror :where(h1, h2, h3, h4, h5, h6) {
+  /* 편집기 본문 글꼴 규칙이 !important 라, 제목만큼은 같은 무게로 되찾는다 */
+  font-family: var(--jan-doc-head-font, inherit) !important;
+}
+.ProseMirror p {
+  line-height: var(--jan-doc-line, 1.7);
+  margin-top: var(--jan-doc-para-before, 0);
+  margin-bottom: var(--jan-doc-para-after, 8px);
+  text-indent: var(--jan-doc-indent, 0);
+}
+.ProseMirror p[style*="text-indent"] { text-indent: revert; }
+.ProseMirror h1, .ProseMirror h2, .ProseMirror h3,
+.ProseMirror h4, .ProseMirror h5, .ProseMirror h6 {
+  font-family: var(--jan-doc-head-font, inherit);
+  font-weight: var(--jan-doc-head-weight, 700);
+  color: var(--jan-doc-head-color, inherit);
+  text-transform: var(--jan-doc-head-case, none);
+  margin-top: var(--jan-doc-head-space, 18px);
+}
+.ProseMirror h1 { font-size: calc(var(--jan-doc-body-size, 14px) * var(--jan-doc-head-scale, 1.9)); }
+.ProseMirror h2 { font-size: calc(var(--jan-doc-body-size, 14px) * var(--jan-doc-head-scale, 1.9) * 0.76); }
+.ProseMirror h3 { font-size: calc(var(--jan-doc-body-size, 14px) * var(--jan-doc-head-scale, 1.9) * 0.62); }
+
+/* 제목 아래 선 — 문서 서식마다 다르다 */
+[data-jan-head-rule="thin"] .ProseMirror h1,
+[data-jan-head-rule="thin"] .ProseMirror h2 { border-bottom: 1px solid rgba(0, 0, 0, 0.16); padding-bottom: 3px; }
+[data-jan-head-rule="thick"] .ProseMirror h1 { border-bottom: 3px solid var(--jan-doc-accent, #d97757); padding-bottom: 4px; }
+[data-jan-head-rule="thick"] .ProseMirror h2 { border-bottom: 1.5px solid rgba(0, 0, 0, 0.2); padding-bottom: 3px; }
+[data-jan-head-rule="accent"] .ProseMirror h1,
+[data-jan-head-rule="accent"] .ProseMirror h2 {
+  border-left: 5px solid var(--jan-doc-accent, #d97757);
+  padding-left: 10px;
+}
+
+/* 쪽 테두리 */
+[data-jan-page-border="on"] .jan-page-node::before {
+  content: '';
+  position: absolute;
+  inset: var(--jan-doc-border-pad, 12px);
+  border: var(--jan-doc-border-width, 1px) var(--jan-doc-border-style, solid) var(--jan-doc-border-color, #1c1f26);
+  box-shadow: var(--jan-doc-border-shadow, none);
+  pointer-events: none;
+  z-index: 1;
+}
+[data-jan-page-border="on"][data-jan-border-first="off"] .jan-page-node:first-child::before { display: none; }
+
+/* 효과 — 문서 안 개체의 마감 */
+[data-jan-effect="soft"] .ProseMirror .jan-chart,
+[data-jan-effect="soft"] .ProseMirror .jan-smart,
+[data-jan-effect="soft"] .ProseMirror table { filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.12)); }
+[data-jan-effect="sharp"] .ProseMirror .jan-chart,
+[data-jan-effect="sharp"] .ProseMirror .jan-smart,
+[data-jan-effect="sharp"] .ProseMirror table { filter: drop-shadow(3px 3px 0 rgba(0, 0, 0, 0.22)); }
+[data-jan-effect="outline"] .ProseMirror table td,
+[data-jan-effect="outline"] .ProseMirror table th { border-width: 1.6px; }
+[data-jan-effect="round"] .ProseMirror table { border-radius: 10px; overflow: hidden; }
+[data-jan-effect="round"] .ProseMirror .jan-chart svg,
+[data-jan-effect="round"] .ProseMirror .jan-smart svg { border-radius: 10px; }
+
+/* 디자인 갤러리 (리본 안) */
+.jan-designdlg { width: min(760px, 96vw); max-width: min(760px, 96vw); }
+.jan-design-gallery { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.jan-design-card {
+  display: flex; flex-direction: column; gap: 4px; padding: 6px;
+  border: 1px solid var(--jan-border, #d8dce3); border-radius: 7px; background: #fff; cursor: pointer;
+  font-size: 11px; text-align: center;
+}
+.jan-design-card.is-active { border-color: var(--jan-accent, #d97757); box-shadow: 0 0 0 2px rgba(217, 119, 87, 0.18); }
+.jan-design-card svg { display: block; width: 100%; height: auto; }
+.jan-design-swatches { display: flex; gap: 3px; justify-content: center; }
+.jan-design-swatch { width: 12px; height: 12px; border-radius: 3px; }
+.jan-design-row { display: flex; align-items: center; gap: 8px; margin: 8px 0; font-size: 12px; flex-wrap: wrap; }
+.jan-design-row > span:first-child { min-width: 74px; color: var(--jan-dim, #6b7684); }
+
+/* ── 쪽 배치 (워드 「레이아웃」 탭) ─────────────────────────────── */
+
+/* 텍스트 방향 — 세로쓰기 (한글·일본어 문서) */
+[data-jan-text-dir="vertical"] .jan-editor-pages .ProseMirror {
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+}
+[data-jan-text-dir="vertical"] .jan-page-node { overflow-x: auto; }
+
+/* 하이픈 — 긴 영문 낱말을 줄 끝에서 나눈다 */
+[data-jan-hyphen="auto"] .ProseMirror p { hyphens: auto; -webkit-hyphens: auto; }
+
+/* 줄 번호 — 왼쪽 여백 바깥에 센다 (워드처럼 인쇄에도 나온다) */
+[data-jan-line-numbers="continuous"] .jan-page-node,
+[data-jan-line-numbers="page"] .jan-page-node { counter-reset: jan-line-number 0; }
+[data-jan-line-numbers="continuous"] .jan-editor-pages .ProseMirror :where(p, h1, h2, h3, li),
+[data-jan-line-numbers="page"] .jan-editor-pages .ProseMirror :where(p, h1, h2, h3, li) {
+  counter-increment: jan-line-number;
+  position: relative;
+}
+[data-jan-line-numbers="continuous"] .jan-editor-pages .ProseMirror :where(p, h1, h2, h3, li)::before,
+[data-jan-line-numbers="page"] .jan-editor-pages .ProseMirror :where(p, h1, h2, h3, li)::before {
+  content: counter(jan-line-number);
+  position: absolute;
+  left: -34px;
+  width: 26px;
+  text-align: right;
+  font-size: 10px;
+  color: #98a2b3;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* 원고지 — 칸 위에 글을 앉힌다 (한글 「원고지」) */
+[data-jan-grid="on"] .jan-page-node {
+  background-image:
+    repeating-linear-gradient(to right, var(--jan-grid-color, #e5b8b8) 0 1px, transparent 1px calc(100% / var(--jan-grid-cols, 20))),
+    repeating-linear-gradient(to bottom, var(--jan-grid-color, #e5b8b8) 0 1px, transparent 1px calc(100% / var(--jan-grid-rows, 10)));
+  background-origin: content-box;
+  background-clip: content-box;
+}
+
+/* 쪽 경계에서는 단락 사이 공백을 셈에 넣지 않는다 —
+   쪽 끝의 마지막 단락에 아래 공백이 붙으면 한 줄이 더 들어갈 자리를 잡아먹고,
+   쪽을 넘어 이어진 조각(data-jan-cont)에 위 공백이 붙으면 새 쪽이 한 줄 밀려 시작한다. */
+.jan-page-node > :last-child { margin-bottom: 0; }
+.jan-page-node > [data-jan-cont] { margin-top: 0; }

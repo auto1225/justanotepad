@@ -19,6 +19,8 @@ import { SmartArtObject } from '../extensions/SmartArtObject'
 import { SignatureObject } from '../extensions/SignatureObject'
 import { CrossRef } from '../extensions/CrossRef'
 import { RefTargets } from '../extensions/RefTargets'
+import { applyDesign, watermarkSvgOf } from '../lib/docDesign'
+import { DesignPanel } from './DesignPanel'
 import { Model3D } from '../extensions/Model3D'
 import { CharOverlap, DropCapAttr, EmphasisDot, RubyText } from '../extensions/TextObjects'
 import { ListStyles } from '../extensions/ListStyles'
@@ -164,13 +166,6 @@ const MeetingNotesModal = lazy(() => import('./MeetingNotesModal').then((m) => (
 const TrashModal = lazy(() => import('./TrashModal').then((m) => ({ default: m.TrashModal })))
 const CONTENT_COMMIT_DELAY_MS = 350
 
-/** 페이지마다 반복되는 대각선 워터마크 SVG (배경 이미지용) */
-function watermarkSvg(text: string, w: number, h: number): string {
-  const safe = text.replace(/[<>&"']/g, '')
-  const fontSize = Math.max(24, Math.min(96, Math.floor((w * 1.2) / Math.max(4, safe.length))))
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" transform="rotate(-32 ${w / 2} ${h / 2})" font-family="'Malgun Gothic',sans-serif" font-weight="700" font-size="${fontSize}" fill="#8a8a8a" opacity="0.13">${safe}</text></svg>`
-}
-
 export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   const { fileHandle, fileHandleMemoId, setFileHandle, setSavedAt, setEditor } = useDocStore()
   const { currentId, current, newMemo, updateMemo, updateMemoPageSettings } = useMemosStore()
@@ -206,6 +201,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   const [smartPanel, setSmartPanel] = useState<'insert' | 'edit' | null>(null)
   const [signPanel, setSignPanel] = useState<'insert' | 'sign' | null>(null)
   const [xrefPanel, setXrefPanel] = useState(false)
+  const [designPanel, setDesignPanel] = useState<'styles' | 'background' | null>(null)
   /* 문자표와 개체 목록 — 워드의 「기호」 대화상자와 「선택 창(Alt+F10)」 */
   const [showSymbols, setShowSymbols] = useState(false)
   const [showObjects, setShowObjects] = useState(false)
@@ -266,6 +262,12 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   const pageNumberStart = useUIStore((s) => s.pageNumberStart)
   const firstPageRunningOff = useUIStore((s) => s.firstPageRunningOff)
   const watermarkText = useUIStore((s) => s.watermarkText)
+  const design = useUIStore((s) => s.design)
+  /* 디자인 탭에서 정한 워터마크가 먼저다 — 없으면 예전 「워터마크 글」 을 쓴다 */
+  const mark = useMemo(() => ({
+    ...design.watermark,
+    text: design.watermark.text || watermarkText,
+  }), [design.watermark, watermarkText])
 
   const customMm = useMemo(() => ({ widthMm: customPageWidthMm, heightMm: customPageHeightMm }), [customPageWidthMm, customPageHeightMm])
   const pageMm = useMemo(() => pageDimensions(pageSize, pageOrientation, customMm), [pageSize, pageOrientation, customMm])
@@ -590,6 +592,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
     const onSmart = (e: Event) => setSmartPanel((e as CustomEvent<{ mode?: 'insert' | 'edit' }>).detail?.mode || 'insert')
     const onSign = (e: Event) => setSignPanel((e as CustomEvent<{ mode?: 'insert' | 'sign' }>).detail?.mode || 'insert')
     const onXref = () => setXrefPanel(true)
+    const onDesign = (e: Event) => setDesignPanel((e as CustomEvent<{ tab?: 'styles' | 'background' }>).detail?.tab || 'styles')
     const onSymbols = () => setShowSymbols(true)
     const onObjects = () => setShowObjects((v) => !v)
     /* 개체 목록은 워드와 같은 자리(Alt+F10)에서 열고 닫는다 */
@@ -645,6 +648,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
     window.addEventListener('jan-smart-dialog', onSmart)
     window.addEventListener('jan-signature-dialog', onSign)
     window.addEventListener('jan-xref-dialog', onXref)
+    window.addEventListener('jan-design-dialog', onDesign)
     return () => {
       window.removeEventListener('jan-image-dialog', onDialog)
       window.removeEventListener('jan-image-replace', onReplace)
@@ -653,6 +657,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       window.removeEventListener('jan-smart-dialog', onSmart)
       window.removeEventListener('jan-signature-dialog', onSign)
       window.removeEventListener('jan-xref-dialog', onXref)
+      window.removeEventListener('jan-design-dialog', onDesign)
       window.removeEventListener('jan-symbol-panel', onSymbols)
       window.removeEventListener('jan-object-pane', onObjects)
       window.removeEventListener('jan-comment-pane', onComments)
@@ -774,6 +779,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
     if (import.meta.env.DEV && editor) (window as unknown as { __janEditor?: TiptapEditor }).__janEditor = editor
     applyTheme()
     applyTypo()
+    applyDesign(useUIStore.getState().design) // 이 문서의 디자인을 화면에 입힌다
     tauriSyncOnBoot().catch(() => {})
     trackEvent('app_boot')
   }, [editor, setEditor, applyTheme, applyTypo])
@@ -804,9 +810,13 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       if (sameMemoPageSettings(next, pageSettingsFromUi(previous))) return
       const memoId = activeMemoIdRef.current
       if (!memoId) return
+      /* 쪽 설정·디자인이 바뀌면 메모가 갱신되고, 그 여파로 아래 「메모 → 편집기」 맞춤이 돈다.
+         아직 저장되지 않은 글이 남아 있으면 그 맞춤이 예전 내용으로 되돌려 버리므로,
+         먼저 쓰던 글을 저장소에 밀어 넣는다 (붙여 넣자마자 디자인을 바꿔도 글이 사라지지 않게) */
+      flushPendingEditorContent()
       updateMemoPageSettings(memoId, next)
     })
-  }, [updateMemoPageSettings])
+  }, [updateMemoPageSettings, flushPendingEditorContent])
 
   useEffect(() => {
     const onPageHide = () => flushPendingEditorContent()
@@ -823,17 +833,21 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
     }
   }, [flushPendingEditorContent])
 
+  /* 저장소의 글 → 편집기. 「글이 바뀐 때」만 돈다 —
+     쪽 설정·디자인만 바뀌었는데 여기서 setContent 를 하면 화면이 통째로 다시 그려져,
+     쓰던 자리와 고른 것이 날아가고 개체가 한순간 사라졌다 나타난다. */
+  const memoContent = memo?.content
   useEffect(() => {
-    if (!editor || editor.isDestroyed || !memo) return
+    if (!editor || editor.isDestroyed || memoContent == null) return
     if (collab.ydoc) return
     // 독립 페이지 모델에서는 편집기 HTML 에 용지 래퍼가 들어 있어 저장본과 그대로
     // 비교하면 항상 불일치 → setContent 무한 반복이 된다. 래퍼를 벗겨 비교한다.
     const cur = getSavableHtml(editor)
-    if (cur !== memo.content) {
-      editor.commands.setContent(memo.content, { emitUpdate: false })
+    if (cur !== memoContent) {
+      editor.commands.setContent(memoContent, { emitUpdate: false })
       resolveBlobRefsInElement(editor.view.dom).catch(() => {})
     }
-  }, [currentId, editor, collab.ydoc, memo])
+  }, [currentId, editor, collab.ydoc, memoContent])
 
   useEffect(() => {
     if (!editor || editor.isDestroyed) return
@@ -1119,12 +1133,12 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
             )}
             <div className="jan-page-shell" data-has-running-preview={hasRunningPreview ? 'true' : 'false'}>
               <EditorContent editor={editor} />
-              {viewLayout === 'print' && watermarkText && (
+              {viewLayout === 'print' && mark.text && (
                 <div
                   className="jan-page-watermark"
                   aria-hidden="true"
                   style={{
-                    backgroundImage: `url("data:image/svg+xml,${encodeURIComponent(watermarkSvg(watermarkText, pagePx.pageWidth, pageRhythmPx))}")`,
+                    backgroundImage: `url("data:image/svg+xml,${encodeURIComponent(watermarkSvgOf(mark, pagePx.pageWidth, pageRhythmPx))}")`,
                     backgroundSize: `100% ${pageRhythmPx}px`,
                   }}
                 />
@@ -1238,6 +1252,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       {smartPanel && <SmartArtPanel editor={editor} mode={smartPanel} onClose={() => setSmartPanel(null)} />}
       {signPanel && <SignaturePanel editor={editor} mode={signPanel} onClose={() => setSignPanel(null)} />}
       {xrefPanel && <CrossRefPanel editor={editor} onClose={() => setXrefPanel(false)} />}
+      {designPanel && <DesignPanel tab={designPanel} onClose={() => setDesignPanel(null)} />}
       {showSymbols && <SymbolPanel editor={editor} onClose={() => setShowSymbols(false)} />}
       {showObjects && <ObjectPane editor={editor} onClose={() => setShowObjects(false)} />}
       {showComments && <CommentPane editor={editor} onClose={() => setShowComments(false)} />}

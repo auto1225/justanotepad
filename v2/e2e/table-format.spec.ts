@@ -224,7 +224,7 @@ test.describe('표 서식과 상황 막대', () => {
     await page.waitForTimeout(250)
     await page.keyboard.press('Alt+s')
 
-    await page.getByRole('tab', { name: '레이아웃', exact: true }).dispatchEvent('click')
+    await page.getByRole('tab', { name: '표 레이아웃', exact: true }).dispatchEvent('click')
     await page.waitForTimeout(200)
     // 워드처럼 「삭제 ▾」 안에 들어 있다
     await page.locator('.jan-ribbon-split[aria-label="삭제"]').click()

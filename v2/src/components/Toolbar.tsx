@@ -63,6 +63,10 @@ import { fitPageZoom, setPageZoom } from '../lib/pageZoom'
 import { PAGE_BREAK_HTML } from '../lib/pageBreak'
 import { flash } from '../lib/flash'
 import { useInstallPrompt } from '../hooks/useInstallPrompt'
+import {
+  DESIGN_EFFECTS, PAGE_BORDER_STYLES, PAGE_COLORS, PARA_SPACING_SETS, STYLE_SETS, THEME_COLORS, THEME_FONTS,
+} from '../lib/docDesign'
+import { LINE_NUMBER_MODES, MANUSCRIPT_PRESETS } from '../lib/docLayout'
 import { askText, askConfirm } from '../lib/promptModal'
 import { computeDocHealth, showHealthReport, markBackupDone } from '../lib/docHealth'
 import { applyPaperFormat, PAPER_FORMATS } from '../lib/paperFormats'
@@ -189,6 +193,12 @@ export function Toolbar(p: ToolbarProps) {
   const [contextTab, setContextTab] = useState<'표' | '그림' | '도형' | null>(null)
   /* 앱으로 설치하면 운영체제가 .jan 을 이 앱에 이어 준다 — 그래야 두 번 눌러 열기가 된다 */
   const install = useInstallPrompt()
+  /* 문서 디자인 — 워드 「디자인」 탭이 쓰는 값과 명령 */
+  const design = useUIStore((s) => s.design)
+  const setDesign = useUIStore((s) => s.setDesign)
+  /* 쪽 배치 — 워드 「레이아웃」 탭이 쓰는 값과 명령 */
+  const layout = useUIStore((s) => s.layout)
+  const setLayout = useUIStore((s) => s.setLayout)
   useEffect(() => {
     if (!editor) return
     const read = () => setContextTab(
@@ -210,7 +220,7 @@ export function Toolbar(p: ToolbarProps) {
      탭 이름은 실제 리본 탭과 같아야 한다 — 예전에는 「표」 로 바꿔 놓아 맞는 탭이 없었고,
      그래서 표를 골라도 표 메뉴가 뜨지 않았다. */
   const OBJECT_TABS: Record<string, string[]> = {
-    표: ['레이아웃', '표 디자인'],
+    표: ['표 레이아웃', '표 디자인'],
     그림: ['그림'],
     도형: ['도형'],
   }
@@ -389,6 +399,47 @@ export function Toolbar(p: ToolbarProps) {
     flash(`제목 ${items.length}개로 목차를 만들었습니다`)
   }
   const insertHr = () => editor.chain().focus().setHorizontalRule().run()
+
+  /* === 워드 「레이아웃」 탭 — 개체 다루기 === */
+  /** 지금 고른 개체(그림·도형·차트·도해)를 쪽 안에서 어디에 둘까 */
+  const alignObject = (align: 'left' | 'center' | 'right') => {
+    for (const type of ['janImage', 'image', 'janShape', 'janChart', 'janSmart', 'janModel3d']) {
+      if (editor.isActive(type)) { editor.chain().focus().updateAttributes(type, { align }).run(); flash(`개체 ${align === 'left' ? '왼쪽' : align === 'right' ? '오른쪽' : '가운데'}`); return }
+    }
+    flash('먼저 그림·도형·차트 같은 개체를 고른다')
+  }
+  /** 글이 개체를 어떻게 피할까 (워드 「텍스트 줄 바꿈」) */
+  const wrapObject = (wrap: string) => {
+    for (const type of ['janImage', 'image', 'janShape', 'janChart', 'janSmart', 'janModel3d']) {
+      if (editor.isActive(type)) { editor.chain().focus().updateAttributes(type, { wrap }).run(); flash('개체 줄 바꿈을 바꿨다'); return }
+    }
+    flash('먼저 그림·도형·차트 같은 개체를 고른다')
+  }
+  /** 개체를 90° 돌린다 */
+  const rotateObject = () => {
+    for (const type of ['janImage', 'janShape']) {
+      if (editor.isActive(type)) {
+        const now = Number(editor.getAttributes(type).rotate) || 0
+        editor.chain().focus().updateAttributes(type, { rotate: (now + 90) % 360 }).run()
+        flash('90° 돌렸다')
+        return
+      }
+    }
+    flash('그림·도형만 돌릴 수 있다')
+  }
+
+  /* === 워드 「디자인」 탭 === */
+  const openDesign = (tab: 'styles' | 'background') =>
+    window.dispatchEvent(new CustomEvent('jan-design-dialog', { detail: { tab } }))
+  /** 지금 디자인을 새 문서의 기본값으로 (워드 「기본값으로 설정」) */
+  const saveDesignDefault = () => {
+    try {
+      localStorage.setItem('jan-v2-design-default', JSON.stringify(useUIStore.getState().design))
+      flash('이 디자인을 새 문서의 기본값으로 삼았습니다')
+    } catch {
+      flash('기본값을 저장하지 못했습니다')
+    }
+  }
 
   /* === 워드 「삽입」의 개체들 — 차트·스마트 도해·서명란·상호 참조·3D === */
   const openChart = () => window.dispatchEvent(new CustomEvent('jan-chart-dialog', { detail: { mode: editor.isActive('janChart') ? 'edit' : 'insert' } }))
@@ -1238,18 +1289,186 @@ export function Toolbar(p: ToolbarProps) {
       ],
     },
 
-    /* 4. 페이지 */
+    /* 3.5 디자인 — 워드 「디자인」 탭 (문서 서식 · 테마 · 페이지 배경) */
+    {
+      label: '디자인', items: [
+        { divider: '문서 서식', label: '' },
+        { short: '서식 갤러리', label: '문서 서식 갤러리 (제목·본문을 한 벌로)', icon: 'palette', onClick: () => run(() => openDesign('styles')) },
+        ...STYLE_SETS.slice(0, 6).map((set): MenuItem => ({
+          short: set.label, label: `문서 서식: ${set.label} — ${set.hint}`, icon: 'file-text',
+          onClick: () => run(() => { setDesign({ styleSet: set.key }); flash(`문서 서식 — ${set.label}`) }),
+        })),
+
+        { divider: '테마', label: '' },
+        {
+          short: '색', label: '테마 색 (제목·강조·표 머리에 함께 쓰인다)', icon: 'palette',
+          menu: THEME_COLORS.map((t): MenuItem => ({
+            short: t.label, label: `테마 색: ${t.label}`, icon: 'palette',
+            onClick: () => run(() => { setDesign({ themeColor: t.key }); flash(`테마 색 — ${t.label}`) }),
+          })),
+        },
+        {
+          short: '글꼴', label: '테마 글꼴 (제목/본문 짝)', icon: 'paragraph',
+          menu: THEME_FONTS.map((f): MenuItem => ({
+            short: f.label, label: `테마 글꼴: ${f.label}`, icon: 'paragraph',
+            onClick: () => run(() => { setDesign({ themeFont: f.key }); flash(`테마 글꼴 — ${f.label}`) }),
+          })),
+        },
+        {
+          short: '단락 간격', label: '단락 간격 (줄 간격과 단락 앞뒤 사이)', icon: 'sliders',
+          menu: PARA_SPACING_SETS.map((v): MenuItem => ({
+            short: v.label, label: `단락 간격: ${v.label}`, icon: 'sliders',
+            onClick: () => run(() => { setDesign({ paraSpacing: v.key }); flash(`단락 간격 — ${v.label}`) }),
+          })),
+        },
+        {
+          short: '효과', label: '효과 (표·차트·도해의 마감)', icon: 'sparkle',
+          menu: DESIGN_EFFECTS.map((v): MenuItem => ({
+            short: v.label, label: `효과: ${v.label} — ${v.hint}`, icon: 'sparkle',
+            onClick: () => run(() => { setDesign({ effect: v.key }); flash(`효과 — ${v.label}`) }),
+          })),
+        },
+        { short: '기본값', label: '이 디자인을 새 문서의 기본값으로', icon: 'check', onClick: () => run(saveDesignDefault) },
+
+        { divider: '페이지 배경', label: '' },
+        {
+          short: '워터마크', label: '워터마크 (대외비·초안 같은 배경 글)', icon: 'preview',
+          menu: [
+            ...['대외비', '초안', '샘플', 'DRAFT', 'CONFIDENTIAL'].map((word): MenuItem => ({
+              short: word, label: `워터마크: ${word}`, icon: 'preview',
+              onClick: () => run(() => { setDesign({ watermark: { ...design.watermark, text: word } }); flash(`워터마크 — ${word}`) }),
+            })),
+            { short: '자세히', label: '워터마크 자세히 (색·진하기·기울기·크기)', icon: 'sliders', onClick: () => run(() => openDesign('background')) },
+            { short: '없앰', label: '워터마크 없애기', icon: 'close', onClick: () => run(() => { setDesign({ watermark: { ...design.watermark, text: '' } }); flash('워터마크를 없앴다') }) },
+          ],
+        },
+        {
+          short: '페이지 색', label: '페이지 색 (인쇄에 부담 없는 옅은 색)', icon: 'fill',
+          menu: PAGE_COLORS.map((c): MenuItem => ({
+            short: c.label, label: `페이지 색: ${c.label}`, icon: 'fill',
+            onClick: () => run(() => { setDesign({ pageColor: c.key }); flash(`페이지 색 — ${c.label}`) }),
+          })),
+        },
+        {
+          short: '쪽 테두리', label: '페이지 테두리 (쪽 둘레의 선)', icon: 'box',
+          menu: [
+            ...PAGE_BORDER_STYLES.map((b): MenuItem => ({
+              short: b.label, label: `쪽 테두리: ${b.label}`, icon: 'box',
+              onClick: () => run(() => { setDesign({ pageBorder: { ...design.pageBorder, style: b.key } }); flash(`쪽 테두리 — ${b.label}`) }),
+            })),
+            { short: '자세히', label: '쪽 테두리 자세히 (색·굵기·여백)', icon: 'sliders', onClick: () => run(() => openDesign('background')) },
+          ],
+        },
+      ],
+    },
+
+    /* 4. 레이아웃 — 워드 「레이아웃」 탭 (페이지 설정 · 원고지 · 단락 · 정렬) */
     {
       label: '페이지', items: [
-        { label: `페이지 크기 설정: ${ui.pageSize} · ${orientationLabel}`, icon: 'page', onClick: () => run(() => { sessionStorage.setItem('jan-page-focus', '용지'); openPageSettings() }) },
-        { label: `노트 배경 스타일: ${currentPaperLabel}`, icon: 'palette', onClick: () => run(() => { sessionStorage.setItem('jan-page-focus', '배경'); openPageSettings() }) },
-        { label: `페이지 여백 설정: ${pageMarginLabel}`, icon: 'sliders', onClick: () => run(() => { sessionStorage.setItem('jan-page-focus', '여백'); openPageSettings() }) },
-        { divider: '페이지 동작', label: '' },
-        { label: '페이지 구분 삽입', hint: 'Ctrl+Enter', icon: 'page-break', onClick: () => run(insertPageBreak) },
-        { label: `다단 레이아웃: ${pageColumnLabel}`, icon: 'columns', onClick: () => run(cyclePageColumns) },
-        { short: '머리말', label: '러닝 헤더 · 꼬리말', icon: 'pin', onClick: () => run(setRunningHeader) },
-        { divider: '미리보기 / 인쇄', label: '' },
-        { short: '엔터 표시', label: '엔터 표시(¶) 켬/끔', icon: 'paragraph', onClick: () => run(togglePilcrow) },
+        { divider: '페이지 설정', label: '' },
+        {
+          short: '텍스트 방향', label: `텍스트 방향: ${layout.textDirection === 'vertical' ? '세로쓰기' : '가로쓰기'}`, icon: 'columns',
+          menu: [
+            { short: '가로쓰기', label: '텍스트 방향: 가로쓰기 (기본)', icon: 'align-left', onClick: () => run(() => { setLayout({ textDirection: 'horizontal' }); flash('가로쓰기') }) },
+            { short: '세로쓰기', label: '텍스트 방향: 세로쓰기 (한글·일본어 전통 조판)', icon: 'columns', onClick: () => run(() => { setLayout({ textDirection: 'vertical' }); flash('세로쓰기 — 오른쪽에서 왼쪽으로 흐른다') }) },
+          ],
+        },
+        {
+          short: '여백', label: `페이지 여백: ${pageMarginLabel}`, icon: 'sliders',
+          menu: [
+            { short: '좁게', label: '여백: 좁게 (12mm)', icon: 'sliders', onClick: () => run(() => { ui.setPageMarginsMm({ top: 12, right: 12, bottom: 12, left: 12 }); flash('여백 — 좁게') }) },
+            { short: '기본', label: '여백: 기본 (20mm)', icon: 'sliders', onClick: () => run(() => { ui.setPageMarginsMm({ top: 20, right: 20, bottom: 20, left: 20 }); flash('여백 — 기본') }) },
+            { short: '보통', label: '여백: 보통 (25mm)', icon: 'sliders', onClick: () => run(() => { ui.setPageMarginsMm({ top: 25, right: 25, bottom: 25, left: 25 }); flash('여백 — 보통') }) },
+            { short: '넓게', label: '여백: 넓게 (32mm)', icon: 'sliders', onClick: () => run(() => { ui.setPageMarginsMm({ top: 32, right: 32, bottom: 32, left: 32 }); flash('여백 — 넓게') }) },
+            { short: '제본용', label: '여백: 제본용 (왼쪽 넓게)', icon: 'sliders', onClick: () => run(() => { ui.setPageMarginsMm({ top: 20, right: 15, bottom: 20, left: 30 }); flash('여백 — 제본용') }) },
+            { short: '자세히', label: '여백 자세히 (쪽 설정 창)', icon: 'sliders', onClick: () => run(() => { sessionStorage.setItem('jan-page-focus', '여백'); openPageSettings() }) },
+          ],
+        },
+        {
+          short: '용지 방향', label: `용지 방향: ${orientationLabel}`, icon: 'page',
+          menu: [
+            { short: '세로', label: '용지 방향: 세로', icon: 'page', onClick: () => run(() => { ui.setPageOrientation('portrait'); flash('세로 방향') }) },
+            { short: '가로', label: '용지 방향: 가로', icon: 'page', onClick: () => run(() => { ui.setPageOrientation('landscape'); flash('가로 방향') }) },
+          ],
+        },
+        { short: '크기', label: `용지 크기: ${ui.pageSize}`, icon: 'page', onClick: () => run(() => { sessionStorage.setItem('jan-page-focus', '용지'); openPageSettings() }) },
+        {
+          short: '단', label: `다단: ${pageColumnLabel}`, icon: 'columns',
+          menu: [
+            { short: '1단', label: '다단: 하나 (기본)', icon: 'columns', onClick: () => run(() => { ui.setPageColumnCount(1); flash('1단') }) },
+            { short: '2단', label: '다단: 둘', icon: 'columns', onClick: () => run(() => { ui.setPageColumnCount(2); flash('2단') }) },
+            { short: '3단', label: '다단: 셋', icon: 'columns', onClick: () => run(() => { ui.setPageColumnCount(3); flash('3단') }) },
+          ],
+        },
+        {
+          short: '나누기', label: '나누기 (쪽·단)', icon: 'page-break',
+          menu: [
+            { short: '쪽 나눔', label: '페이지 나누기', hint: 'Ctrl+Enter', icon: 'page-break', onClick: () => run(insertPageBreak) },
+            { short: '빈 쪽', label: '빈 쪽 넣기', icon: 'page', onClick: () => run(() => { insertBlankPage(editor) }) },
+          ],
+        },
+        {
+          short: '줄 번호', label: `줄 번호: ${LINE_NUMBER_MODES.find((m) => m.key === layout.lineNumbers)?.label || '없음'}`, icon: 'list-numbered',
+          menu: LINE_NUMBER_MODES.map((m): MenuItem => ({
+            short: m.label, label: `줄 번호: ${m.label} — ${m.hint}`, icon: 'list-numbered',
+            onClick: () => run(() => { setLayout({ lineNumbers: m.key }); flash(`줄 번호 — ${m.label}`) }),
+          })),
+        },
+        {
+          short: '하이픈', label: `하이픈 넣기: ${layout.hyphen === 'auto' ? '자동' : '없음'}`, icon: 'minus',
+          menu: [
+            { short: '없음', label: '하이픈 넣기: 없음', icon: 'minus', onClick: () => run(() => { setLayout({ hyphen: 'none' }); flash('하이픈 없음') }) },
+            { short: '자동', label: '하이픈 넣기: 자동 (긴 영문 낱말을 줄 끝에서 나눈다)', icon: 'minus', onClick: () => run(() => { setLayout({ hyphen: 'auto' }); flash('하이픈 자동') }) },
+          ],
+        },
+
+        { divider: '원고지', label: '' },
+        {
+          short: '원고지', label: `원고지 설정 (${layout.grid.on ? `${layout.grid.cols}×${layout.grid.rows} 켬` : '끔'})`, icon: 'table',
+          menu: [
+            ...MANUSCRIPT_PRESETS.map((g): MenuItem => ({
+              short: g.label, label: `원고지: ${g.label}`, icon: 'table',
+              onClick: () => run(() => { setLayout({ grid: { ...layout.grid, on: true, cols: g.cols, rows: g.rows } }); flash(`원고지 ${g.label}`) }),
+            })),
+            { short: '끄기', label: '원고지 끄기', icon: 'close', onClick: () => run(() => { setLayout({ grid: { ...layout.grid, on: false } }); flash('원고지를 껐다') }) },
+          ],
+        },
+
+        { divider: '단락', label: '' },
+        { short: '왼쪽 들여쓰기', label: '왼쪽 들여쓰기 늘리기', icon: 'align-right', onClick: () => run(() => { editor.chain().focus().indentParagraph().run() }) },
+        { short: '왼쪽 내어쓰기', label: '왼쪽 들여쓰기 줄이기', icon: 'align-left', onClick: () => run(() => { editor.chain().focus().outdentParagraph().run() }) },
+        { short: '앞 공백', label: '단락 앞 공백 넣기 (12px)', icon: 'sliders', small: true, onClick: () => run(() => { setParagraphSpace(editor, 'before', 12) }) },
+        { short: '뒤 공백', label: '단락 뒤 공백 넣기 (12px)', icon: 'sliders', small: true, onClick: () => run(() => { setParagraphSpace(editor, 'after', 12) }) },
+        { short: '공백 없앰', label: '단락 앞뒤 공백 없애기', icon: 'close', small: true, onClick: () => run(() => { setParagraphSpace(editor, 'before', null); setParagraphSpace(editor, 'after', null) }) },
+
+        { divider: '정렬', label: '' },
+        {
+          short: '위치', label: '개체 위치 (쪽 안에서 어디에 둘까)', icon: 'box',
+          menu: [
+            { short: '왼쪽', label: '개체를 왼쪽에', icon: 'align-left', onClick: () => run(() => alignObject('left')) },
+            { short: '가운데', label: '개체를 가운데에', icon: 'align-center', onClick: () => run(() => alignObject('center')) },
+            { short: '오른쪽', label: '개체를 오른쪽에', icon: 'align-right', onClick: () => run(() => alignObject('right')) },
+          ],
+        },
+        {
+          short: '줄 바꿈', label: '텍스트 줄 바꿈 (글이 개체를 어떻게 피할까)', icon: 'paragraph',
+          menu: [
+            { short: '줄 안', label: '줄 안에 (텍스트와 한 줄로)', icon: 'paragraph', onClick: () => run(() => wrapObject('inline')) },
+            { short: '위아래', label: '위/아래 (글이 개체를 넘어간다)', icon: 'paragraph', onClick: () => run(() => wrapObject('topbottom')) },
+            { short: '왼쪽 흐름', label: '왼쪽에 두고 글 흐르기', icon: 'align-left', onClick: () => run(() => wrapObject('left')) },
+            { short: '오른쪽 흐름', label: '오른쪽에 두고 글 흐르기', icon: 'align-right', onClick: () => run(() => wrapObject('right')) },
+            { short: '글 뒤', label: '글 뒤로 보내기', icon: 'eye-off', onClick: () => run(() => wrapObject('behind')) },
+            { short: '글 앞', label: '글 앞으로 가져오기', icon: 'eye', onClick: () => run(() => wrapObject('front')) },
+          ],
+        },
+        { short: '앞으로', label: '앞으로 가져오기 (겹친 개체 차례)', icon: 'chevron-up', onClick: () => run(() => wrapObject('front')) },
+        { short: '뒤로', label: '뒤로 보내기 (겹친 개체 차례)', icon: 'chevron-down', onClick: () => run(() => wrapObject('behind')) },
+        { short: '선택 창', label: '선택 창 (겹친 개체 목록에서 고르기)', hint: 'Alt+F10', icon: 'menu', onClick: () => run(() => window.dispatchEvent(new Event('jan-object-pane'))) },
+        { short: '회전', label: '개체 90° 돌리기', icon: 'refresh-cw', onClick: () => run(rotateObject) },
+
+        { divider: '머리글/바닥글 · 인쇄', label: '' },
+        { short: '노트 배경', label: `노트 배경 스타일: ${currentPaperLabel}`, icon: 'palette', onClick: () => run(() => { sessionStorage.setItem('jan-page-focus', '배경'); openPageSettings() }) },
+        { short: '엔터 표시', label: '엔터 표시(¶) 켬/끔', icon: 'paragraph', small: true, onClick: () => run(togglePilcrow) },
         { short: '미리보기', label: '인쇄 미리보기 (Paged.js)', hint: 'Ctrl+Alt+P', icon: 'preview', onClick: () => run(p.onPrintPreview) },
         { label: '인쇄', hint: 'Ctrl+P', icon: 'print', onClick: () => run(() => window.print()) },
       ],
@@ -1973,15 +2192,16 @@ export function Toolbar(p: ToolbarProps) {
         ...take(toolsRest, AUTOTEXT_KEYS),
       ],
     },
+    { label: '디자인', items: pick('디자인') },
     { label: '서식', items: drop(pick('서식'), ['엔터 표시']) },
-    { label: '쪽', items: drop(pick('페이지'), ['엔터 표시']) },
+    { label: '레이아웃', items: pick('페이지') },
     { label: '검토', items: reviewItems },
     { label: 'AI', items: aiItems, extra: true },
     /* 논문 탭은 학술 문서 전용만 남긴다 — 개요·각주·쪽 나눔·단 같은 일반 기능은 코어 탭이 담당한다 */
     { label: '논문', items: drop(pick('논문'), ['문서 개요 패널', '각주 삽입', '페이지 구분 삽입', '다단 레이아웃']), extra: true },
     /* 워드처럼 표 안에서는 상황별 탭이 두 개 열린다 — 「표 디자인」(모양)과 「레이아웃」(구조) */
     ...(inTable ? [{ label: '표 디자인', items: tableDesignItems, context: true }] : []),
-    ...(inTable ? [{ label: '레이아웃', items: tableItems, context: true }] : []),
+    ...(inTable ? [{ label: '표 레이아웃', items: tableItems, context: true }] : []),
     ...(onImage ? [{ label: '그림', items: imageItems, context: true }] : []),
     ...(onShape ? [{ label: '도형', items: shapeItems, context: true }] : []),
   ]

@@ -662,7 +662,7 @@ test.describe('줄 단위 문단 분할', () => {
     })
     /* 텍스트 배치는 워드처럼 「텍스트 배치 · 표 자리 ▾」 안에 묶여 있다 */
     const use = async (name: RegExp) => {
-      const tab = page.getByRole('tab', { name: '레이아웃', exact: true })
+      const tab = page.getByRole('tab', { name: '표 레이아웃', exact: true })
       if ((await tab.getAttribute('aria-selected')) !== 'true') await tab.dispatchEvent('click')
       await page.waitForTimeout(150)
       const drop = page.locator('.jan-ribbon-split[aria-label^="텍스트 배치"]')

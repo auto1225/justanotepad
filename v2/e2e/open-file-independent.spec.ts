@@ -51,8 +51,9 @@ test.describe('파일 열기의 문서 독립성', () => {
     await editor.click()
     await page.keyboard.type('논문 본문')
 
-    await ribbonTab(page, '쪽')
-    await page.locator('button[aria-label^="다단 레이아웃"]').first().click()
+    await ribbonTab(page, '레이아웃')
+    await page.locator('button[aria-label^="다단"]').first().click()
+    await page.locator('.jan-ribbon-dropdown button').filter({ hasText: '다단: 둘' }).first().click()
     await expect.poll(() => columnLabel(page)).toBe('2')
 
     await openStubbedFile(page, PLAIN_FILE, '남이 준 문서.html')

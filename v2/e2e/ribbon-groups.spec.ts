@@ -36,11 +36,11 @@ test.describe('리본 묶음', () => {
 
     // 표 탭이 나타나고 그 중 하나가 골라져 있다 (예전에는 없는 탭 이름이라 파일 탭으로 떨어졌다)
     await expect(page.getByRole('tab', { name: '표 디자인', exact: true })).toBeVisible()
-    await expect(page.getByRole('tab', { name: '레이아웃', exact: true })).toHaveAttribute('aria-selected', 'true')
+    await expect(page.getByRole('tab', { name: '표 레이아웃', exact: true })).toHaveAttribute('aria-selected', 'true')
 
     // 표 밖으로 나가면 쓰던 탭으로 돌아온다
     await page.keyboard.press('Control+End')
-    await expect(page.getByRole('tab', { name: '레이아웃', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('tab', { name: '표 레이아웃', exact: true })).toHaveCount(0)
   })
 
   test('묶음마다 이름이 붙어 있다 — 워드와 같은 구성', async ({ page }) => {

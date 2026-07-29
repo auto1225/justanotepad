@@ -139,17 +139,17 @@ test.describe('v2 smoke', () => {
     await page.goto('./')
     await page.locator('.ProseMirror').first().waitFor()
     // 코어(문서 작업) 7 + 부가 2 — '도구' 는 없애고 검토/보기/입력·유틸 메뉴로 나눠 담았다
-    for (const label of ['파일', '편집', '보기', '삽입', '서식', '쪽', '검토', 'AI', '논문']) {
+    for (const label of ['파일', '편집', '보기', '삽입', '디자인', '서식', '레이아웃', '검토', 'AI', '논문']) {
       await expect(page.getByRole('tab', { name: label, exact: true })).toBeVisible({ timeout: 5000 })
     }
     await page.getByRole('tab', { name: '파일', exact: true }).click()
     await expect(page.locator('.jan-ribbon-body').getByRole('button', { name: '저장', exact: true })).toBeVisible()
     await expect(page.locator('.jan-ribbon-body').getByRole('button', { name: /HWPX/ }).first()).toBeVisible()
     await expect(page.locator('.jan-ribbon-body').getByRole('button', { name: /Markdown/ }).first()).toBeVisible()
-    await page.getByRole('tab', { name: '쪽', exact: true }).click()
-    await expect(page.locator('.jan-ribbon-body').getByRole('button', { name: /페이지 크기 설정/ })).toBeVisible()
+    await page.getByRole('tab', { name: '레이아웃', exact: true }).click()
+    await expect(page.locator('.jan-ribbon-body').getByRole('button', { name: /용지 크기/ })).toBeVisible()
     await expect(page.locator('.jan-ribbon-body').getByRole('button', { name: /노트 배경 스타일/ })).toBeVisible()
-    await page.locator('.jan-ribbon-body').getByRole('button', { name: /페이지 크기 설정/ }).click()
+    await page.locator('.jan-ribbon-body').getByRole('button', { name: /용지 크기/ }).click()
     await expect(page.locator('.jan-page-settings-modal')).toBeVisible()
   })
 
@@ -338,7 +338,7 @@ test.describe('v2 smoke', () => {
     await expect(pages).toHaveAttribute('data-page-orientation', 'landscape')
     await expect(pages).toHaveAttribute('data-page-columns', '2')
 
-    await page.getByRole('tab', { name: '쪽', exact: true }).click()
+    await page.getByRole('tab', { name: '레이아웃', exact: true }).click()
     await page.locator('.jan-ribbon-body .jan-ribbon-btn').getByText('미리보기', { exact: true }).first().click()
     await expect(page.locator('.jan-print-title')).toContainText('B4 가로')
     await expect(page.locator('.jan-print-title')).toContainText('2단')
@@ -543,8 +543,9 @@ test.describe('v2 smoke', () => {
     await expect(breaks).toHaveCount(1)
     await expect(editor).toContainText('Second page')
 
-    await page.getByRole('tab', { name: '쪽', exact: true }).click()
-    await page.locator('.jan-ribbon-body').getByRole('button', { name: /페이지 구분 삽입/ }).click()
+    await page.getByRole('tab', { name: '레이아웃', exact: true }).click()
+    await page.locator('.jan-ribbon-body').getByRole('button', { name: /나누기/ }).first().click()
+    await page.locator('.jan-ribbon-dropdown button').filter({ hasText: '페이지 나누기' }).first().click()
     await expect(breaks).toHaveCount(2)
 
     await page.keyboard.press('Control+Shift+P')
@@ -659,7 +660,7 @@ test.describe('v2 smoke', () => {
 
     for (let i = 0; i < 4; i += 1) await page.keyboard.press('Shift+Tab')
     // 표 조작은 워드처럼 리본의 「레이아웃」 탭에서 한다 (표 위 단추 막대는 칸을 가려서 없앴다)
-    await useRibbonCommand(page, '레이아웃', '오름차순 정렬', '정렬')
+    await useRibbonCommand(page, '표 레이아웃', '오름차순 정렬', '정렬')
     const rows = page.locator('.ProseMirror table tr')
     await expect(rows.nth(0)).toContainText('Name')
     await expect(rows.nth(1)).toContainText('Alpha')
@@ -691,11 +692,11 @@ test.describe('v2 smoke', () => {
       if (i < values.length - 1) await page.keyboard.press('Tab')
     }
 
-    await useRibbonCommand(page, '레이아웃', '아래에 행 삽입')
+    await useRibbonCommand(page, '표 레이아웃', '아래에 행 삽입')
     await expect(cells).toHaveCount(12)
     await page.keyboard.press('Tab')
     await page.keyboard.press('Tab')
-    await useRibbonCommand(page, '레이아웃', '현재 열 합계')
+    await useRibbonCommand(page, '표 레이아웃', '현재 열 합계')
     await expect(cells.nth(10)).toContainText('합계: 12')
   })
 
@@ -831,8 +832,8 @@ test.describe('v2 smoke', () => {
     expect(Math.ceil((tabBox?.x || 0) + (tabBox?.width || 0))).toBeLessThanOrEqual(390)
 
     // 쪽 탭 → 쪽 설정 명령 실행
-    await page.getByRole('tab', { name: '쪽', exact: true }).click()
-    const cmd = page.locator('.jan-ribbon-body').getByRole('button', { name: /페이지 크기 설정/ }).first()
+    await page.getByRole('tab', { name: '레이아웃', exact: true }).click()
+    const cmd = page.locator('.jan-ribbon-body').getByRole('button', { name: /용지 크기/ }).first()
     await cmd.scrollIntoViewIfNeeded()
     await cmd.click()
     await expect(page.locator('.jan-page-settings-modal')).toBeVisible()
