@@ -28,7 +28,11 @@ test.describe('삽입 탭의 개체', () => {
     await insertTab(page)
     const caps = await page.locator('.jan-ribbon-group .jan-ribbon-cap').allInnerTexts()
     // 워드: 페이지 · 표 · 일러스트레이션 · 미디어 · 링크 · 메모 · 머리글/바닥글 · 텍스트 · 기호
-    expect(caps.slice(0, 9)).toEqual(['페이지', '표', '일러스트레이션', '미디어', '링크', '메모', '머리글/바닥글', '텍스트', '기호'])
+    // 워드처럼 대표 단추 + ▾ 로 묶고, 「텍스트·기호·꾸밈」 은 텍스트 탭으로 나눴다
+    expect(caps).toEqual(['페이지', '표', '일러스트레이션', '미디어', '링크', '메모'])
+    await page.locator('.jan-ribbon-tab', { hasText: /^텍스트$/ }).first().click()
+    const textCaps = await page.locator('.jan-ribbon-group .jan-ribbon-cap').allInnerTexts()
+    expect(textCaps).toEqual(['머리글/바닥글', '텍스트', '기호', '글자 꾸밈', '리스트 · 상자', '자동 입력'])
   })
 
   test('차트를 넣으면 문서에 그림과 데이터가 함께 남는다', async ({ page }) => {
@@ -68,7 +72,7 @@ test.describe('삽입 탭의 개체', () => {
 
   test('서명란은 이름과 날짜가 함께 남고, 손으로 서명할 칸이 있다', async ({ page }) => {
     await ready(page)
-    await insertTab(page)
+    await page.locator('.jan-ribbon-tab', { hasText: /^텍스트$/ }).first().click()
     await page.locator('button[aria-label^="서명란"]').first().click()
     const dialog = page.locator('.jan-signdlg')
     await expect(dialog).toBeVisible()
@@ -94,7 +98,8 @@ test.describe('삽입 탭의 개체', () => {
     await expect(editor.locator('table')).toHaveCount(1)
 
     await insertTab(page)
-    await page.locator('button[aria-label^="상호 참조"]').first().click()
+    await page.locator('button[aria-label^="책갈피 · 상호 참조"]').first().click()
+    await page.locator('.jan-ribbon-dropdown button').filter({ hasText: '상호 참조' }).first().click()
     const dialog = page.locator('.jan-xrefdlg')
     await expect(dialog).toBeVisible()
     await dialog.locator('select').first().selectOption('table')

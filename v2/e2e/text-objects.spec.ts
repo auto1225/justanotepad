@@ -18,25 +18,29 @@ async function freshEditor(page: Page) {
 }
 
 /** 「글자 꾸밈」 명령 — 리본에 나와 있으면 그대로, 접혀 있으면 더보기를 열고 누른다 */
-async function useTextCommand(page: Page, name: RegExp) {
-  await page.getByRole('tab', { name: '삽입', exact: true }).dispatchEvent('click')
+async function useTextCommand(page: Page, name: RegExp, owner?: string) {
+  await page.getByRole('tab', { name: '텍스트', exact: true }).dispatchEvent('click')
   await page.waitForTimeout(150)
-  /* 리본 단추에 보이는 글자는 짧은 이름이므로 aria-label 로도 찾는다 */
-  const primary = page.locator('.jan-ribbon-body button').filter({ hasText: name }).first()
-  if (await primary.count()) { await primary.dispatchEvent('click'); return }
-  const labelled = page.locator('.jan-ribbon-body button').filter({
-    has: page.locator('xpath=.'),
-  })
+
+  /* 리본에 그대로 나와 있으면 그 단추를 누른다 (짧은 이름만 보이므로 aria-label 도 본다) */
+  const labelled = page.locator('.jan-ribbon-body button')
   const count = await labelled.count()
   for (let i = 0; i < count; i += 1) {
     const aria = await labelled.nth(i).getAttribute('aria-label')
     if (aria && name.test(aria)) { await labelled.nth(i).dispatchEvent('click'); return }
   }
 
+  /* 아니면 그 명령을 담고 있는 대표 단추(▾)를 열고 고른다 —
+     아무 단추나 눌러 가며 찾으면 엉뚱한 명령이 실행돼 고른 글이 풀린다 */
   const item = page.locator('.jan-ribbon-dropdown button').filter({ hasText: name }).first()
+  if (owner) {
+    await page.locator(`.jan-ribbon-body button[aria-label^="${owner}"]`).first().dispatchEvent('click')
+    await page.waitForTimeout(200)
+  }
   for (let tries = 0; tries < 4 && (await item.count()) === 0; tries += 1) {
-    await page.locator('.jan-ribbon-body button[aria-label$="더보기"]').first().dispatchEvent('click')
-    await page.waitForTimeout(250)
+    const more = page.locator('.jan-ribbon-body button[aria-label$="더보기"]').first()
+    if (await more.count()) { await more.dispatchEvent('click'); await page.waitForTimeout(250) }
+    else break
   }
   await expect(item).toHaveCount(1)
   await item.dispatchEvent('click')
@@ -74,7 +78,7 @@ test.describe('글자 입력 것들', () => {
     await freshEditor(page)
     await page.keyboard.type('우주센서를 활용한 도심 주차환경 개선 방법')
 
-    await page.getByRole('tab', { name: '삽입', exact: true }).dispatchEvent('click')
+    await page.getByRole('tab', { name: '텍스트', exact: true }).dispatchEvent('click')
     await page.locator('.jan-ribbon-body button[aria-label*="첫 문자 장식"]').first().dispatchEvent('click')
 
     const p = page.locator('.ProseMirror p').first()
@@ -96,7 +100,7 @@ test.describe('글자 입력 것들', () => {
     await freshEditor(page)
     await page.keyboard.type('우주센서 주차 관제')
     await selectFirstChars(page, 4)
-    await useTextCommand(page, /강조점: 점/)
+    await useTextCommand(page, /강조점: 점/, '강조점')
 
     const emph = page.locator('.ProseMirror .jan-emph')
     await expect(emph).toHaveCount(1)
@@ -115,7 +119,7 @@ test.describe('글자 입력 것들', () => {
     await page.keyboard.type('센서 관제')
     await selectFirstChars(page, 2)
 
-    await useTextCommand(page, /덧말/)
+    await useTextCommand(page, /덧말 넣기 \(루비/, '덧말')
     await answerPrompt(page, '우주')
 
     const ruby = page.locator('.ProseMirror ruby')
@@ -133,7 +137,7 @@ test.describe('글자 입력 것들', () => {
     await freshEditor(page)
     await page.keyboard.type('앞 ')
 
-    await useTextCommand(page, /겹치기/)
+    await useTextCommand(page, /글자 겹치기/)
     await answerPrompt(page, '주차')   // 겹칠 글자
     await answerPrompt(page, 'circle') // 테두리
 

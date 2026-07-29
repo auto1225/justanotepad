@@ -81,19 +81,9 @@ test.describe('메모와 누름틀', () => {
       window.dispatchEvent(new Event('jan-noop'))
     })
     // 리본에서 누름틀을 넣는다
-    await page.getByRole('tab', { name: '삽입', exact: true }).dispatchEvent('click')
+    await page.getByRole('tab', { name: '텍스트', exact: true }).dispatchEvent('click')
     await page.waitForTimeout(150)
-    const btn = page.locator('.jan-ribbon-body button[aria-label^="누름틀 넣기"]').first()
-    const item = page.locator('.jan-ribbon-dropdown button').filter({ hasText: /누름틀/ }).first()
-    if (await btn.count()) {
-      await btn.dispatchEvent('click')
-    } else {
-      for (let tries = 0; tries < 4 && (await item.count()) === 0; tries += 1) {
-        await page.locator('.jan-ribbon-body button[aria-label="메모와 서식 칸 더보기"]').dispatchEvent('click')
-        await page.waitForTimeout(250)
-      }
-      await item.dispatchEvent('click')
-    }
+    await page.locator('.jan-ribbon-body button[aria-label^="누름틀"]').first().dispatchEvent('click')
 
     const modal = page.locator('.jan-prompt-modal')
     await expect(modal).toBeVisible()

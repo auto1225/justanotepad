@@ -776,9 +776,9 @@ test.describe('v2 smoke', () => {
     await page.keyboard.press('Control+A')
     await page.keyboard.type(marker)
 
-    // 템플릿·스니펫·매크로는 '입력 > 자동 입력' 으로 옮겼다
-    await page.getByRole('tab', { name: '삽입', exact: true }).click()
-    await page.getByRole('button', { name: '템플릿', exact: true }).click()
+    // 템플릿·스니펫·매크로는 「텍스트 › 자동 입력」 에 있다
+    await page.getByRole('tab', { name: '텍스트', exact: true }).click()
+    await page.locator('.jan-ribbon-body button[aria-label^="템플릿"]').first().click()
     const modal = page.locator('.jan-templates-modal')
     await expect(modal).toBeVisible()
     await modal.locator('input[placeholder="템플릿 이름"]').fill('Live editor template')

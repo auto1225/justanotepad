@@ -81,22 +81,13 @@ test.describe('입력 — 문자표와 개체 목록', () => {
     const editor = await freshEditor(page)
     await page.keyboard.type('본문 첫 줄')
 
+    // 표지는 「삽입 › 표지 ▾」 안에 있다
     await page.getByRole('tab', { name: '삽입', exact: true }).dispatchEvent('click')
     await page.waitForTimeout(150)
-    /* 리본에 나와 있으면 그대로, 접혀 있으면 「쪽 더보기」를 열고 누른다 */
-    // 리본 단추에 보이는 글자는 짧은 이름이고, 긴 이름은 aria-label 에 있다
-    const primary = page.locator('.jan-ribbon-body button[aria-label^="표지: 단정한"]').first()
-    if (await primary.count()) {
-      await primary.dispatchEvent('click')
-    } else {
-      const item = page.locator('.jan-ribbon-dropdown button').filter({ hasText: /표지: 단정한/ }).first()
-      for (let tries = 0; tries < 4 && (await item.count()) === 0; tries += 1) {
-        await page.locator('.jan-ribbon-body button[aria-label="쪽 더보기"]').dispatchEvent('click')
-        await page.waitForTimeout(250)
-      }
-      await expect(item).toHaveCount(1)
-      await item.dispatchEvent('click')
-    }
+    await page.locator('.jan-ribbon-body button[aria-label^="표지 넣기"]').first().dispatchEvent('click')
+    const item = page.locator('.jan-ribbon-dropdown button').filter({ hasText: /표지: 단정한/ }).first()
+    await expect(item).toHaveCount(1)
+    await item.dispatchEvent('click')
 
     const modal = page.locator('.jan-prompt-modal')
     await expect(modal).toBeVisible()
