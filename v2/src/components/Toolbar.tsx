@@ -74,7 +74,12 @@ import { computeDocHealth, showHealthReport, markBackupDone } from '../lib/docHe
 import { applyPaperFormat, PAPER_FORMATS } from '../lib/paperFormats'
 import { saveCurrentAsStyle, showMyStylesPicker } from '../lib/myStyles'
 import { insertFootnote as insertFootnoteAt, renumberFootnotes } from '../lib/footnotes'
-import { insertNumberedEquation, insertFigureCaption, insertTableCaption, insertCrossRef, paperTargetCount, renumberWithFeedback } from '../lib/paperRefs'
+import {
+  AUTHORITY_KINDS, CITE_STYLES, addToToc, citeStyle, gotoNextNote, gotoNoteArea, insertEndnote,
+  loadSources, markAuthority, markIndexEntry, putAuthorityList, putBibliography, putCaptionList,
+  putIndex, putToc, refreshAllFields, setCiteStyle,
+} from '../lib/docRefs'
+import { insertNumberedEquation, insertFigureCaption, insertTableCaption, insertCrossRef, paperTargetCount, renumberPaperTags, renumberWithFeedback } from '../lib/paperRefs'
 import { pickMathTemplate, lintPaper, showLintReport, insertCreditBlock, insertCoiBlock, insertDataAvailabilityBlock, insertListOfFigures, insertListOfTables, insertAcronymList } from '../lib/paperTools'
 import { downloadLatex } from '../lib/latexExport'
 import { downloadHtmlFile, downloadDocFile } from '../lib/htmlDocExport'
@@ -406,6 +411,29 @@ export function Toolbar(p: ToolbarProps) {
   }
   const insertHr = () => editor.chain().focus().setHorizontalRule().run()
 
+  /* === 자료 탭 (워드 「참조」) === */
+  const openSources = () => window.dispatchEvent(new Event('jan-source-dialog'))
+  /** 색인 항목 표시 — 고른 말이 있으면 그것을 기본값으로 */
+  const markIndex = async () => {
+    const word = (await askText('색인에 넣을 말', selectedText(editor) || '')) || ''
+    if (word) markIndexEntry(editor, word)
+  }
+  /** 근거(법령·판례) 표시 */
+  const markAuth = async () => {
+    const label = (await askText('근거 이름 (예: 주차장법 제6조, 대법원 2024다1234)', selectedText(editor) || '')) || ''
+    if (!label) return
+    const kind = (await askText('갈래 — ' + AUTHORITY_KINDS.join(' · '), AUTHORITY_KINDS[0])) || AUTHORITY_KINDS[0]
+    markAuthority(editor, (AUTHORITY_KINDS as readonly string[]).includes(kind) ? (kind as (typeof AUTHORITY_KINDS)[number]) : '기타', label)
+  }
+  /** 캡션 넣기 — 그림·표·수식에 번호를 붙인다 */
+  const insertCaption = async (kind: 'figure' | 'table') => {
+    const text = (await askText(`${kind === 'figure' ? '그림' : '표'} 설명`, '')) || ''
+    if (!text) return
+    if (kind === 'figure') insertFigureCaption(editor, text)
+    else insertTableCaption(editor, text)
+    renumberPaperTags(editor)
+  }
+
   /* === 차트·도해 상황 탭이 쓰는 손잡이 === */
   const resizeChart = (delta: number) => {
     const spec = editor.getAttributes('janChart').spec as { width?: number; height?: number } | undefined
@@ -619,6 +647,7 @@ export function Toolbar(p: ToolbarProps) {
 
   /* === 책갈피 / 텍스트 상자 / 구분선 스타일 === */
   const insertBookmark = async () => {
+     
     // eslint-disable-next-line react-hooks/purity -- 렌더가 아니라 사용자 동작(클릭/타이머)에서만 실행된다
     const id = await askText('책갈피 ID (앵커):', 'bm-' + Date.now()); if (!id) return
     // 스키마에 커스텀 앵커 노드가 없어 원시 HTML 은 텍스트로 노출된다 — 눈에 보이는 라벨로 삽입
@@ -822,6 +851,7 @@ export function Toolbar(p: ToolbarProps) {
     if (!sorted.length) { flash('워드 클라우드를 만들 단어가 없습니다'); return }
     const max = sorted[0][1]
     const w = window.open('', '_blank', 'width=900,height=600'); if (!w) return
+     
     // eslint-disable-next-line react-hooks/purity -- 렌더가 아니라 사용자 동작(클릭/타이머)에서만 실행된다
     let html = `<!doctype html><html><head><title>워드 클라우드</title><style>body{font-family:sans-serif;padding:2em;line-height:2;text-align:center;background:#fff8e7;} span{display:inline-block;margin:0.2em 0.4em;color:hsl(${Math.random()*360},60%,40%);}</style></head><body><h2>워드 클라우드 — ${sorted.length}개</h2><div>`
     sorted.forEach(([word, n]) => { const sz = Math.round(12 + (n / max) * 36); html += `<span style="font-size:${sz}px;">${word}</span> ` })
@@ -845,6 +875,7 @@ export function Toolbar(p: ToolbarProps) {
     if (v === null) return
     const min = Number(v)
     if (!min || min <= 0) { flash('1 이상의 숫자를 입력하세요'); return }
+     
     // eslint-disable-next-line react-hooks/purity -- 렌더가 아니라 사용자 동작(클릭/타이머)에서만 실행된다
     const end = Date.now() + min * 60000
     const id = setInterval(() => {
@@ -906,6 +937,7 @@ export function Toolbar(p: ToolbarProps) {
   const exportJsonBackup = async () => {
     const json = await exportV2ToJson()
     const blob = new Blob([json], { type: 'application/json' })
+     
     // eslint-disable-next-line react-hooks/purity -- 렌더가 아니라 사용자 동작(클릭/타이머)에서만 실행된다
     const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `JustANotepad-backup-${Date.now()}.json`
     document.body.appendChild(a); a.click(); document.body.removeChild(a); setTimeout(() => URL.revokeObjectURL(url), 800)
@@ -1453,6 +1485,81 @@ export function Toolbar(p: ToolbarProps) {
         { short: '템플릿', label: '템플릿 (문서 틀 고르기)', icon: 'file-plus', onClick: () => run(p.onTemplates) },
         { short: '스니펫', label: '스니펫 (자주 쓰는 토막글)', icon: 'file-text', onClick: () => run(p.onSnippets) },
         { short: '매크로', label: '매크로 (여러 명령 묶어 실행)', icon: 'cmd', onClick: () => run(p.onMacros) },
+      ],
+    },
+
+    /* 3.3 자료 — 워드 「참조」 탭 (목차 · 각주/미주 · 인용 · 캡션 · 색인 · 근거 목차) */
+    {
+      label: '자료', items: [
+        { divider: '목차', label: '' },
+        {
+          short: '목차', label: '목차 넣기 (제목에서 만든다)', icon: 'list-numbered',
+          onClick: () => run(() => { putToc(editor) }),
+          menu: [
+            { short: '3수준', label: '목차 넣기 (H1~H3)', icon: 'list-numbered', onClick: () => run(() => { putToc(editor, { maxLevel: 3 }) }) },
+            { short: '2수준', label: '목차 넣기 (H1~H2)', icon: 'list-numbered', onClick: () => run(() => { putToc(editor, { maxLevel: 2 }) }) },
+            { short: '쪽번호 없이', label: '목차 넣기 (쪽 번호 없이)', icon: 'list-bullet', onClick: () => run(() => { putToc(editor, { pageNumbers: false }) }) },
+            { short: '고쳐 넣기', label: '목차 고쳐 넣기 (바뀐 제목으로 다시)', icon: 'refresh-cw', onClick: () => run(() => { putToc(editor) }) },
+          ],
+        },
+        {
+          short: '목차에 넣기', label: '이 문단을 목차에 넣기 (제목 수준으로)', icon: 'plus',
+          onClick: () => run(() => { addToToc(editor, 2) }),
+          menu: [1, 2, 3].map((lv): MenuItem => ({
+            short: `${lv}수준`, label: `이 문단을 목차 ${lv}수준으로`, icon: 'plus',
+            onClick: () => run(() => { addToToc(editor, lv) }),
+          })),
+        },
+        { short: '모두 새로', label: '심어 둔 목록 모두 새로 만들기 (목차·색인·참고 문헌…)', icon: 'refresh-cw', onClick: () => run(() => { refreshAllFields(editor, loadSources(), citeStyle()) }) },
+
+        { divider: '각주 · 미주', label: '' },
+        { short: '각주', label: '각주 삽입 (쪽 아래에 모인다)', icon: 'sup', onClick: () => run(insertFootnote) },
+        { short: '미주', label: '미주 삽입 (문서 끝에 모인다)', icon: 'sup', onClick: () => run(() => { insertEndnote(editor) }) },
+        {
+          short: '다음 주석', label: '다음 각주로 이동', icon: 'chevron-down',
+          onClick: () => run(() => { gotoNextNote(editor, 'footnote') }),
+          menu: [
+            { short: '다음 각주', label: '다음 각주로 이동', icon: 'chevron-down', onClick: () => run(() => { gotoNextNote(editor, 'footnote') }) },
+            { short: '다음 미주', label: '다음 미주로 이동', icon: 'chevron-down', onClick: () => run(() => { gotoNextNote(editor, 'endnote') }) },
+            { short: '각주 자리', label: '각주 모인 자리 보기', icon: 'eye', onClick: () => run(() => { gotoNoteArea(editor, 'footnote') }) },
+            { short: '미주 자리', label: '미주 모인 자리 보기', icon: 'eye', onClick: () => run(() => { gotoNoteArea(editor, 'endnote') }) },
+          ],
+        },
+        { short: '번호 다시', label: '각주 번호 다시 매기기', icon: 'refresh-cw', small: true, onClick: () => run(() => { renumberFootnotes(editor); flash('각주 번호를 다시 매겼습니다') }) },
+
+        { divider: '인용 · 참고 문헌', label: '' },
+        { short: '인용', label: '인용 삽입 (본문에 (저자, 연도))', icon: 'quote', onClick: () => run(openSources) },
+        { short: '출처 관리', label: '출처 관리 (모아 둔 자료 목록)', icon: 'folder', onClick: () => run(openSources) },
+        {
+          short: '표기 방식', label: `인용 표기 방식: ${citeStyle()}`, icon: 'sliders',
+          menu: CITE_STYLES.map((st): MenuItem => ({
+            short: st, label: `인용 표기 방식: ${st}`, icon: 'sliders',
+            onClick: () => run(() => { setCiteStyle(st); flash(`표기 방식 — ${st}`) }),
+          })),
+        },
+        { short: '참고 문헌', label: '참고 문헌 목록 넣기 / 고쳐 넣기', icon: 'list-bullet', onClick: () => run(() => { putBibliography(editor, loadSources(), citeStyle()) }) },
+
+        { divider: '캡션', label: '' },
+        {
+          short: '캡션', label: '캡션 넣기 (그림·표에 번호와 설명)', icon: 'image-text',
+          onClick: () => run(() => { void insertCaption('figure') }),
+          menu: [
+            { short: '그림 캡션', label: '그림 캡션 넣기', icon: 'image-text', onClick: () => run(() => { void insertCaption('figure') }) },
+            { short: '표 캡션', label: '표 캡션 넣기', icon: 'table', onClick: () => run(() => { void insertCaption('table') }) },
+            { short: '번호 다시', label: '캡션·수식 번호 다시 매기기', icon: 'refresh-cw', onClick: () => run(() => { renumberWithFeedback(editor) }) },
+          ],
+        },
+        { short: '그림 목차', label: '그림 목차 넣기 / 고쳐 넣기', icon: 'image', onClick: () => run(() => { putCaptionList(editor, 'figure') }) },
+        { short: '표 목차', label: '표 목차 넣기 / 고쳐 넣기', icon: 'table', onClick: () => run(() => { putCaptionList(editor, 'table') }) },
+        { short: '상호 참조', label: '상호 참조 (표·그림·제목을 가리킨다)', icon: 'link', onClick: () => run(openCrossRef) },
+
+        { divider: '색인', label: '' },
+        { short: '항목 표시', label: '색인 항목 표시 (고른 말을 색인에 넣는다)', icon: 'tag', onClick: () => run(() => { void markIndex() }) },
+        { short: '색인', label: '색인 넣기 / 고쳐 넣기', icon: 'list-bullet', onClick: () => run(() => { putIndex(editor) }) },
+
+        { divider: '근거 목차', label: '' },
+        { short: '근거 표시', label: '근거 표시 (법령·판례를 근거 목차에 넣는다)', icon: 'shield', onClick: () => run(() => { void markAuth() }) },
+        { short: '근거 목차', label: '근거 목차 넣기 / 고쳐 넣기', icon: 'list-bullet', onClick: () => run(() => { putAuthorityList(editor) }) },
       ],
     },
 
@@ -2453,8 +2560,15 @@ export function Toolbar(p: ToolbarProps) {
     { label: '레이아웃', items: pick('페이지') },
     { label: '검토', items: reviewItems },
     { label: 'AI', items: aiItems, extra: true },
-    /* 논문 탭은 학술 문서 전용만 남긴다 — 개요·각주·쪽 나눔·단 같은 일반 기능은 코어 탭이 담당한다 */
-    { label: '논문', items: drop(pick('논문'), ['문서 개요 패널', '각주 삽입', '페이지 구분 삽입', '다단 레이아웃']), extra: true },
+    /* 자료 탭이 워드 「참조」 자리다 — 학술 서식(논문)도 그 안의 한 묶음으로 품었다 */
+    {
+      label: '자료',
+      items: [
+        ...pick('자료'),
+        { divider: '학술 서식', label: '' },
+        ...drop(pick('논문'), ['문서 개요 패널', '각주 삽입', '페이지 구분 삽입', '다단 레이아웃']),
+      ],
+    },
     /* 워드처럼 표 안에서는 상황별 탭이 두 개 열린다 — 「표 디자인」(모양)과 「레이아웃」(구조) */
     ...(inTable ? [{ label: '표 디자인', items: tableDesignItems, context: true }] : []),
     ...(inTable ? [{ label: '표 레이아웃', items: tableItems, context: true }] : []),

@@ -7607,3 +7607,39 @@ body:has(.jan-modal-overlay) .jan-bubble-toolbar { display: none; }
    쪽을 넘어 이어진 조각(data-jan-cont)에 위 공백이 붙으면 새 쪽이 한 줄 밀려 시작한다. */
 .jan-page-node > :last-child { margin-bottom: 0; }
 .jan-page-node > [data-jan-cont] { margin-top: 0; }
+
+/* ── 자료 탭이 심는 목록들 (목차·색인·참고 문헌·근거 목차) ─────────── */
+
+.jan-toc-row, .jan-index-row { display: flex; align-items: baseline; gap: 6px; }
+.jan-toc-row > a, .jan-index-row { flex: 1; min-width: 0; }
+.jan-toc-page {
+  margin-left: auto; padding-left: 8px;
+  color: var(--jan-dim, #6b7684); font-size: 0.9em; font-variant-numeric: tabular-nums;
+  border-bottom: 1px dotted #d0d6de; flex: 1; text-align: right;
+}
+.jan-toc, .jan-bib, .jan-endnotes { break-inside: avoid-page; }
+.jan-bib .jan-ref-item { text-indent: -1.2em; padding-left: 1.2em; }
+.jan-endnotes { border-top: 1px solid #d8dce3; margin-top: 14px; padding-top: 8px; }
+.jan-en-num { color: var(--jan-accent, #d97757); margin-right: 4px; }
+.jan-index-mark { border-bottom: 1px dotted #b3bcc7; }
+.jan-auth-mark { border-bottom: 1px dashed #a8b4c2; }
+.jan-auth-kind { margin-top: 8px; }
+
+/* 출처 관리 창 */
+.jan-srcdlg { width: min(940px, 96vw); max-width: min(940px, 96vw); }
+.jan-srcdlg-body { display: grid; grid-template-columns: minmax(0, 300px) minmax(0, 1fr); gap: 16px; max-height: 62vh; overflow: auto; }
+.jan-srcdlg-list { border: 1px solid var(--jan-border, #d8dce3); border-radius: 7px; overflow: hidden; align-content: start; }
+.jan-srcdlg-list > button {
+  display: flex; flex-direction: column; gap: 2px; width: 100%; text-align: left;
+  padding: 7px 10px; border: 0; border-bottom: 1px solid #eef1f5; background: transparent; font: inherit; cursor: pointer;
+}
+.jan-srcdlg-list > button > strong { font-size: 12px; }
+.jan-srcdlg-list > button > span { font-size: 11px; color: var(--jan-dim, #6b7684); }
+.jan-srcdlg-list > button.is-active { background: rgba(217, 119, 87, 0.14); }
+.jan-srcdlg-list .jan-chartdlg-gridbtns { padding: 6px; margin: 0; }
+.jan-srcdlg-form { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; align-content: start; }
+.jan-srcdlg-preview {
+  grid-column: 1 / -1; margin-top: 6px; padding: 8px 10px;
+  background: #f7f9fc; border-radius: 6px; font-size: 12px; line-height: 1.6;
+}
+.jan-srcdlg-preview p { margin: 2px 0; }

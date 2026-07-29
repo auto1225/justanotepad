@@ -19,6 +19,8 @@ import { SmartArtObject } from '../extensions/SmartArtObject'
 import { SignatureObject } from '../extensions/SignatureObject'
 import { CrossRef } from '../extensions/CrossRef'
 import { RefTargets } from '../extensions/RefTargets'
+import { FieldBlocks } from '../extensions/FieldBlocks'
+import { AuthorityMark, IndexMark } from '../extensions/RefMarks'
 import { applyDesign, watermarkSvgOf } from '../lib/docDesign'
 import { DesignPanel } from './DesignPanel'
 import { Model3D } from '../extensions/Model3D'
@@ -51,6 +53,7 @@ import { ChartPanel } from './ChartPanel'
 import { SmartArtPanel } from './SmartArtPanel'
 import { SignaturePanel } from './SignaturePanel'
 import { CrossRefPanel } from './CrossRefPanel'
+import { SourcePanel } from './SourcePanel'
 import { SymbolPanel } from './SymbolPanel'
 import { ObjectPane } from './ObjectPane'
 import { ObjectBar } from './ObjectBar'
@@ -202,6 +205,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   const [signPanel, setSignPanel] = useState<'insert' | 'sign' | null>(null)
   const [xrefPanel, setXrefPanel] = useState(false)
   const [designPanel, setDesignPanel] = useState<'styles' | 'background' | null>(null)
+  const [sourcePanel, setSourcePanel] = useState(false)
   /* 문자표와 개체 목록 — 워드의 「기호」 대화상자와 「선택 창(Alt+F10)」 */
   const [showSymbols, setShowSymbols] = useState(false)
   const [showObjects, setShowObjects] = useState(false)
@@ -434,6 +438,9 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       SignatureObject,
       CrossRef,
       RefTargets,
+      FieldBlocks,
+      IndexMark,
+      AuthorityMark,
       Model3D,
       DropCapAttr,
       ListStyles,
@@ -593,6 +600,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
     const onSign = (e: Event) => setSignPanel((e as CustomEvent<{ mode?: 'insert' | 'sign' }>).detail?.mode || 'insert')
     const onXref = () => setXrefPanel(true)
     const onDesign = (e: Event) => setDesignPanel((e as CustomEvent<{ tab?: 'styles' | 'background' }>).detail?.tab || 'styles')
+    const onSources = () => setSourcePanel(true)
     const onSymbols = () => setShowSymbols(true)
     const onObjects = () => setShowObjects((v) => !v)
     /* 개체 목록은 워드와 같은 자리(Alt+F10)에서 열고 닫는다 */
@@ -649,6 +657,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
     window.addEventListener('jan-signature-dialog', onSign)
     window.addEventListener('jan-xref-dialog', onXref)
     window.addEventListener('jan-design-dialog', onDesign)
+    window.addEventListener('jan-source-dialog', onSources)
     return () => {
       window.removeEventListener('jan-image-dialog', onDialog)
       window.removeEventListener('jan-image-replace', onReplace)
@@ -658,6 +667,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       window.removeEventListener('jan-signature-dialog', onSign)
       window.removeEventListener('jan-xref-dialog', onXref)
       window.removeEventListener('jan-design-dialog', onDesign)
+      window.removeEventListener('jan-source-dialog', onSources)
       window.removeEventListener('jan-symbol-panel', onSymbols)
       window.removeEventListener('jan-object-pane', onObjects)
       window.removeEventListener('jan-comment-pane', onComments)
@@ -1253,6 +1263,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       {signPanel && <SignaturePanel editor={editor} mode={signPanel} onClose={() => setSignPanel(null)} />}
       {xrefPanel && <CrossRefPanel editor={editor} onClose={() => setXrefPanel(false)} />}
       {designPanel && <DesignPanel tab={designPanel} onClose={() => setDesignPanel(null)} />}
+      {sourcePanel && <SourcePanel editor={editor} onClose={() => setSourcePanel(false)} />}
       {showSymbols && <SymbolPanel editor={editor} onClose={() => setShowSymbols(false)} />}
       {showObjects && <ObjectPane editor={editor} onClose={() => setShowObjects(false)} />}
       {showComments && <CommentPane editor={editor} onClose={() => setShowComments(false)} />}
