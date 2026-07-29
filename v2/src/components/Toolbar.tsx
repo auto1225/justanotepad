@@ -1895,7 +1895,8 @@ export function Toolbar(p: ToolbarProps) {
       ],
     },
     {
-      label: '입력',
+      /* 워드와 같은 이름을 쓴다 — 한글은 「입력」, 워드는 「삽입」이다 */
+      label: '삽입',
       items: [
         ...drop(pick('삽입'), ['빠른 메모']),
         { divider: '미디어', label: '' },

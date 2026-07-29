@@ -19,7 +19,7 @@ async function freshEditor(page: Page) {
 
 /** 「글자 꾸밈」 명령 — 리본에 나와 있으면 그대로, 접혀 있으면 더보기를 열고 누른다 */
 async function useTextCommand(page: Page, name: RegExp) {
-  await page.getByRole('tab', { name: '입력', exact: true }).dispatchEvent('click')
+  await page.getByRole('tab', { name: '삽입', exact: true }).dispatchEvent('click')
   await page.waitForTimeout(150)
   /* 리본 단추에 보이는 글자는 짧은 이름이므로 aria-label 로도 찾는다 */
   const primary = page.locator('.jan-ribbon-body button').filter({ hasText: name }).first()
@@ -74,7 +74,7 @@ test.describe('글자 입력 것들', () => {
     await freshEditor(page)
     await page.keyboard.type('우주센서를 활용한 도심 주차환경 개선 방법')
 
-    await page.getByRole('tab', { name: '입력', exact: true }).dispatchEvent('click')
+    await page.getByRole('tab', { name: '삽입', exact: true }).dispatchEvent('click')
     await page.locator('.jan-ribbon-body button[aria-label*="첫 문자 장식"]').first().dispatchEvent('click')
 
     const p = page.locator('.ProseMirror p').first()

@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
 
 /**
- * 입력 탭의 나머지 — 문자표(워드 「기호」·한글 「문자표」),
+ * 삽입 탭의 나머지 — 문자표(워드 「기호」·한글 「문자표」),
  * 개체 목록(워드 「선택 창」), 표지와 빈 쪽.
  */
 
@@ -81,7 +81,7 @@ test.describe('입력 — 문자표와 개체 목록', () => {
     const editor = await freshEditor(page)
     await page.keyboard.type('본문 첫 줄')
 
-    await page.getByRole('tab', { name: '입력', exact: true }).dispatchEvent('click')
+    await page.getByRole('tab', { name: '삽입', exact: true }).dispatchEvent('click')
     await page.waitForTimeout(150)
     /* 리본에 나와 있으면 그대로, 접혀 있으면 「쪽 더보기」를 열고 누른다 */
     // 리본 단추에 보이는 글자는 짧은 이름이고, 긴 이름은 aria-label 에 있다

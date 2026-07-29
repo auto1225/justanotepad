@@ -230,7 +230,7 @@ test.describe('글자 모양 도구 상자', () => {
 
     // 리본 단추에도 붙는다 (안내를 적어 둔 것은 자세히, 나머지는 이름·단축키로)
     await page.mouse.move(600, 500)
-    await page.getByRole('tab', { name: '입력', exact: true }).click()
+    await page.getByRole('tab', { name: '삽입', exact: true }).click()
     await page.locator('.jan-ribbon-btn').first().hover()
     await expect(card).toBeVisible({ timeout: 3000 })
     await expect(card.locator('.jan-help-title')).toHaveText('표 넣기')
@@ -273,13 +273,13 @@ test.describe('글자 모양 도구 상자', () => {
       label: (t.textContent || '').trim(),
       extra: t.classList.contains('is-extra'),
     })))
-    expect(tabs.filter((t) => !t.extra).map((t) => t.label)).toEqual(['파일', '편집', '보기', '입력', '서식', '쪽', '검토'])
+    expect(tabs.filter((t) => !t.extra).map((t) => t.label)).toEqual(['파일', '편집', '보기', '삽입', '서식', '쪽', '검토'])
     expect(tabs.filter((t) => t.extra).map((t) => t.label)).toEqual(['AI', '논문'])
     await expect(page.locator('.jan-ribbon-tab-split')).toHaveCount(1) // 코어와 부가 사이 경계선
 
     // 같은 기능이 두 탭에 있으면 어디서 하는 일인지 헷갈린다 — 겹침 0 을 지킨다
     const seen = new Map<string, string[]>()
-    for (const t of ['파일', '편집', '보기', '입력', '서식', '쪽', '검토', 'AI', '논문']) {
+    for (const t of ['파일', '편집', '보기', '삽입', '서식', '쪽', '검토', 'AI', '논문']) {
       await page.getByRole('tab', { name: t, exact: true }).click()
       await page.waitForTimeout(120)
       const labels = await page.evaluate(() =>
