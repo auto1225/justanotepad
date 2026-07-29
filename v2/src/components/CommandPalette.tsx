@@ -348,6 +348,16 @@ export function CommandPalette(p: CommandPaletteProps) {
       { id:'ai-img', cat:'미디어', icon:'sparkle', label:'AI 이미지 생성', desc:'Pollinations 이미지 생성.', run: aiImage },
       { id:'paint', cat:'미디어', icon:'paint', label:'그림판', desc:'캔버스 그림판 모달.', run: () => p.onPaint?.() },
       { id:'postit', cat:'미디어', icon:'pin', label:'포스트잇 (JustPin)', desc:'포스트잇 메모.', run: () => p.onPostit?.() },
+      /* 검수 — 워드 「검토」 자리의 명령들 */
+      { id:'track-toggle', cat:'검수', icon:'pen', label:'변경 내용 추적 켬/끔', desc:'고친 자리를 밑줄·취소선으로 남긴다.', hint:'Alt+U', run: () => window.dispatchEvent(new Event('jan-track-toggle')) },
+      { id:'review-pane', cat:'검수', icon:'cards', label:'검토 창', desc:'고친 자리와 메모를 모아 적용·되돌리기.', hint:'Alt+F11', run: () => window.dispatchEvent(new Event('jan-review-pane')) },
+      { id:'track-next', cat:'검수', icon:'chevron-down', label:'다음 변경으로', desc:'변경 표시를 차례로 훑는다.', hint:'Alt+.', run: () => window.dispatchEvent(new CustomEvent('jan-track-goto', { detail: { dir: 1 } })) },
+      { id:'a11y', cat:'검수', icon:'eye', label:'접근성 검사', desc:'그림 설명·표 머리글·색 대비를 살핀다.', run: () => window.dispatchEvent(new Event('jan-a11y-panel')) },
+      { id:'hanja', cat:'검수', icon:'translate', label:'한자로 바꾸기', desc:'낱말을 한자·한글(한자)로 바꾼다.', hint:'F9', run: () => window.dispatchEvent(new CustomEvent('jan-word-suggest', { detail: { mode: 'hanja' } })) },
+      { id:'thesaurus', cat:'검수', icon:'language', label:'동의어 사전', desc:'대신 쓸 말과 반대말.', hint:'Shift+F7', run: () => window.dispatchEvent(new CustomEvent('jan-word-suggest', { detail: { mode: 'synonym' } })) },
+      { id:'wordcount', cat:'검수', icon:'hash', label:'단어 개수', desc:'단어·글자·원고지 매수까지.', run: () => window.dispatchEvent(new Event('jan-count-panel')) },
+      { id:'protect', cat:'검수', icon:'shield', label:'편집 제한', desc:'읽기만·메모만·추적 강제로 잠근다.', run: () => window.dispatchEvent(new Event('jan-protect-panel')) },
+      { id:'read-aloud', cat:'검수', icon:'speaker', label:'소리내어 읽기', desc:'커서 자리부터 읽어 준다.', run: () => { void import('../lib/readAloud').then((m) => m.readAloud(editor)) } },
       /* 도구 */
       { id:'wordcloud', cat:'도구', icon:'sparkle', label:'워드 클라우드', desc:'단어 빈도 클라우드 새 창.', run: wordCloud },
       { id:'flashcards', cat:'도구', icon:'cards', label:'플래시카드', desc:'제목별 Q/A 학습.', run: flashcards },

@@ -21,6 +21,8 @@ import { CrossRef } from '../extensions/CrossRef'
 import { RefTargets } from '../extensions/RefTargets'
 import { FieldBlocks } from '../extensions/FieldBlocks'
 import { AuthorityMark, IndexMark } from '../extensions/RefMarks'
+import { DeleteMark, InsertMark, TrackChanges } from '../extensions/TrackChanges'
+import { EditGuard } from '../extensions/EditGuard'
 import { applyDesign, watermarkSvgOf } from '../lib/docDesign'
 import { DesignPanel } from './DesignPanel'
 import { Model3D } from '../extensions/Model3D'
@@ -59,6 +61,13 @@ import { ObjectPane } from './ObjectPane'
 import { ObjectBar } from './ObjectBar'
 import { TableFormatPanel } from './TableFormatPanel'
 import { CommentPane } from './CommentPane'
+import { ReviewPane } from './ReviewPane'
+import { AccessibilityPanel } from './AccessibilityPanel'
+import { WordSuggestPanel, type SuggestMode } from './WordSuggestPanel'
+import { ProtectPanel } from './ProtectPanel'
+import { CountPanel } from './CountPanel'
+import { applyTrackView } from '../lib/trackChanges'
+import { activateProtect } from '../lib/docProtect'
 import { ModalSkeleton } from './ModalSkeleton'
 import { useDocStore } from '../store/docStore'
 import { useMemosStore } from '../store/memosStore'
@@ -211,6 +220,12 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   const [showObjects, setShowObjects] = useState(false)
   /* 메모 목록 — 워드에서 문서 옆에 뜨는 메모 자리 */
   const [showComments, setShowComments] = useState(false)
+  /* 검수 탭이 여는 창들 — 검토 창 · 접근성 · 낱말 바꾸기 · 편집 제한 · 단어 개수 */
+  const [showReview, setShowReview] = useState(false)
+  const [showA11y, setShowA11y] = useState(false)
+  const [suggest, setSuggest] = useState<SuggestMode | null>(null)
+  const [showProtect, setShowProtect] = useState(false)
+  const [showCount, setShowCount] = useState(false)
   /* 표 서식 창 — 테두리·채우기·맞춤 */
   const [tableFormat, setTableFormat] = useState<string | null>(null)
   const [showHelp, setShowHelp] = useState(false)
@@ -351,7 +366,8 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
           if (seq !== contentSaveSeqByMemo.current[memoId]) return
           updateMemo(memoId, { content: storedHtml })
           if (storedHtml !== html && activeMemoIdRef.current === memoId && !targetEditor.isDestroyed) {
-            targetEditor.commands.setContent(storedHtml, { emitUpdate: false })
+            /* 저장 뒤 되돌려 넣는 것 — 사람이 고친 게 아니니 변경 표시를 남기지 않는다 */
+            targetEditor.chain().setMeta('janTrackSkip', true).setContent(storedHtml, { emitUpdate: false }).run()
             resolveBlobRefsInElement(targetEditor.view.dom).catch(() => {})
           }
         })
@@ -441,6 +457,10 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       FieldBlocks,
       IndexMark,
       AuthorityMark,
+      InsertMark,
+      DeleteMark,
+      TrackChanges,
+      EditGuard,
       Model3D,
       DropCapAttr,
       ListStyles,
@@ -618,6 +638,11 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       }
     }
     const onComments = () => setShowComments((v) => !v)
+    const onReview = () => setShowReview((v) => !v)
+    const onA11y = () => setShowA11y(true)
+    const onSuggest = (e: Event) => setSuggest((e as CustomEvent<{ mode?: SuggestMode }>).detail?.mode || 'synonym')
+    const onProtect = () => setShowProtect(true)
+    const onCount = () => setShowCount(true)
     const onTableFormat = (e: Event) => setTableFormat((e as CustomEvent<{ tab?: string }>).detail?.tab || 'border')
     /* 눈금선 보기 — 테두리가 없는 표에도 흐린 안내선을 보여 준다 (워드와 같다) */
     const onGridlines = () => {
@@ -646,6 +671,11 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
     }
     document.addEventListener('click', onFieldClick, true)
     window.addEventListener('jan-comment-pane', onComments)
+    window.addEventListener('jan-review-pane', onReview)
+    window.addEventListener('jan-a11y-panel', onA11y)
+    window.addEventListener('jan-word-suggest', onSuggest)
+    window.addEventListener('jan-protect-panel', onProtect)
+    window.addEventListener('jan-count-panel', onCount)
     window.addEventListener('jan-symbol-panel', onSymbols)
     window.addEventListener('jan-object-pane', onObjects)
     document.addEventListener('keydown', onKey, true)
@@ -671,6 +701,11 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       window.removeEventListener('jan-symbol-panel', onSymbols)
       window.removeEventListener('jan-object-pane', onObjects)
       window.removeEventListener('jan-comment-pane', onComments)
+      window.removeEventListener('jan-review-pane', onReview)
+      window.removeEventListener('jan-a11y-panel', onA11y)
+      window.removeEventListener('jan-word-suggest', onSuggest)
+      window.removeEventListener('jan-protect-panel', onProtect)
+      window.removeEventListener('jan-count-panel', onCount)
       window.removeEventListener('jan-table-format', onTableFormat)
       window.removeEventListener('jan-table-gridlines', onGridlines)
       document.removeEventListener('click', onFieldClick, true)
@@ -790,6 +825,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
     applyTheme()
     applyTypo()
     applyDesign(useUIStore.getState().design) // 이 문서의 디자인을 화면에 입힌다
+    applyTrackView(editor)                     // 지난번 추적 상태(켬/끔·표시 방식)를 되살린다
     tauriSyncOnBoot().catch(() => {})
     trackEvent('app_boot')
   }, [editor, setEditor, applyTheme, applyTypo])
@@ -800,6 +836,20 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       activeMemoIdRef.current = currentId
     }
   }, [currentId, flushPendingEditorContent])
+
+  /* 편집 제한은 메모마다 따로 걸린다 — 메모를 바꿀 때마다 그 메모 것을 살려 둔다.
+     「읽기만」 은 편집기를 읽기 전용으로 두어야 입력·붙여넣기·끌어놓기 길이 모두 막힌다
+     (문지기만으로는 앱이 스스로 하는 일과 가려내기 어렵다). */
+  useEffect(() => {
+    if (!editor) return
+    const sync = () => {
+      const p = activateProtect(currentId || '')
+      if (!editor.isDestroyed) editor.setEditable(p.mode !== 'read', false)
+    }
+    sync()
+    window.addEventListener('jan-protect-changed', sync)
+    return () => window.removeEventListener('jan-protect-changed', sync)
+  }, [currentId, editor])
 
   useEffect(() => {
     if (!memo) return
@@ -854,7 +904,8 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
     // 비교하면 항상 불일치 → setContent 무한 반복이 된다. 래퍼를 벗겨 비교한다.
     const cur = getSavableHtml(editor)
     if (cur !== memoContent) {
-      editor.commands.setContent(memoContent, { emitUpdate: false })
+      /* 메모를 바꿔 실은 글 — 새 문서를 온통 「넣음」 으로 물들이면 안 된다 */
+      editor.chain().setMeta('janTrackSkip', true).setContent(memoContent, { emitUpdate: false }).run()
       resolveBlobRefsInElement(editor.view.dom).catch(() => {})
     }
   }, [currentId, editor, collab.ydoc, memoContent])
@@ -990,7 +1041,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
     useUIStore.getState().applyPageSettings(pageSettings)
     applyingMemoPageSettingsRef.current = false
     setFileHandle(result.handle ?? null, id)
-    editor.commands.setContent(result.content)
+    editor.chain().setMeta('janTrackSkip', true).setContent(result.content).run()
     trackEvent('open_file')
   }, [editor, newMemo, setFileHandle, updateMemo])
 
@@ -1267,6 +1318,11 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       {showSymbols && <SymbolPanel editor={editor} onClose={() => setShowSymbols(false)} />}
       {showObjects && <ObjectPane editor={editor} onClose={() => setShowObjects(false)} />}
       {showComments && <CommentPane editor={editor} onClose={() => setShowComments(false)} />}
+      {showReview && <ReviewPane editor={editor} onClose={() => setShowReview(false)} />}
+      {showA11y && <AccessibilityPanel editor={editor} onClose={() => setShowA11y(false)} />}
+      {suggest && <WordSuggestPanel editor={editor} mode={suggest} onClose={() => setSuggest(null)} />}
+      {showProtect && <ProtectPanel editor={editor} onClose={() => setShowProtect(false)} />}
+      {showCount && <CountPanel editor={editor} onClose={() => setShowCount(false)} />}
       {tableFormat && <TableFormatPanel editor={editor} tab={tableFormat} onClose={() => setTableFormat(null)} />}
       <Suspense fallback={<ModalSkeleton />}>
         {showAi && <AiHelper editor={editor} onClose={() => setShowAi(false)} />}

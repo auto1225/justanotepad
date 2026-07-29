@@ -7643,3 +7643,139 @@ body:has(.jan-modal-overlay) .jan-bubble-toolbar { display: none; }
   background: #f7f9fc; border-radius: 6px; font-size: 12px; line-height: 1.6;
 }
 .jan-srcdlg-preview p { margin: 2px 0; }
+
+
+/* ── 검수 탭 (워드 「검토」) ─────────────────────────────────────────
+   고친 자리 표시, 검토 창, 접근성 검사, 낱말 바꾸기, 편집 제한, 단어 개수 */
+
+/* 넣은 글 · 지운 글 — 워드의 밑줄/취소선과 같은 결 */
+.jan-ins {
+  text-decoration: underline;
+  text-decoration-color: var(--jan-ins-color, #1f7a4d);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 2px;
+  color: var(--jan-ins-color, #1f7a4d);
+}
+.jan-del {
+  text-decoration: line-through;
+  text-decoration-thickness: 1.5px;
+  color: var(--jan-del-color, #b3261e);
+  opacity: 0.85;
+}
+
+/* 표시 방식 — 고친 뒤 모습 / 고치기 전 모습 (인쇄에도 그대로 간다) */
+:root[data-jan-track="final"] .jan-del { display: none; }
+:root[data-jan-track="final"] .jan-ins { color: inherit; text-decoration: none; }
+:root[data-jan-track="orig"] .jan-ins { display: none; }
+:root[data-jan-track="orig"] .jan-del { color: inherit; text-decoration: none; opacity: 1; }
+
+/* 추적을 켜 두면 편집기 왼쪽에 얇은 표가 선다 — 켜 둔 줄 모르고 고치는 일을 막는다 */
+:root[data-jan-tracking="on"] .jan-editor-pages { box-shadow: inset 2px 0 0 rgba(31, 122, 77, 0.45); }
+
+/* 표시 감추기 (워드 「잉크 숨기기」·「메모 표시」 자리) */
+body.jan-hide-comments .jan-comment { background: none !important; border-bottom: 0 !important; }
+body.jan-hide-highlight mark,
+body.jan-hide-highlight [data-highlight] { background: none !important; box-shadow: none !important; }
+
+/* 소리내어 읽는 문단 */
+.jan-reading { background: rgba(217, 119, 87, 0.14); border-radius: 3px; }
+
+/* 검토 창 */
+.jan-revpane-bulk { display: flex; gap: 6px; padding: 6px 10px; border-bottom: 1px solid var(--jan-border, #e3e7ee); }
+.jan-revpane-bulk > button { flex: 1; font-size: 11px; padding: 4px 6px; }
+.jan-revpane-row { display: flex; align-items: flex-start; gap: 4px; padding: 5px 8px; border-bottom: 1px solid #eef1f5; }
+.jan-revpane-row > button:first-child {
+  flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;
+  text-align: left; border: 0; background: transparent; font: inherit; cursor: pointer; padding: 0;
+}
+.jan-revpane-row > button:not(:first-child) { font-size: 11px; padding: 2px 6px; white-space: nowrap; }
+.jan-revpane-kind {
+  font-size: 10px; color: #fff; background: #98a2b3; border-radius: 3px;
+  padding: 0 5px; align-self: flex-start;
+}
+.jan-revpane-row.is-ins .jan-revpane-kind { background: var(--jan-ins-color, #1f7a4d); }
+.jan-revpane-row.is-del .jan-revpane-kind { background: var(--jan-del-color, #b3261e); }
+.jan-revpane-row.is-memo .jan-revpane-kind { background: #d97757; }
+.jan-revpane-text { font-size: 12px; overflow-wrap: anywhere; }
+.jan-revpane-text.is-ins { color: var(--jan-ins-color, #1f7a4d); }
+.jan-revpane-text.is-del { color: var(--jan-del-color, #b3261e); text-decoration: line-through; }
+.jan-revpane-row.is-done { opacity: 0.55; }
+
+/* 접근성 검사 */
+.jan-a11ydlg { width: min(760px, 96vw); max-width: min(760px, 96vw); }
+.jan-a11ydlg-sum { display: flex; align-items: center; gap: 10px; padding: 8px 18px 0; font-size: 12px; }
+.jan-a11ydlg-sum > button { margin-left: auto; font-size: 11px; padding: 3px 8px; }
+.jan-a11ydlg-sum .is-error { color: #b3261e; font-weight: 600; }
+.jan-a11ydlg-sum .is-warn { color: #a5670a; font-weight: 600; }
+.jan-a11ydlg-sum .is-info { color: #6b7684; }
+.jan-a11ydlg-body { max-height: 60vh; overflow: auto; }
+.jan-a11ydlg-list { list-style: none; margin: 0; padding: 0; }
+.jan-a11ydlg-row {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 8px 10px; border-left: 3px solid #d0d6de; border-bottom: 1px solid #eef1f5;
+}
+.jan-a11ydlg-row.is-error { border-left-color: #b3261e; }
+.jan-a11ydlg-row.is-warn { border-left-color: #e5a13a; }
+.jan-a11ydlg-row.is-info { border-left-color: #98a2b3; }
+.jan-a11ydlg-row > div:first-child { flex: 1; min-width: 0; }
+.jan-a11ydlg-row strong { font-size: 12.5px; }
+.jan-a11ydlg-row p { margin: 3px 0 0; font-size: 11.5px; color: var(--jan-dim, #6b7684); }
+.jan-a11ydlg-level { margin-left: 6px; font-size: 10px; color: #6b7684; }
+.jan-a11ydlg-acts { display: flex; gap: 5px; }
+.jan-a11ydlg-acts > button { font-size: 11px; padding: 3px 8px; white-space: nowrap; }
+.jan-a11ydlg-clean { padding: 22px; text-align: center; color: var(--jan-dim, #6b7684); }
+
+/* 낱말 바꾸기 (한자 · 동의어) */
+.jan-worddlg { width: min(620px, 96vw); max-width: min(620px, 96vw); }
+.jan-worddlg-body { max-height: 60vh; overflow: auto; }
+.jan-worddlg-word { display: flex; align-items: baseline; gap: 10px; margin: 0 0 10px; }
+.jan-worddlg-word > span { font-size: 11px; color: var(--jan-dim, #6b7684); }
+.jan-worddlg-word > strong { font-size: 17px; }
+.jan-worddlg-radio { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
+.jan-worddlg-radio > em { color: var(--jan-dim, #6b7684); font-style: normal; font-size: 11px; }
+.jan-worddlg-sub { margin: 12px 0 4px; font-size: 11px; color: var(--jan-dim, #6b7684); }
+.jan-worddlg-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; }
+.jan-worddlg-list > li > button {
+  display: flex; align-items: baseline; gap: 10px; width: 100%; text-align: left;
+  padding: 6px 10px; border: 1px solid var(--jan-border, #d8dce3); border-radius: 6px;
+  background: #fff; font: inherit; cursor: pointer;
+}
+.jan-worddlg-list > li > button:hover { background: rgba(217, 119, 87, 0.1); }
+.jan-worddlg-list > li > button > strong { font-size: 19px; min-width: 2.4em; }
+.jan-worddlg-list > li > button > span { flex: 1; font-size: 12px; color: var(--jan-dim, #6b7684); }
+.jan-worddlg-list > li > button > em { font-style: normal; font-size: 12px; }
+.jan-worddlg-list.is-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.jan-worddlg-list.is-chips > li > button { width: auto; padding: 4px 12px; border-radius: 999px; }
+.jan-worddlg-syl { margin-top: 10px; }
+.jan-worddlg-sylrow { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 4px 0; }
+.jan-worddlg-sound { min-width: 2em; font-size: 13px; color: var(--jan-dim, #6b7684); }
+.jan-worddlg-sylrow > button { font-size: 15px; padding: 2px 8px; }
+.jan-worddlg-sylrow > button.is-active { background: rgba(217, 119, 87, 0.2); border-color: #d97757; }
+.jan-worddlg-foot { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+.jan-worddlg-foot > strong { font-size: 17px; }
+.jan-worddlg-empty { padding: 18px 0; color: var(--jan-dim, #6b7684); }
+
+/* 편집 제한 */
+.jan-protdlg { width: min(560px, 96vw); max-width: min(560px, 96vw); }
+.jan-protdlg-modes { border: 1px solid var(--jan-border, #d8dce3); border-radius: 7px; padding: 8px 10px; margin: 0 0 10px; }
+.jan-protdlg-modes > legend { font-size: 11px; color: var(--jan-dim, #6b7684); padding: 0 4px; }
+.jan-protdlg-modes > label { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; padding: 4px 2px; cursor: pointer; }
+.jan-protdlg-modes > label > input { grid-row: span 2; align-self: center; }
+.jan-protdlg-modes > label > strong { font-size: 12.5px; }
+.jan-protdlg-modes > label > span { font-size: 11px; color: var(--jan-dim, #6b7684); }
+.jan-protdlg-modes > label.is-active { background: rgba(217, 119, 87, 0.1); border-radius: 5px; }
+.jan-protdlg-check { display: flex; align-items: flex-start; gap: 8px; margin: 0 0 10px; cursor: pointer; }
+.jan-protdlg-check em { display: block; font-style: normal; font-size: 11px; color: var(--jan-dim, #6b7684); }
+.jan-protdlg-lock { display: grid; gap: 8px; justify-items: start; }
+
+/* 단어 개수 */
+.jan-countdlg { width: min(420px, 96vw); max-width: min(420px, 96vw); }
+.jan-countdlg-scope { margin: 0 0 8px; font-size: 11px; color: var(--jan-dim, #6b7684); }
+.jan-countdlg-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.jan-countdlg-table th { text-align: left; font-weight: 400; color: var(--jan-dim, #6b7684); padding: 5px 0; }
+.jan-countdlg-table td { text-align: right; font-variant-numeric: tabular-nums; padding: 5px 0; border-bottom: 1px solid #eef1f5; }
+
+@media print {
+  .jan-revpane, .jan-reading { background: none; box-shadow: none; }
+  body.jan-hide-highlight mark { background: none !important; }
+}

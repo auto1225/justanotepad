@@ -34,7 +34,19 @@ import { deleteCellsShift } from '../lib/tableWord'
 import { EMPHASIS_MARKS, OVERLAP_FRAMES } from '../extensions/TextObjects'
 import { currentDropCap, insertOverlap, insertRuby, selectedText, setDropCap, setEmphasis } from '../lib/textObjects'
 import { COVER_STYLES, insertBlankPage, insertCover, todayLabel } from '../lib/coverPage'
-import { addComment, gotoNextField, insertField } from '../lib/commentField'
+import {
+  addComment, clearDoneComments, commentAtCursor, gotoAdjacentComment, gotoNextField,
+  insertField, removeComment, toggleCommentDone,
+} from '../lib/commentField'
+import {
+  TRACK_MODES, acceptAll, applyHere, changeCount, gotoChange, rejectAll,
+  setTrackAuthor, setTrackMode, toggleTracking, trackAuthor, trackMode, trackingOn,
+} from '../lib/trackChanges'
+import { HANJA_MODES, hanjaText, hanjaToHangul, lookupHanja } from '../lib/hanja'
+import { protectLine, currentProtect, saveProtect } from '../lib/docProtect'
+import { pauseReading, readAloud, readNextBlock, stopReading } from '../lib/readAloud'
+import { countLine, countReport } from '../lib/countReport'
+import { replaceSpot, wordAtCursor } from '../lib/selWord'
 import {
   SHAPE_STYLES, applyShapeStyle, changeShape, currentShape, cycleTextDirection, cycleVAlign,
   flipShape, insertShape, moveShape, rotateShape, setShapeAlign, setShapeAttrs, setShapeFill,
@@ -303,6 +315,47 @@ export function Toolbar(p: ToolbarProps) {
     return () => window.removeEventListener('jan-math-edit', onEdit)
   }, [editor])
   const ui = useUIStore()
+
+  /* 맞춤법 검사 켬/끔 — F7 도 이 길로 온다 (그래서 훅보다 위에 둔다) */
+  const toggleSpellCheck = () => {
+    const cur = useUIStore.getState().spellCheck
+    useUIStore.setState({ spellCheck: !cur })
+    document.querySelectorAll('.ProseMirror').forEach(el => el.setAttribute('spellcheck', !cur ? 'true' : 'false'))
+    flash(`맞춤법 검사 ${!cur ? '켬' : '끔'}`)
+  }
+
+  /* 검수 탭이 보여 주는 상태 — 추적 켬/끔, 표시 방식, 편집 제한.
+     이것들은 편집기 밖(localStorage·모듈)에 있어 구독하지 않으면 단추 이름이 옛것으로 남는다. */
+  const [reviewFlags, setReviewFlags] = useState(() => ({
+    tracking: trackingOn(editor), mode: trackMode(), protect: protectLine(), blockOthers: currentProtect().blockOthers,
+  }))
+  useEffect(() => {
+    const sync = () => setReviewFlags({
+      tracking: trackingOn(editor), mode: trackMode(), protect: protectLine(), blockOthers: currentProtect().blockOthers,
+    })
+    sync()
+    window.addEventListener('jan-track-changed', sync)
+    window.addEventListener('jan-protect-changed', sync)
+    return () => {
+      window.removeEventListener('jan-track-changed', sync)
+      window.removeEventListener('jan-protect-changed', sync)
+    }
+  }, [editor])
+
+  /* 단축키가 부르는 것들 — 리본 단추와 똑같은 길로 보낸다 (F7 · Shift+F7 · F9 는 창이 스스로 받는다) */
+  useEffect(() => {
+    const onSpell = () => toggleSpellCheck()
+    const onTrackToggle = () => { toggleTracking(editor) }
+    const onTrackGoto = (e: Event) => { gotoChange(editor, (e as CustomEvent<{ dir?: 1 | -1 }>).detail?.dir ?? 1) }
+    window.addEventListener('jan-spell-toggle', onSpell)
+    window.addEventListener('jan-track-toggle', onTrackToggle)
+    window.addEventListener('jan-track-goto', onTrackGoto)
+    return () => {
+      window.removeEventListener('jan-spell-toggle', onSpell)
+      window.removeEventListener('jan-track-toggle', onTrackToggle)
+      window.removeEventListener('jan-track-goto', onTrackGoto)
+    }
+  }, [editor])
 
   if (!editor) return null
 
@@ -893,13 +946,8 @@ export function Toolbar(p: ToolbarProps) {
     try { if ('Notification' in window && Notification.permission === 'default') void Notification.requestPermission() } catch { /* 실패해도 진행 — 부가 기능이라 무시한다 */ }
     flash(`포모도로 ${min}분 시작 — 우측 상단 타이머를 클릭하면 중단`)
   }
-  const toggleSpellCheck = () => {
-    const cur = useUIStore.getState().spellCheck
-    useUIStore.setState({ spellCheck: !cur })
-    document.querySelectorAll('.ProseMirror').forEach(el => el.setAttribute('spellcheck', !cur ? 'true' : 'false'))
-    flash(`맞춤법 검사 ${!cur ? '켬' : '끔'}`)
-  }
   const runDocHealth = () => showHealthReport(computeDocHealth(editor))
+
 
   /* === 파일 / 백업 === */
   const installApp = async () => {
@@ -2528,15 +2576,232 @@ export function Toolbar(p: ToolbarProps) {
   const VIEW_KEYS = ['마인드맵', '플래시카드', '워드 클라우드', '포모도로']
 
   const toolsRest = notAi(pick('도구'))
+
+  /* ── 검수 탭 (워드 「검토」) 손잡이 ──────────────────────
+     고친 자리를 남기고 훑어보는 일, 소리로 들어 보는 일, 낭독기로도 읽히게 하는 일,
+     그리고 남에게 돌릴 때 손댈 범위를 좁히는 일까지 한 탭에 모았다. */
+  const openReviewPane = () => window.dispatchEvent(new Event('jan-review-pane'))
+  const openA11y = () => window.dispatchEvent(new Event('jan-a11y-panel'))
+  const openSuggest = (mode: 'hanja' | 'synonym') =>
+    window.dispatchEvent(new CustomEvent('jan-word-suggest', { detail: { mode } }))
+  const openProtect = () => window.dispatchEvent(new Event('jan-protect-panel'))
+  const openCount = () => window.dispatchEvent(new Event('jan-count-panel'))
+
+  /* 사전에 낱말이 하나만 있으면 창을 열지 않고 바로 바꾼다 — 한글의 F9 가 그렇게 빠르다 */
+  const quickHanja = (mode: 'hanja' | 'both' | 'hanjaFirst') => {
+    const spot = wordAtCursor(editor)
+    if (!spot) { flash('바꿀 낱말에 커서를 두거나 글을 고른다'); return }
+    const { stem, tail, picks } = lookupHanja(spot.text)
+    if (picks.length === 1) {
+      const next = hanjaText(stem, picks[0].hanja, mode) + tail
+      replaceSpot(editor, spot, next)
+      flash(spot.text + ' \u2192 ' + next)
+      return
+    }
+    openSuggest('hanja')
+  }
+  const backToHangul = () => {
+    const spot = wordAtCursor(editor)
+    if (!spot) { flash('되돌릴 글을 고른다'); return }
+    const plain = hanjaToHangul(spot.text)
+    if (plain === spot.text) { flash('한자가 없다'); return }
+    replaceSpot(editor, spot, plain)
+    flash(spot.text + ' \u2192 ' + plain)
+  }
+  const askAuthor = async () => {
+    const name = await askText('변경 표시에 남길 내 이름', trackAuthor())
+    if (name === null) return
+    setTrackAuthor(name.trim() || '나')
+    flash('이제 \u300c' + (name.trim() || '나') + '\u300d 로 남는다')
+  }
+  const askNewComment = async () => {
+    const text = await askText('메모 — 이 자리에 남길 말', '', { multiline: true })
+    if (text && addComment(editor, text)) openReviewPane()
+  }
+  const dropComment = () => {
+    const row = commentAtCursor(editor)
+    if (!row) { flash('지울 메모에 커서를 둔다'); return }
+    removeComment(editor, row)
+  }
+  const doneComment = () => {
+    const row = commentAtCursor(editor)
+    if (!row) { flash('끝낼 메모에 커서를 둔다'); return }
+    toggleCommentDone(editor, row)
+  }
+  /* 화면에서 표시만 감춘다 (워드의 「잉크 숨기기」·「메모 표시」 자리) */
+  const toggleHide = (cls: string, on: string, off: string) => {
+    const added = document.body.classList.toggle(cls)
+    flash(added ? on : off)
+  }
+
+  const tracking = reviewFlags.tracking
+  const marks = changeCount(editor)
+
   const reviewItems: MenuItem[] = [
-    { divider: '교정 · 언어', label: '' },
+    /* 워드 「검토」 와 같은 차례. 단추가 서른 개를 넘으면 리본이 옆으로 밀려 나가므로
+       한 갈래에 딸린 것은 ▾ 안으로 접어 넣었다 (삽입 탭에서 배운 것). */
+    { divider: '언어 교정', label: '' },
     ...take(toolsRest, ['맞춤법']),
-    ...take(aiFrom(pick('도구')), ['번역']),
-    { divider: '문서 점검', label: '' },
-    ...take(toolsRest, ['깨진 링크', '메모 비교']),
+    { label: '동의어 사전 — 대신 쓸 말 찾기', short: '동의어', icon: 'language', hint: 'Shift+F7', onClick: () => run(() => openSuggest('synonym')) },
+    {
+      label: '단어 개수 (글자·원고지까지)',
+      short: '단어 셈',
+      icon: 'hash',
+      onClick: () => run(openCount),
+      menu: [
+        { label: '단어 개수 창 열기', short: '창 열기', icon: 'hash', onClick: () => run(openCount) },
+        { label: '한 줄로 알려 주기 (토스트)', short: '한 줄', icon: 'info', onClick: () => run(() => flash(countLine(countReport(editor)))) },
+      ],
+    },
     ...take(aiFrom(pick('도구')), ['문서 건강']),
-    { divider: '통계 · 기록', label: '' },
-    ...take(toolsRest, ['통계', '활동 히트맵', '메모 정보']),
+
+    { divider: '소리 · 접근성', label: '' },
+    {
+      label: '소리내어 읽기 — 커서 자리부터',
+      short: '읽어 주기',
+      icon: 'speaker',
+      onClick: () => run(() => { readAloud(editor) }),
+      menu: [
+        { label: '커서 자리부터 읽기', short: '읽기', icon: 'speaker', onClick: () => run(() => { readAloud(editor) }) },
+        { label: '잠깐 멈춤 · 이어 읽기', short: '멈춤/이어', icon: 'volume', onClick: () => run(() => { pauseReading() }) },
+        { label: '다음 문단부터 읽기', short: '다음 문단', icon: 'chevron-down', onClick: () => run(() => { readNextBlock(editor, 1) }) },
+        { label: '앞 문단부터 읽기', short: '앞 문단', icon: 'chevron-up', onClick: () => run(() => { readNextBlock(editor, -1) }) },
+        { label: '읽기 그만', short: '그만', icon: 'volume-off', onClick: () => run(() => { stopReading() }) },
+      ],
+    },
+    { label: '접근성 검사 — 낭독기로 읽히나 보기', short: '접근성', icon: 'eye', onClick: () => run(openA11y) },
+
+    { divider: '언어', label: '' },
+    ...take(aiFrom(pick('도구')), ['번역']),
+    {
+      label: '한자로 바꾸기',
+      short: '한자',
+      icon: 'translate',
+      hint: 'F9',
+      onClick: () => run(() => quickHanja('hanja')),
+      menu: [
+        ...HANJA_MODES.map((m): MenuItem => ({
+          label: '한자로 바꾸기 — ' + m.label + ' (' + m.hint + ')', short: m.label, icon: 'translate',
+          onClick: () => run(() => quickHanja(m.key)),
+        })),
+        { label: '한자 사전 창 열기 (뜻 보고 고르기)', short: '사전 창', icon: 'search', onClick: () => run(() => openSuggest('hanja')) },
+        { label: '한글로 되돌리기', short: '한글로', icon: 'undo', onClick: () => run(backToHangul) },
+      ],
+    },
+
+    { divider: '메모', label: '' },
+    { label: '새 메모 달기', short: '새 메모', icon: 'quote', hint: 'Ctrl+Alt+M', onClick: () => run(() => { void askNewComment() }) },
+    { label: '이전 메모로', short: '이전', icon: 'chevron-up', onClick: () => run(() => { gotoAdjacentComment(editor, -1) }) },
+    { label: '다음 메모로', short: '다음', icon: 'chevron-down', onClick: () => run(() => { gotoAdjacentComment(editor, 1) }) },
+    {
+      label: '메모 목록 열고 닫기',
+      short: '메모 목록',
+      icon: 'menu',
+      onClick: () => run(() => window.dispatchEvent(new Event('jan-comment-pane'))),
+      menu: [
+        { label: '메모 목록 열고 닫기', short: '목록', icon: 'menu', onClick: () => run(() => window.dispatchEvent(new Event('jan-comment-pane'))) },
+        { label: '이 메모 끝냄 / 되열기', short: '끝냄', icon: 'check', onClick: () => run(doneComment) },
+        { label: '이 메모 지우기', short: '지우기', icon: 'trash', onClick: () => run(dropComment) },
+        { label: '끝낸 메모 모두 걷기', short: '걷기', icon: 'close', onClick: () => run(() => { clearDoneComments(editor) }) },
+      ],
+    },
+
+    { divider: '변경 내용 추적', label: '' },
+    {
+      label: tracking ? '변경 내용 추적 끄기 (지금 켜져 있다)' : '변경 내용 추적 켜기',
+      short: tracking ? '추적 끔' : '추적 켬',
+      icon: 'pen',
+      hint: 'Alt+U',
+      onClick: () => run(() => { toggleTracking(editor) }),
+      menu: [
+        { label: tracking ? '추적 끄기' : '추적 켜기', short: tracking ? '끄기' : '켜기', icon: 'pen', onClick: () => run(() => { toggleTracking(editor) }) },
+        { label: '변경 표시에 남길 내 이름 — 지금 「' + trackAuthor() + '」', short: '내 이름', icon: 'user', onClick: () => run(() => { void askAuthor() }) },
+      ],
+    },
+    {
+      label: '표시 방식 — ' + (TRACK_MODES.find((m) => m.key === reviewFlags.mode)?.label || '모든 수정 내용'),
+      short: '표시',
+      icon: 'eye',
+      menu: TRACK_MODES.map((m): MenuItem => ({
+        label: m.label + ' — ' + m.hint + (reviewFlags.mode === m.key ? ' (지금 이것)' : ''),
+        short: m.label,
+        icon: 'eye',
+        onClick: () => run(() => setTrackMode(m.key)),
+      })),
+      /* 누르면 차림표만 펼친다 — 무엇을 고르는지 보지 못한 채 보기가 바뀌면 안 된다 */
+    },
+    { label: '검토 창 열기 (넣음 ' + marks.ins + ' · 지움 ' + marks.del + ')', short: '검토 창', icon: 'cards', hint: 'Alt+F11', onClick: () => run(openReviewPane) },
+
+    { divider: '변경 내용', label: '' },
+    {
+      label: '이 변경 적용',
+      short: '적용',
+      icon: 'check',
+      onClick: () => run(() => { applyHere(editor, true) }),
+      menu: [
+        { label: '이 변경 적용', short: '하나', icon: 'check', onClick: () => run(() => { applyHere(editor, true) }) },
+        { label: '모두 적용', short: '모두', icon: 'check', onClick: () => run(() => { acceptAll(editor) }) },
+      ],
+    },
+    {
+      label: '이 변경 되돌림',
+      short: '되돌림',
+      icon: 'undo',
+      onClick: () => run(() => { applyHere(editor, false) }),
+      menu: [
+        { label: '이 변경 되돌림', short: '하나', icon: 'undo', onClick: () => run(() => { applyHere(editor, false) }) },
+        { label: '모두 되돌림', short: '모두', icon: 'undo', onClick: () => run(() => { rejectAll(editor) }) },
+      ],
+    },
+    { label: '이전 변경으로', short: '이전', icon: 'chevron-up', hint: 'Alt+,', onClick: () => run(() => { gotoChange(editor, -1) }) },
+    { label: '다음 변경으로', short: '다음', icon: 'chevron-down', hint: 'Alt+.', onClick: () => run(() => { gotoChange(editor, 1) }) },
+
+    { divider: '견주기 · 보호', label: '' },
+    {
+      label: '다른 메모와 견주기',
+      short: '견주기',
+      icon: 'replace',
+      menu: take(toolsRest, ['메모 비교', '깨진 링크']),
+    },
+    {
+      label: '편집 제한 — 지금 ' + reviewFlags.protect,
+      short: '편집 제한',
+      icon: 'shield',
+      onClick: () => run(openProtect),
+      menu: [
+        { label: '편집 제한 창 열기', short: '제한 창', icon: 'shield', onClick: () => run(openProtect) },
+        {
+          label: reviewFlags.blockOthers ? '남이 손댄 자리 잠금 풀기' : '남이 손댄 자리 잠그기',
+          short: '남의 자리',
+          icon: 'lock',
+          onClick: () => run(() => {
+            const next = !reviewFlags.blockOthers
+            saveProtect({ blockOthers: next })
+            flash(next ? '남이 손댄 자리를 잠갔다' : '잠금을 풀었다')
+          }),
+        },
+        { label: '비밀번호로 잠그기 (내용 암호화)', short: '암호 잠금', icon: 'unlock', onClick: () => run(p.onLock) },
+      ],
+    },
+
+    { divider: '감추기 · 기록', label: '' },
+    {
+      label: '화면에서 표시 감추기',
+      short: '감추기',
+      icon: 'eye-off',
+      /* 무엇을 감출지 골라야 하니 누르면 차림표만 펼친다 */
+      menu: [
+        { label: '메모 표시 감추기 / 보이기', short: '메모 표시', icon: 'eye-off', onClick: () => run(() => toggleHide('jan-hide-comments', '메모 표시를 감췄다', '메모 표시를 다시 보인다')) },
+        { label: '형광펜 · 강조 감추기 / 보이기', short: '형광펜', icon: 'highlight', onClick: () => run(() => toggleHide('jan-hide-highlight', '형광펜을 감췄다 — 인쇄에도 안 나온다', '형광펜을 다시 보인다')) },
+        { label: '변경 표시 감추기 (고친 뒤 모습)', short: '변경 표시', icon: 'eye-off', onClick: () => run(() => setTrackMode(reviewFlags.mode === 'final' ? 'all' : 'final')) },
+      ],
+    },
+    {
+      label: '문서 기록 보기',
+      short: '기록',
+      icon: 'history',
+      menu: take(toolsRest, ['통계', '활동 히트맵', '메모 정보']),
+    },
   ]
 
   const groups: MenuGroup[] = [
@@ -2558,7 +2823,8 @@ export function Toolbar(p: ToolbarProps) {
     { label: '디자인', items: pick('디자인') },
     { label: '서식', items: drop(pick('서식'), ['엔터 표시']) },
     { label: '레이아웃', items: pick('페이지') },
-    { label: '검토', items: reviewItems },
+    /* 검수 탭이 워드 「검토」 자리다 — 이름만 우리 것으로 바꿨다 */
+    { label: '검수', items: reviewItems },
     { label: 'AI', items: aiItems, extra: true },
     /* 자료 탭이 워드 「참조」 자리다 — 학술 서식(논문)도 그 안의 한 묶음으로 품었다 */
     {

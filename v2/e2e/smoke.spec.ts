@@ -139,7 +139,7 @@ test.describe('v2 smoke', () => {
     await page.goto('./')
     await page.locator('.ProseMirror').first().waitFor()
     // 코어(문서 작업) 7 + 부가 2 — '도구' 는 없애고 검토/보기/입력·유틸 메뉴로 나눠 담았다
-    for (const label of ['파일', '편집', '보기', '삽입', '텍스트', '디자인', '서식', '레이아웃', '검토', 'AI', '자료']) {
+    for (const label of ['파일', '편집', '보기', '삽입', '텍스트', '디자인', '서식', '레이아웃', '검수', 'AI', '자료']) {
       await expect(page.getByRole('tab', { name: label, exact: true })).toBeVisible({ timeout: 5000 })
     }
     await page.getByRole('tab', { name: '파일', exact: true }).click()

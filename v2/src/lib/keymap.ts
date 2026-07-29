@@ -30,6 +30,27 @@ export function installWordKeymap(editor: Editor, opts: {
     if (ctrl && !shift && !alt && k === 'o') { e.preventDefault(); opts.onOpen?.(); return }
     if (ctrl && !shift && !alt && k === 'p') { e.preventDefault(); opts.onPrint?.(); return }
 
+    /* 검수(워드 「검토」) 계열 — 수식어는 하나만 쓴다.
+       F7·Shift+F7 은 워드 자리, F9 는 한글의 한자 바꾸기 자리다. */
+    if (!ctrl && !shift && !alt && k === 'f7') { e.preventDefault(); window.dispatchEvent(new Event('jan-spell-toggle')); return }
+    if (!ctrl && shift && !alt && k === 'f7') {
+      e.preventDefault()
+      window.dispatchEvent(new CustomEvent('jan-word-suggest', { detail: { mode: 'synonym' } }))
+      return
+    }
+    if (!ctrl && !shift && !alt && k === 'f9') {
+      e.preventDefault()
+      window.dispatchEvent(new CustomEvent('jan-word-suggest', { detail: { mode: 'hanja' } }))
+      return
+    }
+    if (alt && !ctrl && !shift && k === 'f11') { e.preventDefault(); window.dispatchEvent(new Event('jan-review-pane')); return }
+    if (alt && !ctrl && !shift && k === 'u') { e.preventDefault(); window.dispatchEvent(new Event('jan-track-toggle')); return }
+    if (alt && !ctrl && !shift && (k === ',' || k === '.')) {
+      e.preventDefault()
+      window.dispatchEvent(new CustomEvent('jan-track-goto', { detail: { dir: k === '.' ? 1 : -1 } }))
+      return
+    }
+
     // 서식/편집 계열은 편집기에 포커스가 있을 때만 — 아니면 Ctrl+R(새로고침)·Ctrl+L(주소창) 같은
     // 브라우저 기본 동작을 돌려준다
     if (!editor.isFocused) return

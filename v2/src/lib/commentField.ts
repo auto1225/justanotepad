@@ -103,6 +103,36 @@ export function toggleCommentDone(editor: Editor | null, row: CommentRow): boole
   return ok
 }
 
+/** 커서가 든 메모 (지우기·끝내기 단추가 무엇을 손댈지 안다) */
+export function commentAtCursor(editor: Editor | null): CommentRow | null {
+  if (!editor) return null
+  const here = editor.state.selection.from
+  return listComments(editor).find((r) => r.from <= here && here <= r.to) ?? null
+}
+
+/** 앞뒤 메모로 건너뛴다 (워드의 「이전」·「다음」) */
+export function gotoAdjacentComment(editor: Editor | null, dir: 1 | -1): CommentRow | null {
+  if (!editor) return null
+  const rows = listComments(editor)
+  if (!rows.length) { flash('문서에 메모가 없다'); return null }
+  const here = editor.state.selection.from
+  const next = dir > 0
+    ? rows.find((r) => r.from > here) ?? rows[0]
+    : [...rows].reverse().find((r) => r.to < here) ?? rows[rows.length - 1]
+  gotoComment(editor, next)
+  flash(`${next.author || '메모'} — ${next.text.slice(0, 24)}`)
+  return next
+}
+
+/** 끝낸 메모를 한꺼번에 걷어 낸다 */
+export function clearDoneComments(editor: Editor | null): number {
+  if (!editor) return 0
+  const done = listComments(editor).filter((r) => r.done)
+  done.forEach((row) => removeComment(editor, row))
+  flash(done.length ? `끝낸 메모 ${done.length}개를 걷었다` : '끝낸 메모가 없다')
+  return done.length
+}
+
 export function removeComment(editor: Editor | null, row: CommentRow): boolean {
   if (!editor) return false
   const type = editor.schema.marks.janComment
@@ -137,7 +167,10 @@ export function fillField(editor: Editor | null, pos: number, value: string): bo
   if (!editor) return false
   const node = editor.state.doc.nodeAt(pos)
   if (!node || node.type.name !== 'janField') return false
-  editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, value }))
+  /* 「누름틀만 채우기」 로 잠근 문서에서도 이 길만은 열어 둔다 (문지기가 이 표를 본다) */
+  const tr = editor.state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, value })
+  tr.setMeta('janAllow', 'field')
+  editor.view.dispatch(tr)
   editor.view.focus()
   return true
 }

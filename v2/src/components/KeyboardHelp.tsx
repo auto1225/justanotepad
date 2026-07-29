@@ -51,6 +51,19 @@ const SHORTCUTS: Array<{ category: string; items: Array<[string, string]> }> = [
       ['F1 / Ctrl+?', '단축키 도움말'],
     ],
   },
+  {
+    /* 검수 탭 — 수식어는 하나만 쓴다 (F7·Shift+F7 은 워드 자리, F9 는 한글 자리) */
+    category: '검수',
+    items: [
+      ['F7', '맞춤법 검사 켬/끔'],
+      ['Shift+F7', '동의어 사전'],
+      ['F9', '한자로 바꾸기'],
+      ['Alt+U', '변경 내용 추적 켬/끔'],
+      ['Alt+F11', '검토 창'],
+      ['Alt+, / Alt+.', '이전 / 다음 변경으로'],
+      ['Ctrl+Alt+M', '고른 글에 메모 달기'],
+    ],
+  },
 ]
 
 export function KeyboardHelp({ onClose }: KeyboardHelpProps) {
