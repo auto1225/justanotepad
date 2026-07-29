@@ -98,6 +98,37 @@ describe('파일 저장', () => {
     allowFsaWriteAgain()
   })
 
+  it('그냥 「저장」은 파일 창을 띄우지 않고 바로 저장한다', async () => {
+    const picker = vi.fn(async () => ({ createWritable: async () => ({ write: () => {}, close: async () => {} }) }))
+    fsaSaveWindow().showSaveFilePicker = picker
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+
+    const result = await saveToFile({ title: '보고서', content: '<p>본문</p>' })
+
+    expect(picker).not.toHaveBeenCalled()
+    expect(click).toHaveBeenCalledTimes(1)
+    expect(result.ok).toBe(true)
+  })
+
+  it('「다른 이름」으로 한 번 성공하면 그 다음 「저장」은 그 자리에 곧바로 쓴다', async () => {
+    let written = ''
+    const handle = { createWritable: async () => ({ write: (t: string) => { written = t }, close: async () => {} }) }
+    const picker = vi.fn(async () => handle)
+    fsaSaveWindow().showSaveFilePicker = picker
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+
+    const saved = await saveToFile({ title: '보고서', content: '<p>본문</p>', pick: true })
+    expect(picker).toHaveBeenCalledTimes(1)
+    expect(saved.handle).toBeTruthy()
+    expect(written).toContain('<p>본문</p>')
+
+    // 손잡이를 잃어버린 뒤(탭을 다시 연 경우)에도, 된다는 것을 아는 환경이면 창을 띄워 이어 간다
+    const again = await saveToFile({ title: '보고서', content: '<p>둘째</p>' })
+    expect(picker).toHaveBeenCalledTimes(2)
+    expect(again.ok).toBe(true)
+    expect(click).not.toHaveBeenCalled()
+  })
+
   it('내장된 화면(iframe)에서는 헛되이 파일 창을 띄우지 않고 곧장 내려받는다', async () => {
     const picker = vi.fn(async () => ({ createWritable: async () => ({ write: () => {}, close: async () => {} }) }))
     fsaSaveWindow().showSaveFilePicker = picker
@@ -119,12 +150,12 @@ describe('파일 저장', () => {
     fsaSaveWindow().showSaveFilePicker = picker
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
 
-    // 처음 한 번은 자리 고르기 창 → 막힘 → 내려받기 (창 두 번)
-    await saveToFile({ title: '보고서', content: '<p>본문</p>' })
+    // 「다른 이름」으로 한 번은 창이 뜬다 → 막힘 → 내려받기
+    await saveToFile({ title: '보고서', content: '<p>본문</p>', pick: true })
     expect(picker).toHaveBeenCalledTimes(1)
 
-    // 두 번째부터는 자리 고르기를 건너뛰고 곧장 내려받기 (창 한 번)
-    const second = await saveToFile({ title: '보고서', content: '<p>본문</p>' })
+    // 그 뒤로는 「다른 이름」이라도 헛된 창을 띄우지 않는다
+    const second = await saveToFile({ title: '보고서', content: '<p>본문</p>', pick: true })
     expect(picker).toHaveBeenCalledTimes(1)
     expect(second.ok).toBe(true)
     expect(click).toHaveBeenCalledTimes(2)
@@ -137,7 +168,7 @@ describe('파일 저장', () => {
     fsaSaveWindow().showSaveFilePicker = picker
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
 
-    const result = await saveToFile({ title: '보고서', content: '<p>본문</p>' })
+    const result = await saveToFile({ title: '보고서', content: '<p>본문</p>', pick: true })
 
     expect(picker).toHaveBeenCalledTimes(1)
     expect(click).not.toHaveBeenCalled() // 0KB 파일 + 두 번째 저장창이 생기던 자리
@@ -150,7 +181,7 @@ describe('파일 저장', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
 
-    const result = await saveToFile({ title: '보고서', content: '<p>본문</p>' })
+    const result = await saveToFile({ title: '보고서', content: '<p>본문</p>', pick: true })
 
     expect(click).toHaveBeenCalledTimes(1)
     expect(result.ok).toBe(true)
@@ -214,7 +245,7 @@ describe('파일 저장', () => {
       }),
     }))
 
-    const result = await saveToFile({ title: '보고서', content: '<p>본문</p>', pageSettings: { pageColumnCount: 2 } })
+    const result = await saveToFile({ title: '보고서', content: '<p>본문</p>', pick: true, pageSettings: { pageColumnCount: 2 } })
 
     expect(result.ok).toBe(true)
     expect(readPageSettings(written)).toEqual({ pageColumnCount: 2 })

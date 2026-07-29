@@ -902,6 +902,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
     const result = await saveToFile({
       title, content: html, handle: ownHandle,
       pageSettings: pageSettingsFromUi(useUIStore.getState()), // 이 문서의 판형을 파일에 함께 넣는다
+      pick: saveAs, // 자리를 고르는 창은 「다른 이름」에서만 — 그냥 「저장」은 묻지 않고 저장한다
     })
     if (result.ok) {
       setSavedAt(Date.now())

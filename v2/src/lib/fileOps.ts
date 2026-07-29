@@ -38,22 +38,43 @@ function fsaWriteBlocked(): boolean {
   return fsaBlockedMemo
 }
 
+/* 반대로, 이 환경에서 자리 지정 저장이 "된다"는 것을 확인한 기억.
+   한 번이라도 성공해 봐야 그 다음부터 파일 창을 믿고 띄운다. */
+const FSA_OK_KEY = 'jan:v2:fsa-write-ok'
+let fsaOkMemo: boolean | null = null
+
+function fsaWriteProven(): boolean {
+  if (fsaOkMemo !== null) return fsaOkMemo
+  try {
+    fsaOkMemo = localStorage.getItem(FSA_OK_KEY) === '1'
+  } catch {
+    fsaOkMemo = false
+  }
+  return fsaOkMemo
+}
+
+function markFsaWriteProven(): void {
+  fsaOkMemo = true
+  try { localStorage.setItem(FSA_OK_KEY, '1') } catch { /* 이 세션 동안만 기억해도 된다 */ }
+}
+
 /**
- * 이 환경에서 「자리를 골라 그 파일에 쓰기」가 될 법한가.
+ * 이 환경에서 「자리를 골라 그 파일에 쓰기」를 시도해도 되는가.
  *
- * 창 안의 창(iframe·내장 브라우저)에서는 브라우저가 쓰기를 막는다 —
- * 그런 자리에서 파일 창을 띄우면 사용자는 창을 두 번 보고 한 번은 헛수고를 한다.
- * 될 법하지 않으면 처음부터 내려받기로 저장한다 (설정을 만질 일이 없게).
+ * 기본은 "아니오"다 — 될지 안 될지 모르는 채로 파일 창을 띄우면,
+ * 막히는 환경(내장 브라우저·정책 제한)에서는 창을 두 번 보고 한 번은 헛수고를 한다.
+ * 그래서 자리 지정은 사용자가 「다른 이름」으로 분명히 시킬 때(pick)와,
+ * 그렇게 해서 한 번 성공해 본 환경에서만 쓴다. 그 밖에는 조용히 내려받기로 저장한다.
  */
-function fsaWriteUsable(): boolean {
+function fsaWriteUsable(pick: boolean): boolean {
   if (typeof fsaWindow().showSaveFilePicker !== 'function') return false
   if (fsaWriteBlocked()) return false
   try {
-    if (window.self !== window.top) return false // 내장·삽입된 화면
+    if (window.self !== window.top) return false // 내장·삽입된 화면에서는 브라우저가 막는다
   } catch {
     return false // 크로스 오리진이라 확인조차 막힌다 = 내장된 화면이다
   }
-  return true
+  return pick || fsaWriteProven()
 }
 
 function markFsaWriteBlocked(): void {
@@ -64,7 +85,11 @@ function markFsaWriteBlocked(): void {
 /** 다시 쓸 수 있게 된 환경을 위해 되돌리는 길도 둔다 (설정에서 부른다) */
 export function allowFsaWriteAgain(): void {
   fsaBlockedMemo = false
-  try { localStorage.removeItem(FSA_BLOCKED_KEY) } catch { /* 무시 */ }
+  fsaOkMemo = false
+  try {
+    localStorage.removeItem(FSA_BLOCKED_KEY)
+    localStorage.removeItem(FSA_OK_KEY)
+  } catch { /* 무시 */ }
 }
 
 /** 파일 손잡이에 쓰기 허락 받기 — 이미 있으면 묻지 않는다 */
@@ -94,6 +119,8 @@ export interface SaveOptions {
   pageSettings?: unknown
   /** 자동 저장처럼 사람이 누르지 않은 저장 — 창을 띄우거나 내려받기로 새지 않는다 */
   silent?: boolean
+  /** 「다른 이름」처럼 사용자가 저장 자리를 고르겠다고 분명히 시킨 저장 */
+  pick?: boolean
 }
 
 export interface SaveResult {
@@ -113,10 +140,11 @@ export interface OpenFileResult {
 }
 
 export async function saveToFile(opts: SaveOptions): Promise<SaveResult> {
-  const { title = '새 메모', content, handle, pageSettings, silent = false } = opts
+  const { title = '새 메모', content, handle, pageSettings, silent = false, pick = false } = opts
 
   let targetHandle = handle ?? null
-  if (targetHandle || fsaWriteUsable()) {
+  let justPicked = false // 이번에 창을 띄워 고른 자리인가 (막힘의 원인을 가리는 데 쓴다)
+  if (targetHandle || fsaWriteUsable(pick)) {
     /* 자리 고르기가 먼저다 — 그림을 실제 자료로 바꾸는 일(수백 KB)을 앞에 두면
        그 사이에 "사용자가 방금 누름" 상태가 풀려 브라우저가 창을 막는다.
        (Failed to execute 'createWritable' … not allowed … in the current context) */
@@ -129,6 +157,7 @@ export async function saveToFile(opts: SaveOptions): Promise<SaveResult> {
             accept: { 'text/html': ['.html', '.htm'] },
           }],
         })
+        justPicked = true
       } catch (err) {
         if (isAbort(err)) return { ok: false, error: '취소됨' }
         console.warn('[fileOps] 저장 위치 고르기 실패, 내려받기로 대신한다:', err)
@@ -150,6 +179,7 @@ export async function saveToFile(opts: SaveOptions): Promise<SaveResult> {
         await writable.write(file)
         await writable.close()
         allowFsaWriteAgain() // 이 환경은 잘 쓴다 — 예전에 막혔던 기억은 지운다
+        markFsaWriteProven() // 이제부터는 그냥 「저장」도 이 자리에 곧바로 쓴다
         return { ok: true, handle: targetHandle }
       } catch (err) {
         if (isAbort(err)) return { ok: false, error: '취소됨' }
@@ -159,8 +189,10 @@ export async function saveToFile(opts: SaveOptions): Promise<SaveResult> {
         console.warn('[fileOps] 쓰기 허락이 없어 내려받기로 대신한다:', err)
       }
     }
-    /* 사용자가 허락을 거절한 것뿐이라면 환경 탓이 아니다 —
-       그때는 기억해 두지 않고(다음에 다시 물을 수 있게) 이번만 내려받기로 건넨다 */
+    /* 방금 창을 띄워 고른 자리인데도 못 쓴다면 그건 이 환경이 막는 것이다 —
+       기억해 두지 않으면 저장할 때마다 창이 두 번(자리 고르기 + 내려받기) 뜬다.
+       예전 세션에서 물려받은 손잡이라면 사용자가 거절했을 수도 있으니 기억하지 않는다. */
+    if (justPicked) markFsaWriteBlocked()
     /* 여기까지 왔으면 그 자리에는 쓸 수 없다 —
        자동 저장이면 조용히 넘기고(내려받기 폭탄 방지), 사람이 누른 저장이면 내려받기로 건넨다 */
     if (silent) return { ok: false, error: '이 파일에 쓸 권한이 없다 — 「다른 이름」으로 다시 저장해라', needsPermission: true }
