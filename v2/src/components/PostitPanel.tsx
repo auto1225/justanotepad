@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
-import { listPostits, addPostit, removePostit, openPostitWindow, type Postit } from '../lib/justpin'
+import { listPostits, addPostit, removePostit, updatePostit, openPostitWindow, type Postit } from '../lib/justpin'
+import { useDocStore } from '../store/docStore'
+import { flash } from '../lib/flash'
 
 interface PostitPanelProps {
   onClose: () => void
@@ -36,17 +38,41 @@ export function PostitPanel({ onClose }: PostitPanelProps) {
     }
   }, [])
 
-  function create() {
+  const editor = useDocStore((s) => s.editor)
+
+  async function create() {
     if (!text.trim()) return
     const p = addPostit(text.trim(), color)
     setText('')
     refresh()
-    openPostitWindow(p)
+    /* 새 창이 막히면 아무 일도 없는 것처럼 보인다 — 목록에는 남았다고 알려 준다 */
+    const opened = await openPostitWindow(p)
+    flash(opened ? '포스트잇을 띄웠다' : '새 창이 막혔다 — 목록에 넣어 두었으니 「열기」 로 띄운다', 2600)
+  }
+
+  async function open(p: Postit) {
+    const opened = await openPostitWindow(p)
+    if (!opened) flash('새 창이 막혔다 — 브라우저에서 이 사이트의 팝업을 허용한다', 2600)
   }
 
   function del(id: string) {
     removePostit(id)
     refresh()
+  }
+
+  /* 카드에서 고친 글·색은 곧바로 저장한다 (창을 열지 않고도 손볼 수 있게) */
+  function edit(id: string, patch: Partial<Postit>) {
+    updatePostit(id, patch)
+    refresh()
+  }
+
+  /** 포스트잇을 지금 문서로 옮긴다 — 「메모로 키우기」 */
+  function toMemo(p: Postit) {
+    if (!editor || editor.isDestroyed) { flash('열어 둔 문서가 없다'); return }
+    const html = p.text.split(/\n{2,}/).map((para) =>
+      `<p>${para.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</p>`).join('')
+    editor.chain().focus().insertContent(html || '<p></p>').run()
+    flash('쓰던 자리에 옮겼다')
   }
 
   return (
@@ -75,16 +101,33 @@ export function PostitPanel({ onClose }: PostitPanelProps) {
                 />
               ))}
             </div>
-            <button className="jan-postit-add" onClick={create}>새 포스트잇 (별도 창)</button>
+            <button className="jan-postit-add" onClick={() => { void create() }}>새 포스트잇 (별도 창)</button>
+            <p className="jan-postit-note">카드에서 글과 색을 바로 고칠 수 있다 · 「메모로」 는 쓰던 자리에 옮긴다</p>
           </div>
 
           <div className="jan-postit-grid">
             {items.length === 0 && <div className="jan-postit-empty">포스트잇이 없습니다.</div>}
             {items.map((p) => (
               <div key={p.id} className="jan-postit-card" style={{ background: p.color }}>
-                <div className="jan-postit-text">{p.text.slice(0, 120) || '(빈 메모)'}</div>
+                <textarea
+                  value={p.text}
+                  aria-label="포스트잇 내용"
+                  onChange={(e) => edit(p.id, { text: e.target.value })}
+                />
+                <div className="jan-postit-colors">
+                  {COLORS.map((c) => (
+                    <button
+                      key={c}
+                      className={'jan-postit-color' + (c === p.color ? ' is-active' : '')}
+                      style={{ background: c }}
+                      aria-label={'색 바꾸기 ' + c}
+                      onClick={() => edit(p.id, { color: c })}
+                    />
+                  ))}
+                </div>
                 <div className="jan-postit-actions">
-                  <button onClick={() => openPostitWindow(p)}>열기</button>
+                  <button onClick={() => { void open(p) }}>열기</button>
+                  <button onClick={() => toMemo(p)} disabled={!editor}>메모로</button>
                   <button onClick={() => del(p.id)}>삭제</button>
                 </div>
               </div>

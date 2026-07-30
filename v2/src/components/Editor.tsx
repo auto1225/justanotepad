@@ -66,6 +66,7 @@ import { AccessibilityPanel } from './AccessibilityPanel'
 import { WordSuggestPanel, type SuggestMode } from './WordSuggestPanel'
 import { ProtectPanel } from './ProtectPanel'
 import { CountPanel } from './CountPanel'
+import { ImageConvertPanel } from './ImageConvertPanel'
 import { applyTrackView } from '../lib/trackChanges'
 import { activateProtect } from '../lib/docProtect'
 import { ModalSkeleton } from './ModalSkeleton'
@@ -226,6 +227,8 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   const [suggest, setSuggest] = useState<SuggestMode | null>(null)
   const [showProtect, setShowProtect] = useState(false)
   const [showCount, setShowCount] = useState(false)
+  /* 이미지 변환 — 도구 탭에서 연다 (예전에는 물음 창 세 번이었다) */
+  const [showImgConv, setShowImgConv] = useState(false)
   /* 표 서식 창 — 테두리·채우기·맞춤 */
   const [tableFormat, setTableFormat] = useState<string | null>(null)
   const [showHelp, setShowHelp] = useState(false)
@@ -643,6 +646,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
     const onSuggest = (e: Event) => setSuggest((e as CustomEvent<{ mode?: SuggestMode }>).detail?.mode || 'synonym')
     const onProtect = () => setShowProtect(true)
     const onCount = () => setShowCount(true)
+    const onImgConv = () => setShowImgConv(true)
     const onTableFormat = (e: Event) => setTableFormat((e as CustomEvent<{ tab?: string }>).detail?.tab || 'border')
     /* 눈금선 보기 — 테두리가 없는 표에도 흐린 안내선을 보여 준다 (워드와 같다) */
     const onGridlines = () => {
@@ -676,6 +680,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
     window.addEventListener('jan-word-suggest', onSuggest)
     window.addEventListener('jan-protect-panel', onProtect)
     window.addEventListener('jan-count-panel', onCount)
+    window.addEventListener('jan-image-convert', onImgConv)
     window.addEventListener('jan-symbol-panel', onSymbols)
     window.addEventListener('jan-object-pane', onObjects)
     document.addEventListener('keydown', onKey, true)
@@ -706,6 +711,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       window.removeEventListener('jan-word-suggest', onSuggest)
       window.removeEventListener('jan-protect-panel', onProtect)
       window.removeEventListener('jan-count-panel', onCount)
+      window.removeEventListener('jan-image-convert', onImgConv)
       window.removeEventListener('jan-table-format', onTableFormat)
       window.removeEventListener('jan-table-gridlines', onGridlines)
       document.removeEventListener('click', onFieldClick, true)
@@ -1326,6 +1332,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       {suggest && <WordSuggestPanel editor={editor} mode={suggest} onClose={() => setSuggest(null)} />}
       {showProtect && <ProtectPanel editor={editor} onClose={() => setShowProtect(false)} />}
       {showCount && <CountPanel editor={editor} onClose={() => setShowCount(false)} />}
+      {showImgConv && <ImageConvertPanel editor={editor} onClose={() => setShowImgConv(false)} />}
       {tableFormat && <TableFormatPanel editor={editor} tab={tableFormat} onClose={() => setTableFormat(null)} />}
       <Suspense fallback={<ModalSkeleton />}>
         {showAi && <AiHelper editor={editor} onClose={() => setShowAi(false)} />}

@@ -60,6 +60,16 @@ export function addPostit(text: string, color = '#FFEB3B'): Postit {
   return p
 }
 
+/** 목록에 있는 포스트잇을 고친다 — 창을 열지 않고 카드에서 바로 손볼 때 쓴다 */
+export function updatePostit(id: string, patch: Partial<Pick<Postit, 'text' | 'color'>>): Postit | null {
+  const list = load()
+  const at = list.findIndex((p) => p.id === id)
+  if (at < 0) return null
+  list[at] = { ...list[at], ...patch }
+  save(list)
+  return list[at]
+}
+
 export function removePostit(id: string) {
   save(load().filter((p) => p.id !== id))
   // Tauri 환경이면 native 창도 닫기 시도

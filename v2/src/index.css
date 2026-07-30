@@ -7807,3 +7807,46 @@ body.jan-hide-highlight [data-highlight] { background: none !important; box-shad
   .jan-ribbon-bar .jan-header-btn { width: 24px; padding: 0; }
   .jan-app-header .jan-header-btn { width: 30px; }
 }
+
+/* ── 이미지 변환 창 ─────────────────────────────────────────────
+   크기·형식을 고치면 미리보기와 예상 용량이 함께 바뀐다 (예전에는 물음 창 세 번) */
+.jan-imgconv { width: min(880px, 96vw); max-width: min(880px, 96vw); }
+.jan-imgconv-body { max-height: 66vh; overflow: auto; }
+.jan-imgconv-drop {
+  display: grid; gap: 8px; justify-items: center; text-align: center;
+  padding: 34px 18px; border: 2px dashed var(--jan-border, #cdd4de); border-radius: 10px;
+  background: #f8fafc;
+}
+.jan-imgconv-drop.is-over { border-color: #d97757; background: rgba(217, 119, 87, 0.08); }
+.jan-imgconv-drop p { margin: 0; }
+.jan-imgconv-drop input[type="file"] { font-size: 12px; }
+.jan-imgconv-error { color: #b3261e; font-size: 12px; }
+.jan-imgconv-main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 300px); gap: 16px; }
+.jan-imgconv-view {
+  display: flex; align-items: center; justify-content: center; min-height: 240px;
+  background: repeating-conic-gradient(#eef1f5 0% 25%, #ffffff 0% 50%) 50% / 16px 16px;
+  border: 1px solid var(--jan-border, #d8dce3); border-radius: 8px; overflow: hidden;
+}
+.jan-imgconv-view img { max-width: 100%; max-height: 42vh; display: block; }
+.jan-imgconv-empty { color: var(--jan-dim, #6b7684); font-size: 12px; }
+.jan-imgconv-form { display: grid; gap: 6px; align-content: start; }
+.jan-imgconv-orig, .jan-imgconv-out { margin: 0; font-size: 12px; }
+.jan-imgconv-out em { font-style: normal; color: #1f7a4d; }
+.jan-imgconv-name { margin: 0; font-size: 11px; color: var(--jan-dim, #6b7684); overflow-wrap: anywhere; }
+.jan-imgconv-presets { display: flex; flex-wrap: wrap; gap: 4px; }
+.jan-imgconv-presets > button { font-size: 11px; padding: 3px 9px; }
+.jan-imgconv-check { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.jan-imgconv-formats { display: flex; gap: 6px; margin-top: 4px; }
+.jan-imgconv-formats > label {
+  display: inline-flex; align-items: center; gap: 4px; font-size: 12px;
+  padding: 3px 10px; border: 1px solid var(--jan-border, #d8dce3); border-radius: 999px; cursor: pointer;
+}
+.jan-imgconv-formats > label.is-active { background: rgba(217, 119, 87, 0.14); border-color: #d97757; }
+
+/* 포스트잇 — 카드에서 바로 고친다 */
+.jan-postit-card textarea {
+  width: 100%; border: 0; background: transparent; resize: vertical; min-height: 56px;
+  font: inherit; color: inherit; outline: none;
+}
+.jan-postit-card .jan-postit-colors { margin: 4px 0 2px; }
+.jan-postit-note { font-size: 11px; color: var(--jan-dim, #6b7684); margin: 6px 0 0; }

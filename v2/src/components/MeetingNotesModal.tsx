@@ -48,9 +48,13 @@ function readDraftState(initialKind: MeetingKind): DraftState {
     const raw = localStorage.getItem(DRAFT_KEY)
     if (!raw) return fallback
     const draft = JSON.parse(raw) as Partial<DraftState>
+    /* 갈래는 부른 단추를 따른다 — 「강의 노트」 를 눌렀는데 지난번 회의 초안 때문에
+       회의로 열리면 단추가 거짓말을 하는 셈이다. 적어 둔 글은 그대로 살린다. */
+    const keptTitle = typeof draft.title === 'string' ? draft.title : fallback.title
+    const wasOtherKind = (draft.kind === 'meeting' || draft.kind === 'lecture') && draft.kind !== initialKind
     return {
-      kind: draft.kind === 'meeting' || draft.kind === 'lecture' ? draft.kind : fallback.kind,
-      title: typeof draft.title === 'string' ? draft.title : fallback.title,
+      kind: initialKind,
+      title: wasOtherKind && keptTitle === (draft.kind === 'lecture' ? '강의노트' : '회의노트') ? fallback.title : keptTitle,
       participants: typeof draft.participants === 'string' ? draft.participants : fallback.participants,
       agenda: typeof draft.agenda === 'string' ? draft.agenda : fallback.agenda,
       segments: Array.isArray(draft.segments) ? draft.segments.filter(isMeetingSegment) : fallback.segments,

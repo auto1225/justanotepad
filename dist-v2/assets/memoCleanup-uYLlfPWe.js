@@ -1,0 +1,2 @@
+import{R as e,V as t,W as n,nt as r,rt as i}from"./index-BDGMqkfa.js";function a(a){if(!a.length)return;let o={...i.getState().byMemo},s=!1;for(let e of a)e in o&&(delete o[e],s=!0);s&&i.setState({byMemo:o});let c={...r.getState().byMemo},l=!1;for(let e of a)e in c&&(delete c[e],l=!0);l&&r.setState({byMemo:c});let u=n.getState();for(let e of a)u.removeAll(e);(async()=>{for(let n of a)try{let r=await t(n);for(let t of r)await e(t.id)}catch{}})()}export{a as purgeMemoArtifacts};
+//# sourceMappingURL=memoCleanup-uYLlfPWe.js.map

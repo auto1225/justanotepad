@@ -1,10 +1,23 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMemosStore } from '../store/memosStore'
 import { useWorkspaceStore } from '../store/workspaceStore'
+import { useDocStore } from '../store/docStore'
 import { flash } from '../lib/flash'
 
 interface QuickCaptureProps {
   onClose: () => void
+}
+
+/** 어디에 담을지 — 다음에 열 때도 지난번 고른 곳으로 열린다 */
+type Target = 'new' | 'append' | 'cursor'
+const TARGET_KEY = 'jan-v2-quick-target'
+
+function readTarget(): Target {
+  try {
+    const v = localStorage.getItem(TARGET_KEY)
+    if (v === 'append' || v === 'cursor') return v
+  } catch { /* 못 읽으면 새 메모로 */ }
+  return 'new'
 }
 
 /**
@@ -18,8 +31,9 @@ export function QuickCapture({ onClose }: QuickCaptureProps) {
   const newMemo = useMemosStore((s) => s.newMemo)
   const setCurrent = useMemosStore((s) => s.setCurrent)
   const [text, setText] = useState('')
-  const [target, setTarget] = useState<'new' | 'append'>('new')
+  const [target, setTarget] = useState<Target>(readTarget)
   const ref = useRef<HTMLTextAreaElement>(null)
+  const editor = useDocStore((s) => s.editor)
 
   useEffect(() => {
     ref.current?.focus()
@@ -32,6 +46,14 @@ export function QuickCapture({ onClose }: QuickCaptureProps) {
       return
     }
     const html = htmlFromText(t)
+    try { localStorage.setItem(TARGET_KEY, target) } catch { /* 기억 못 해도 저장은 된다 */ }
+    if (target === 'cursor' && editor && !editor.isDestroyed) {
+      /* 쓰던 자리에 그대로 꽂는다 — 「어디 갔지」 하고 찾지 않게 */
+      editor.chain().focus().insertContent(html).run()
+      flash('쓰던 자리에 넣었다')
+      onClose()
+      return
+    }
     if (target === 'new') {
       const id = newMemo()
       // 현재 워크스페이스 필터가 걸려 있으면 거기 귀속 — 저장했는데 목록에 안 보이는 혼란 방지
@@ -77,10 +99,13 @@ export function QuickCapture({ onClose }: QuickCaptureProps) {
         />
         <div className="jan-quick-foot">
           <label>
-            <input type="radio" checked={target === 'new'} onChange={() => setTarget('new')} /> 새 메모
+            <input type="radio" name="jan-quick-target" checked={target === 'new'} aria-label="새 메모로 저장" onChange={() => setTarget('new')} /> 새 메모
           </label>
           <label>
-            <input type="radio" checked={target === 'append'} onChange={() => setTarget('append')} disabled={!memo} /> 현재 메모 끝에 추가
+            <input type="radio" name="jan-quick-target" checked={target === 'append'} aria-label="이 메모 끝에 붙이기" disabled={!memo} onChange={() => setTarget('append')} /> 이 메모 끝에
+          </label>
+          <label>
+            <input type="radio" name="jan-quick-target" checked={target === 'cursor'} aria-label="쓰던 자리에 넣기" disabled={!editor} onChange={() => setTarget('cursor')} /> 쓰던 자리에
           </label>
           <span className="flex-spacer" />
           <button onClick={commit} disabled={!text.trim()}>저장</button>

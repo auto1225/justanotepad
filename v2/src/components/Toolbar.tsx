@@ -63,7 +63,7 @@ import { CITATION_STYLES } from '../lib/citationFormat'
 import type { CitationStyle } from '../lib/citationFormat'
 import { citationCount, citationStyle, exportBibtex, importBibtex, setCitationStyle } from '../lib/paperCites'
 import { MATH_TEMPLATES } from '../lib/paperTools'
-import { convertImageFile } from '../lib/imageConvert'
+import { openImageConvert } from '../lib/imageConvert'
 import { useThemeStore } from '../store/themeStore'
 import { currentCellFormula, setCellFormula, suggestFormula } from '../lib/tableCompute'
 import { FORMULA_FUNCTIONS, NUMBER_FORMATS } from '../lib/tableFormula'
@@ -1602,7 +1602,7 @@ export function Toolbar(p: ToolbarProps) {
         { divider: '만들기', label: '' },
         { short: '그림판', label: '그림판 (그리기·손글씨·도형)', icon: 'paint', help: 'paint', onClick: () => run(p.onPaint) },
         { short: '글자 인식', label: '글자 인식 (그림에서 글 뽑기 · OCR)', icon: 'image-text', help: 'ocr', onClick: () => run(p.onOcr) },
-        { short: '변환', label: '이미지 변환 (크기·형식 바꿔 내려받기)', icon: 'image', help: 'image-convert', onClick: () => run(convertImageFile) },
+        { short: '변환', label: '이미지 변환 (크기·형식 바꿔 내려받기)', icon: 'image', help: 'image-convert', onClick: () => run(openImageConvert) },
         { short: '명함', label: '명함 · 카드 만들기', icon: 'cards', help: 'cards', onClick: () => run(p.onCards) },
 
         { divider: '기록', label: '' },
