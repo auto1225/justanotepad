@@ -3,6 +3,8 @@ import type { Editor } from '@tiptap/react'
 import { useSettingsStore } from '../store/settingsStore'
 import { CITATION_STYLES, formatBibEntry, formatInline, type Citation, type CitationStyle } from '../lib/citationFormat'
 import { bibEntryToCitation, citationsToBibtex, parseBibtex } from '../lib/bibtex'
+/* 인용 목록은 논문 탭과 함께 쓴다 — 저장 자리를 한 곳에 둔다 */
+import { loadCitations, saveCitations } from '../lib/paperCites'
 import { flash } from '../lib/flash'
 
 /** CrossRef 검색 결과 — 쓰는 항목만 */
@@ -25,20 +27,6 @@ interface PaperPanelProps {
 }
 
 const EMPTY: Citation = { id: '', authors: [''], title: '', year: '' }
-const STORAGE_KEY = 'jan-v2-citations'
-
-function loadCitations(): Citation[] {
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]')
-  } catch {
-    return []
-  }
-}
-function saveCitations(list: Citation[]) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(list))
-  } catch { /* 실패해도 진행 — 부가 기능이라 무시한다 */ }
-}
 
 /**
  * Phase 5 — 논문 모드 패널.

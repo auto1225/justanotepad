@@ -59,6 +59,10 @@ import {
   setImageAlign, setImageAttrs, setImageBorder, setImageShape, setImageStyle, setImageWidth,
   setImageWrap, setRotation, toggleAspectLock, toggleImageLock,
 } from '../lib/imageWord'
+import { CITATION_STYLES } from '../lib/citationFormat'
+import type { CitationStyle } from '../lib/citationFormat'
+import { citationCount, citationStyle, exportBibtex, importBibtex, setCitationStyle } from '../lib/paperCites'
+import { MATH_TEMPLATES } from '../lib/paperTools'
 import { currentCellFormula, setCellFormula, suggestFormula } from '../lib/tableCompute'
 import { FORMULA_FUNCTIONS, NUMBER_FORMATS } from '../lib/tableFormula'
 import { pickTableSize } from '../lib/tableInsert'
@@ -456,6 +460,19 @@ export function Toolbar(p: ToolbarProps) {
     if (kind === 'figure') insertFigureCaption(editor, text)
     else insertTableCaption(editor, text)
     renumberPaperTags(editor)
+  }
+
+  /* === 논문 탭 (학술 원고) === */
+  const askBibtex = async () => {
+    const text = await askText(
+      'BibTeX 붙여넣기 — Google Scholar·Zotero 가 주는 @article{...} 글',
+      '',
+      { multiline: true, placeholder: '@article{kim2026, title={...}, author={...}, year={2026} }' },
+    )
+    if (text && text.trim()) importBibtex(text)
+  }
+  const insertMathTemplate = (latex: string) => {
+    setMathStudio({ initial: latex })
   }
 
   /* === 차트·도해 상황 탭이 쓰는 손잡이 === */
@@ -1422,7 +1439,6 @@ export function Toolbar(p: ToolbarProps) {
           short: '출처 관리', label: '출처 관리 — 인용과 참고 문헌의 밑자료', icon: 'folder',
           onClick: () => run(openSources),
           menu: [
-            { short: 'DOI', label: 'DOI·논문 정보로 불러오기 (학술 인용 패널)', icon: 'cloud', onClick: () => run(p.onPaper) },
             { short: '항목 추가', label: '참고문헌 항목 직접 적어 넣기', icon: 'file-text', onClick: () => run(insertReference) },
             { short: '번호식 인용', label: '번호식 인용 넣기 [n] (학술 양식)', icon: 'quote', onClick: () => run(insertCitation) },
           ],
@@ -1478,43 +1494,80 @@ export function Toolbar(p: ToolbarProps) {
           ],
         },
 
-        { divider: '학술 양식', label: '' },
+      ],
+    },
+
+    /* 3.5 논문 — 학술 원고에만 있는 것들.
+       자료 탭(워드 「참조」)과 겹치지 않게, 여기에는 「논문이라서 필요한 것」 만 둔다:
+       학회 양식 · 논문 구성 요소 · 번호 수식과 식 참조 · DOI·BibTeX 인용 · 제출 전 점검. */
+    {
+      label: '논문', items: [
+        { divider: '학회 양식', label: '' },
         {
-          short: '표준 양식', label: '학술 표준 양식 입히기 (IEEE·APA·Springer…)', icon: 'file-text',
+          short: '표준 양식', label: '학술 표준 양식 입히기 (뼈대까지 함께)', icon: 'file-text',
           onClick: () => run(() => applyFormat(PAPER_FORMATS[0].key)),
           menu: PAPER_FORMATS.map((f): MenuItem => ({
             short: f.label, label: f.label, icon: 'file-text',
             onClick: () => run(() => applyFormat(f.key)),
           })),
         },
+        { short: '러닝 헤더', label: '러닝 헤더 · 꼬리말 (쪽마다 되풀이)', icon: 'pin', onClick: () => run(setRunningHeader) },
+
+        { divider: '논문 구성 요소', label: '' },
+        { short: '저자', label: '저자 · 소속 · 교신 블록', icon: 'user', onClick: () => run(insertAuthorBlock) },
+        { short: '초록', label: 'Abstract (초록) 박스', icon: 'file-text', onClick: () => run(insertAbstract) },
+        { short: '키워드', label: 'Keywords (키워드) 블록', icon: 'hash', onClick: () => run(insertKeywords) },
         {
-          short: '논문 요소', label: '논문 구성 요소 넣기 (초록·키워드·감사의 말…)', icon: 'file-plus',
-          onClick: () => run(insertAbstract),
+          short: '더 넣기', label: '그 밖의 구성 요소 넣기', icon: 'file-plus',
+          onClick: () => run(insertAcknowledgments),
           menu: [
-            { short: '저자', label: '저자 · 소속 · 교신 블록', icon: 'user', onClick: () => run(insertAuthorBlock) },
-            { short: '초록', label: 'Abstract (초록) 박스', icon: 'file-text', onClick: () => run(insertAbstract) },
-            { short: '키워드', label: 'Keywords (키워드) 블록', icon: 'hash', onClick: () => run(insertKeywords) },
             { short: '감사의 말', label: 'Acknowledgments (감사의 말)', icon: 'heart', onClick: () => run(insertAcknowledgments) },
             { short: '기여도', label: 'CRediT 저자 기여도', icon: 'user', onClick: () => run(() => insertCreditBlock(editor)) },
             { short: '이해상충', label: '이해상충 선언 (COI)', icon: 'shield', onClick: () => run(() => insertCoiBlock(editor)) },
             { short: '자료 공개', label: 'Data Availability (자료 공개)', icon: 'download', onClick: () => run(() => insertDataAvailabilityBlock(editor)) },
-            { short: '약어 목록', label: '약어 목록 자동 뽑기', icon: 'hash', onClick: () => run(() => insertAcronymList(editor)) },
+            { short: '약어 목록', label: '약어 목록 자동 뽑기 (본문에서 찾아 모은다)', icon: 'hash', onClick: () => run(() => insertAcronymList(editor)) },
             { short: '그림 목록', label: '그림 목록 (List of Figures)', icon: 'image', onClick: () => run(() => insertListOfFigures(editor)) },
             { short: '표 목록', label: '표 목록 (List of Tables)', icon: 'table', onClick: () => run(() => insertListOfTables(editor)) },
-            { short: '더보기', label: '논문 구성 요소 더보기 (창에서)', icon: 'menu', onClick: () => run(p.onPaper) },
-          ],
-        },
-        {
-          short: '수식', label: '수식 스튜디오 (기호·공식)', icon: 'hash',
-          onClick: () => run(() => setMathStudio({ initial: '' })),
-          menu: [
-            { short: '번호 수식', label: '번호 붙은 수식 넣기 (n)', icon: 'hash', onClick: () => run(() => { void eqNumbered() }) },
-            { short: '수식 틀', label: '수식 틀에서 고르기 (분수·적분·행렬·화학식)', icon: 'hash', onClick: () => run(() => { void eqFromTemplate() }) },
+            { short: '구성 요소 창', label: '논문 구성 요소 창에서 고르기', icon: 'menu', onClick: () => run(p.onPaper) },
           ],
         },
 
-        { divider: '제출 전 점검', label: '' },
+        { divider: '번호 수식 · 참조', label: '' },
+        { short: '번호 수식', label: '번호 붙은 수식 넣기 (n) — 식 참조가 따라간다', icon: 'hash', onClick: () => run(() => { void eqNumbered() }) },
+        {
+          short: '수식 틀', label: '수식 틀에서 고르기 (분수·적분·행렬·화학식)', icon: 'hash',
+          onClick: () => run(() => { void eqFromTemplate() }),
+          menu: MATH_TEMPLATES.slice(0, 10).map((t): MenuItem => ({
+            short: t.label, label: `수식 틀: ${t.label}`, icon: 'hash',
+            onClick: () => run(() => insertMathTemplate(t.latex)),
+          })),
+        },
+        {
+          short: '식 참조', label: '수식 참조 넣기 (식 n)', icon: 'link',
+          onClick: () => run(() => { void crossRef('eq') }),
+          menu: [
+            { short: '식', label: '수식 참조 넣기 (식 n)', icon: 'hash', onClick: () => run(() => { void crossRef('eq') }) },
+            { short: '그림', label: '그림 참조 넣기 (그림 n)', icon: 'image', onClick: () => run(() => { void crossRef('fig') }) },
+            { short: '표', label: '표 참조 넣기 (표 n)', icon: 'table', onClick: () => run(() => { void crossRef('tab') }) },
+          ],
+        },
+        { short: '번호 정리', label: '번호 모두 다시 매기기 (각주·캡션·수식·참조)', icon: 'refresh-cw', onClick: () => run(renumberAll) },
+
+        { divider: '학술 인용 (DOI · BibTeX)', label: '' },
+        { short: '인용 관리', label: `인용 관리 창 — DOI·제목으로 불러오기 (지금 ${citationCount()}건)`, icon: 'folder', onClick: () => run(p.onPaper) },
+        {
+          short: '표기 방식', label: `학술 표기 방식: ${CITATION_STYLES.find((c) => c.value === citationStyle())?.label || citationStyle()}`, icon: 'sliders',
+          menu: CITATION_STYLES.map((c): MenuItem => ({
+            short: c.label, label: `학술 표기 방식: ${c.label}`, icon: 'sliders',
+            onClick: () => run(() => { setCitationStyle(c.value as CitationStyle); flash(`학술 표기 — ${c.label}`) }),
+          })),
+        },
+        { short: 'BibTeX', label: 'BibTeX 가져오기 (Scholar·Zotero 글 붙여넣기)', icon: 'upload', onClick: () => run(() => { void askBibtex() }) },
+        { short: '.bib 저장', label: '.bib 로 내보내기 (Overleaf 에서 바로 쓴다)', icon: 'download', onClick: () => run(() => { exportBibtex(memoTitle()) }) },
+
+        { divider: '제출 전', label: '' },
         { short: '논문 검사', label: '논문 검사 (제출 전 자동 점검)', icon: 'shield', onClick: () => run(runPaperLint) },
+        { short: 'LaTeX', label: 'LaTeX(.tex) 내보내기 — Overleaf 용', icon: 'download', onClick: () => run(exportTex) },
       ],
     },
 
@@ -1943,8 +1996,8 @@ export function Toolbar(p: ToolbarProps) {
             { label: 'Markdown(.md) 저장', short: 'MD', icon: 'file-text', onClick: () => run(exportMd) },
             { label: 'HWPX (한글) 내보내기', short: 'HWPX', icon: 'file-text', onClick: () => run(exportHwpx) },
             { label: 'Word(.doc) 내보내기', short: 'DOC', icon: 'file-text', onClick: () => run(exportDocx) },
-            { label: 'LaTeX(.tex) 내보내기 — Overleaf 용', short: 'LaTeX', icon: 'file-text', onClick: () => run(exportTex) },
             { label: '모든 형식 한꺼번에 (MD·HTML·LaTeX·HWPX·DOC)', short: '모두', icon: 'download', onClick: () => run(() => { void exportAll() }) },
+            { label: 'LaTeX 하나만 내보내려면 — 논문 탭에 있다', short: 'LaTeX 위치', icon: 'info', onClick: () => run(() => { setRibbonTab('논문'); flash('논문 탭 › 제출 전 › LaTeX 내보내기') }) },
           ],
         },
         { divider: '공유 · 백업', label: '' },
@@ -2827,6 +2880,8 @@ export function Toolbar(p: ToolbarProps) {
     /* 검수 탭이 워드 「검토」 자리다 — 이름만 우리 것으로 바꿨다 */
     { label: '검수', items: reviewItems },
     { label: 'AI', items: aiItems, extra: true },
+    /* 논문은 문서 일반과 결이 달라 부가 탭으로 세운다 — 학회 양식·구성 요소·DOI 인용은 논문에만 있다 */
+    { label: '논문', items: pick('논문'), extra: true },
     /* 자료 탭이 워드 「참조」 자리다 — 예전 「논문」 탭의 학술 기능도 이 안에 녹였다
        (목차·캡션·인용·번호 매기기가 두 군데로 갈라져 있던 것을 한 자리로 모았다) */
     { label: '자료', items: pick('자료') },

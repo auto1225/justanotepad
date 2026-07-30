@@ -45,7 +45,7 @@ test.describe('자료 탭', () => {
   test('묶음이 워드 「참조」 와 같은 차례로 나뉜다', async ({ page }) => {
     await ready(page)
     const caps = await page.locator('.jan-ribbon-group .jan-ribbon-cap').allInnerTexts()
-    expect(caps.slice(0, 6)).toEqual(['목차', '각주 · 미주', '인용 · 참고 문헌', '캡션 · 참조', '색인 · 근거', '학술 양식'])
+    expect(caps).toEqual(['목차', '각주 · 미주', '인용 · 참고 문헌', '캡션 · 참조', '색인 · 근거'])
   })
 
   test('목차는 제목에서 만들어지고, 제목이 바뀌면 그 자리에서 새로 만들어진다', async ({ page }) => {

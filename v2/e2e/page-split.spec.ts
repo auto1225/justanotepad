@@ -146,8 +146,9 @@ test.describe('줄 단위 문단 분할', () => {
 
   test('2단으로 조판해도 쪽이 나뉜다 — 단을 다 채우고 다음 쪽으로 넘어간다', async ({ page }) => {
     // 논문 양식(2단)에서 쪽 나눔이 아예 꺼져 있던 적이 있다. 한 쪽에 다 쌓이면 안 된다.
-    await page.getByRole('tab', { name: '자료' }).click()
-    await page.getByRole('button', { name: /IEEE/ }).first().click()
+    await page.getByRole('tab', { name: '논문' }).click()
+    await page.locator('button[aria-label^="학술 표준 양식"] .jan-ribbon-caret').first().click()
+    await page.locator('.jan-ribbon-dropdown button.jan-menu-item').filter({ hasText: /IEEE/ }).first().click()
     await page.waitForTimeout(1200)
     await page.locator('.jan-page-node').first().click()
     await page.keyboard.press('Control+a')
@@ -174,8 +175,9 @@ test.describe('줄 단위 문단 분할', () => {
   test('지면 전체 폭을 쓰는 넓은 표도 아래 여백을 넘지 않는다', async ({ page }) => {
     // 단을 가로지르는 블록은 브라우저가 단을 더 만들지 않고 그냥 아래로 흘린다 —
     // 길이 합으로만 재던 시절에는 표가 아래 여백을 뚫고 내려갔다.
-    await page.getByRole('tab', { name: '자료' }).click()
-    await page.getByRole('button', { name: /IEEE/ }).first().click()
+    await page.getByRole('tab', { name: '논문' }).click()
+    await page.locator('button[aria-label^="학술 표준 양식"] .jan-ribbon-caret').first().click()
+    await page.locator('.jan-ribbon-dropdown button.jan-menu-item').filter({ hasText: /IEEE/ }).first().click()
     await page.waitForTimeout(1200)
     await page.locator('.jan-page-node').first().click()
     await page.keyboard.press('Control+a')
@@ -214,8 +216,9 @@ test.describe('줄 단위 문단 분할', () => {
     /* 넓은 표를 올렸다 내렸다 되풀이하던 시절, 그 왕복이 이어질수록 문서 뒷부분이
        통째로 복제됐다 (같은 절이 네 벌까지 늘어났다). 정리가 끝난 뒤 표식이
        정확히 한 번만 남아 있는지, 여러 번 건드려도 그대로인지 본다. */
-    await page.getByRole('tab', { name: '자료' }).click()
-    await page.getByRole('button', { name: /IEEE/ }).first().click()
+    await page.getByRole('tab', { name: '논문' }).click()
+    await page.locator('button[aria-label^="학술 표준 양식"] .jan-ribbon-caret').first().click()
+    await page.locator('.jan-ribbon-dropdown button.jan-menu-item').filter({ hasText: /IEEE/ }).first().click()
     await page.waitForTimeout(1200)
     await page.locator('.jan-page-node').first().click()
     await page.keyboard.press('Control+a')
@@ -253,8 +256,9 @@ test.describe('줄 단위 문단 분할', () => {
   test('표 자리·너비를 지정하면 그대로 조판된다 (단 안 / 단 걸치기 / 내용 맞춤)', async ({ page }) => {
     /* 표는 열 너비 조절용 노드뷰가 제 DOM 을 만들어서, 표에 건 속성이 화면에 닿지 않았다.
        속성 → 껍데기(.tableWrapper) → CSS 로 이어지는 길이 살아 있는지 본다. */
-    await page.getByRole('tab', { name: '자료' }).click()
-    await page.getByRole('button', { name: /IEEE/ }).first().click()
+    await page.getByRole('tab', { name: '논문' }).click()
+    await page.locator('button[aria-label^="학술 표준 양식"] .jan-ribbon-caret').first().click()
+    await page.locator('.jan-ribbon-dropdown button.jan-menu-item').filter({ hasText: /IEEE/ }).first().click()
     await page.waitForTimeout(1200)
     await page.locator('.jan-page-node').first().click()
     await page.keyboard.press('Control+a')
@@ -951,8 +955,8 @@ test.describe('줄 단위 문단 분할', () => {
     await page.locator('.ProseMirror').first().waitFor({ state: 'visible', timeout: 15000 })
     await page.waitForTimeout(400)
 
-    await page.getByRole('tab', { name: '자료', exact: true }).click()
-    /* 학술 표준 양식은 「학술 양식 › 표준 양식 ▾」 안에 모여 있다 */
+    await page.getByRole('tab', { name: '논문', exact: true }).click()
+    /* 학술 표준 양식은 논문 탭 「학회 양식 › 표준 양식 ▾」 안에 모여 있다 */
     await page.locator('button[aria-label^="학술 표준 양식"] .jan-ribbon-caret').first().click()
     await page.locator('.jan-ribbon-dropdown button.jan-menu-item').filter({ hasText: /APA/ }).first().click()
     await page.waitForTimeout(1500)
