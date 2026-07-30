@@ -67,6 +67,7 @@ import { WordSuggestPanel, type SuggestMode } from './WordSuggestPanel'
 import { ProtectPanel } from './ProtectPanel'
 import { CountPanel } from './CountPanel'
 import { ImageConvertPanel } from './ImageConvertPanel'
+import { PostitReopen } from './PostitReopen'
 import { applyTrackView } from '../lib/trackChanges'
 import { activateProtect } from '../lib/docProtect'
 import { ModalSkeleton } from './ModalSkeleton'
@@ -1333,6 +1334,8 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       {showProtect && <ProtectPanel editor={editor} onClose={() => setShowProtect(false)} />}
       {showCount && <CountPanel editor={editor} onClose={() => setShowCount(false)} />}
       {showImgConv && <ImageConvertPanel editor={editor} onClose={() => setShowImgConv(false)} />}
+      {/* 껐다 켰을 때 지난번 포스트잇을 그 자리에 되살린다 (브라우저가 저절로 창을 못 띄우게 막으므로 한 번 물어본다) */}
+      <PostitReopen />
       {tableFormat && <TableFormatPanel editor={editor} tab={tableFormat} onClose={() => setTableFormat(null)} />}
       <Suspense fallback={<ModalSkeleton />}>
         {showAi && <AiHelper editor={editor} onClose={() => setShowAi(false)} />}

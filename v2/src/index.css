@@ -7852,3 +7852,19 @@ body.jan-hide-highlight [data-highlight] { background: none !important; box-shad
 .jan-postit-note { font-size: 11px; color: var(--jan-dim, #6b7684); margin: 6px 0 0; }
 .jan-postit-addrow { display: flex; gap: 6px; align-items: center; }
 .jan-postit-addrow > button { font-size: 12px; }
+
+/* 포스트잇 — 지금 창이 떠 있는 장은 표를 달아 준다 */
+.jan-postit-card { position: relative; }
+.jan-postit-card.is-live { box-shadow: 0 0 0 2px #1f7a4d inset, 0 1px 4px rgba(0,0,0,0.18); }
+.jan-postit-live {
+  position: absolute; top: 4px; right: 6px; font-size: 10px; color: #1f7a4d;
+  background: rgba(255,255,255,0.7); border-radius: 999px; padding: 0 6px;
+}
+/* 되살리기 알림 — 지난번에 띄워 둔 포스트잇이 있을 때만 뜬다 */
+.jan-postit-reopen {
+  position: fixed; right: 16px; bottom: 18px; z-index: 900;
+  display: flex; align-items: center; gap: 8px;
+  background: #fff8c4; border: 1px solid rgba(0,0,0,0.16); border-radius: 999px;
+  padding: 6px 8px 6px 14px; box-shadow: 0 3px 10px rgba(0,0,0,0.18); font-size: 12px;
+}
+.jan-postit-reopen button { font-size: 12px; padding: 3px 10px; border-radius: 999px; cursor: pointer; }

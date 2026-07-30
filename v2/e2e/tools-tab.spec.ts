@@ -16,7 +16,8 @@ async function ready(page: Page) {
   await page.setViewportSize({ width: 1500, height: 940 })
   await page.addInitScript(() => {
     localStorage.setItem('jan-v2-role-onboarded', '1')
-    localStorage.removeItem('jan-v2-postits')
+    /* 포스트잇은 여기서 비우지 않는다 — 이 script 는 새로고침 때도 돌아
+       「껐다 켜도 남는가」 를 보는 시험이 스스로 지운 셈이 된다 */
     localStorage.removeItem('jan.v2.meeting-notes.draft')
     localStorage.removeItem('jan-v2-quick-target')
   })
@@ -104,83 +105,89 @@ test.describe('도구 탭', () => {
     await page.keyboard.press('Escape')
   })
 
-  test('포스트잇 — 카드에서 글·색을 바로 고치고 메모로 옮긴다', async ({ page }) => {
-    const editor = await ready(page)
+  test('포스트잇 — 한 장이 자기 창에 뜨고, 창 안에서 서식까지 쓴다', async ({ page, context }) => {
+    await ready(page)
+    await page.evaluate(() => localStorage.removeItem('jan-v2-postits'))
     await tool(page, '포스트잇')
     const panel = page.locator('.jan-postit-modal')
-    await expect(panel).toBeVisible()
 
-    await panel.locator('textarea').first().fill('장 볼 것')
+    await panel.locator('textarea[aria-label="새 포스트잇 내용"]').fill('첫째 장')
     await panel.getByRole('button', { name: '새 포스트잇 띄우기' }).click()
-    await page.waitForTimeout(400)
+    await page.waitForTimeout(600)
+    await panel.locator('textarea[aria-label="새 포스트잇 내용"]').fill('둘째 장')
+    await panel.getByRole('button', { name: '새 포스트잇 띄우기' }).click()
+    await page.waitForTimeout(600)
 
-    const card = panel.locator('.jan-postit-card').first()
-    await expect(card).toBeVisible()
-    // 카드에서 글을 고치면 그대로 저장된다
-    await card.locator('textarea[aria-label="포스트잇 내용"]').fill('장 볼 것 — 우유')
-    await page.waitForTimeout(300)
+    /* 두 장이 각자 창에 뜬다 (한 창에 몰아넣지 않는다) */
+    const wins = context.pages().filter((p) => p !== page)
+    expect(wins).toHaveLength(2)
+
+    /* 창 안에 작은 편집기와 서식 단추가 있다 */
+    const win = wins[wins.length - 1]
+    await expect(win.locator('#pad')).toBeVisible()
+    await expect(win.locator('.bar button[data-cmd="bold"]')).toBeVisible()
+    await expect(win.locator('.bar button[data-cmd="insertUnorderedList"]')).toBeVisible()
+
+    /* 굵게로 적은 글이 서식째로 저장된다 */
+    await win.locator('#pad').click()
+    await win.keyboard.press('End')
+    await win.locator('.bar button[data-cmd="bold"]').click()
+    await win.keyboard.type(' 굵게')
+    await win.waitForTimeout(500)
     const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('jan-v2-postits') || '[]'))
-    expect(String(saved[0].text)).toContain('우유')
+    expect(String(saved[0].html)).toContain('<b>')
+    expect(String(saved[0].text)).toContain('굵게')
+    expect(saved[0].open).toBe(true)
+    expect(typeof saved[0].w).toBe('number')     // 창 크기를 적어 둔다
 
-    // 색도 카드에서 바꾼다
-    await card.locator('button[aria-label^="색 바꾸기"]').nth(2).click()
-    await page.waitForTimeout(300)
-    const recolored = await page.evaluate(() => JSON.parse(localStorage.getItem('jan-v2-postits') || '[]'))
-    expect(recolored[0].color).not.toBe(saved[0].color)
-
-    // 「메모로」 는 쓰던 자리에 옮긴다
-    await card.getByRole('button', { name: '메모로' }).click()
-    await page.waitForTimeout(300)
-    await expect(editor).toContainText('우유')
+    /* 목록 카드에 「떠 있음」 표가 붙는다 */
+    await expect(panel.locator('.jan-postit-card.is-live')).toHaveCount(2)
   })
 
-  test('포스트잇 — 껍데기 없는 창에 메모지만 뜨고, 거기서 고친 글이 목록에 비친다', async ({ page }) => {
+  test('포스트잇 — 껐다 켜도 지난번에 띄워 둔 것을 그 자리에 되살린다', async ({ page, context }) => {
     await ready(page)
+    await page.evaluate(() => localStorage.removeItem('jan-v2-postits'))
+    await tool(page, '포스트잇')
+    const panel = page.locator('.jan-postit-modal')
+    await panel.locator('textarea[aria-label="새 포스트잇 내용"]').fill('껐다 켜도 남는다')
+    await panel.getByRole('button', { name: '새 포스트잇 띄우기' }).click()
+    await page.waitForTimeout(700)
+
+    /* 창을 닫고(컴퓨터를 끈 셈) 앱을 다시 연다 */
+    for (const w of context.pages().filter((p) => p !== page)) await w.close()
+    await page.reload()
+    await page.locator('.ProseMirror').first().waitFor({ state: 'visible', timeout: 15000 })
+
+    const chip = page.locator('.jan-postit-reopen')
+    await expect(chip).toBeVisible({ timeout: 8000 })
+    await expect(chip).toContainText('1장')
+    await chip.getByRole('button', { name: '다시 띄우기' }).click()
+    await page.waitForTimeout(900)
+
+    const back = context.pages().filter((p) => p !== page)
+    expect(back).toHaveLength(1)
+    await expect(back[0].locator('#pad')).toContainText('껐다 켜도 남는다')
+  })
+
+  test('포스트잇 — 껍데기 없는 창에 모아 볼 수도 있다', async ({ page }) => {
+    await ready(page)
+    await page.evaluate(() => localStorage.removeItem('jan-v2-postits'))
     const support = await page.evaluate(() => 'documentPictureInPicture' in window)
     test.skip(!support, '이 브라우저는 껍데기 없는 창(Document PiP)을 못 띄운다')
 
     await tool(page, '포스트잇')
     const panel = page.locator('.jan-postit-modal')
-    await panel.locator('textarea').first().fill('우유 · 계란')
+    await panel.locator('textarea[aria-label="새 포스트잇 내용"]').fill('모아 보기 시험')
     await panel.getByRole('button', { name: '새 포스트잇 띄우기' }).click()
-    await page.waitForTimeout(900)
+    await page.waitForTimeout(600)
+    await panel.getByRole('button', { name: /모아 보기/ }).click()
+    await page.waitForTimeout(700)
 
-    /* 뜬 창에는 주소창·탭이 없다 — 우리가 넣은 메모지만 있다 */
     const inside = await page.evaluate(() => {
       const w = (window as unknown as { documentPictureInPicture?: { window?: Window | null } }).documentPictureInPicture?.window
-      if (!w) return null
-      return {
-        notes: w.document.querySelectorAll('.note').length,
-        text: (w.document.querySelector('.note textarea') as HTMLTextAreaElement | null)?.value || '',
-        dots: w.document.querySelectorAll('.note .dot').length,
-      }
+      return w ? { notes: w.document.querySelectorAll('.note').length, dots: w.document.querySelectorAll('.note .dot').length } : null
     })
-    expect(inside).toMatchObject({ notes: 1, text: '우유 · 계란', dots: 6 })
-
-    /* 떠 있는 창에서 고치면 목록과 저장소에 그대로 간다 */
-    await page.evaluate(() => {
-      const w = (window as unknown as { documentPictureInPicture?: { window?: Window | null } }).documentPictureInPicture?.window
-      const ta = w?.document.querySelector('.note textarea') as HTMLTextAreaElement | null
-      if (!ta) return
-      ta.value = '우유 · 계란 · 빵'
-      ta.dispatchEvent(new Event('input', { bubbles: true }))
-    })
-    await page.waitForTimeout(300)
-    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('jan-v2-postits') || '[]'))
-    expect(String(saved[0].text)).toContain('빵')
-    await expect(panel.locator('.jan-postit-card textarea').first()).toHaveValue(/빵/)
-
-    /* 「모두 띄우기」 는 목록에 있는 것을 한 창에 쌓는다 */
-    await panel.locator('textarea').first().fill('두 번째')
-    await panel.getByRole('button', { name: '새 포스트잇 띄우기' }).click()
-    await page.waitForTimeout(700)
-    await panel.getByRole('button', { name: '모두 띄우기' }).click()
-    await page.waitForTimeout(500)
-    const count = await page.evaluate(() => {
-      const w = (window as unknown as { documentPictureInPicture?: { window?: Window | null } }).documentPictureInPicture?.window
-      return w ? w.document.querySelectorAll('.note').length : 0
-    })
-    expect(count).toBe(2)
+    expect(inside).toMatchObject({ notes: 1, dots: 6 })
   })
 
   test('강의 노트는 강의 갈래로 열린다 — 지난번 회의 초안이 있어도', async ({ page }) => {
