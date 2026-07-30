@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { listPostits, addPostit, removePostit, updatePostit, openPostitWindow, type Postit } from '../lib/justpin'
+import { floatAll, floatPostit, floatSupported, refreshFloat } from '../lib/postitFloat'
 import { useDocStore } from '../store/docStore'
 import { flash } from '../lib/flash'
 
@@ -30,10 +31,13 @@ export function PostitPanel({ onClose }: PostitPanelProps) {
       if (e.key === STORAGE_KEY) refresh()
     }
     window.addEventListener('storage', onStorage)
+    /* 떠 있는 창에서 고친 것도 곧바로 목록에 비친다 */
+    window.addEventListener('jan-postit-changed', refresh)
     // 폴링도 추가 (같은 origin 새 창은 storage 이벤트 발화 안 할 수 있음)
     const t = setInterval(refresh, 2000)
     return () => {
       window.removeEventListener('storage', onStorage)
+      window.removeEventListener('jan-postit-changed', refresh)
       clearInterval(t)
     }
   }, [])
@@ -45,14 +49,19 @@ export function PostitPanel({ onClose }: PostitPanelProps) {
     const p = addPostit(text.trim(), color)
     setText('')
     refresh()
-    /* 새 창이 막히면 아무 일도 없는 것처럼 보인다 — 목록에는 남았다고 알려 준다 */
-    const opened = await openPostitWindow(p)
-    flash(opened ? '포스트잇을 띄웠다' : '새 창이 막혔다 — 목록에 넣어 두었으니 「열기」 로 띄운다', 2600)
+    await open(p)
   }
 
+  /**
+   * 포스트잇 띄우기 — 껍데기(주소창) 없는 떠 있는 창을 먼저 쓴다.
+   * 그 길이 없는 브라우저에서는 예전처럼 작은 팝업으로 띄우고, 그것도 막히면 알려 준다.
+   */
   async function open(p: Postit) {
+    if (await floatPostit(p)) { flash('메모지만 띄웠다 — 늘 위에 뜬다'); return }
     const opened = await openPostitWindow(p)
-    if (!opened) flash('새 창이 막혔다 — 브라우저에서 이 사이트의 팝업을 허용한다', 2600)
+    flash(opened
+      ? '이 브라우저는 껍데기 없는 창을 못 띄운다 — 작은 창으로 열었다 (앱으로 설치하면 주소창이 없다)'
+      : '새 창이 막혔다 — 목록에 넣어 두었으니 「열기」 로 다시 띄운다', 3000)
   }
 
   function del(id: string) {
@@ -64,6 +73,7 @@ export function PostitPanel({ onClose }: PostitPanelProps) {
   function edit(id: string, patch: Partial<Postit>) {
     updatePostit(id, patch)
     refresh()
+    refreshFloat()          // 떠 있는 창도 같은 값으로 맞춘다
   }
 
   /** 포스트잇을 지금 문서로 옮긴다 — 「메모로 키우기」 */
@@ -101,8 +111,16 @@ export function PostitPanel({ onClose }: PostitPanelProps) {
                 />
               ))}
             </div>
-            <button className="jan-postit-add" onClick={() => { void create() }}>새 포스트잇 (별도 창)</button>
-            <p className="jan-postit-note">카드에서 글과 색을 바로 고칠 수 있다 · 「메모로」 는 쓰던 자리에 옮긴다</p>
+            <div className="jan-postit-addrow">
+              <button className="jan-postit-add" onClick={() => { void create() }}>새 포스트잇 띄우기</button>
+              <button onClick={() => { void floatAll() }} disabled={items.length === 0}>모두 띄우기</button>
+            </div>
+            <p className="jan-postit-note">
+              {floatSupported()
+                ? '떠 있는 창에는 주소창·탭이 없다 — 메모지만 보이고 늘 위에 뜬다 (한 창에 여러 장을 쌓는다)'
+                : '이 브라우저는 껍데기 없는 창을 못 띄운다 — 작은 창으로 뜬다. 앱으로 설치하면 주소창이 없어진다'}
+              {' · 카드에서 글과 색을 바로 고칠 수 있다 · 「메모로」 는 쓰던 자리에 옮긴다'}
+            </p>
           </div>
 
           <div className="jan-postit-grid">

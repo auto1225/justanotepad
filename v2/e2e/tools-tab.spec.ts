@@ -111,7 +111,7 @@ test.describe('도구 탭', () => {
     await expect(panel).toBeVisible()
 
     await panel.locator('textarea').first().fill('장 볼 것')
-    await panel.getByRole('button', { name: '새 포스트잇 (별도 창)' }).click()
+    await panel.getByRole('button', { name: '새 포스트잇 띄우기' }).click()
     await page.waitForTimeout(400)
 
     const card = panel.locator('.jan-postit-card').first()
@@ -132,6 +132,55 @@ test.describe('도구 탭', () => {
     await card.getByRole('button', { name: '메모로' }).click()
     await page.waitForTimeout(300)
     await expect(editor).toContainText('우유')
+  })
+
+  test('포스트잇 — 껍데기 없는 창에 메모지만 뜨고, 거기서 고친 글이 목록에 비친다', async ({ page }) => {
+    await ready(page)
+    const support = await page.evaluate(() => 'documentPictureInPicture' in window)
+    test.skip(!support, '이 브라우저는 껍데기 없는 창(Document PiP)을 못 띄운다')
+
+    await tool(page, '포스트잇')
+    const panel = page.locator('.jan-postit-modal')
+    await panel.locator('textarea').first().fill('우유 · 계란')
+    await panel.getByRole('button', { name: '새 포스트잇 띄우기' }).click()
+    await page.waitForTimeout(900)
+
+    /* 뜬 창에는 주소창·탭이 없다 — 우리가 넣은 메모지만 있다 */
+    const inside = await page.evaluate(() => {
+      const w = (window as unknown as { documentPictureInPicture?: { window?: Window | null } }).documentPictureInPicture?.window
+      if (!w) return null
+      return {
+        notes: w.document.querySelectorAll('.note').length,
+        text: (w.document.querySelector('.note textarea') as HTMLTextAreaElement | null)?.value || '',
+        dots: w.document.querySelectorAll('.note .dot').length,
+      }
+    })
+    expect(inside).toMatchObject({ notes: 1, text: '우유 · 계란', dots: 6 })
+
+    /* 떠 있는 창에서 고치면 목록과 저장소에 그대로 간다 */
+    await page.evaluate(() => {
+      const w = (window as unknown as { documentPictureInPicture?: { window?: Window | null } }).documentPictureInPicture?.window
+      const ta = w?.document.querySelector('.note textarea') as HTMLTextAreaElement | null
+      if (!ta) return
+      ta.value = '우유 · 계란 · 빵'
+      ta.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await page.waitForTimeout(300)
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('jan-v2-postits') || '[]'))
+    expect(String(saved[0].text)).toContain('빵')
+    await expect(panel.locator('.jan-postit-card textarea').first()).toHaveValue(/빵/)
+
+    /* 「모두 띄우기」 는 목록에 있는 것을 한 창에 쌓는다 */
+    await panel.locator('textarea').first().fill('두 번째')
+    await panel.getByRole('button', { name: '새 포스트잇 띄우기' }).click()
+    await page.waitForTimeout(700)
+    await panel.getByRole('button', { name: '모두 띄우기' }).click()
+    await page.waitForTimeout(500)
+    const count = await page.evaluate(() => {
+      const w = (window as unknown as { documentPictureInPicture?: { window?: Window | null } }).documentPictureInPicture?.window
+      return w ? w.document.querySelectorAll('.note').length : 0
+    })
+    expect(count).toBe(2)
   })
 
   test('강의 노트는 강의 갈래로 열린다 — 지난번 회의 초안이 있어도', async ({ page }) => {

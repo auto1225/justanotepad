@@ -7850,3 +7850,5 @@ body.jan-hide-highlight [data-highlight] { background: none !important; box-shad
 }
 .jan-postit-card .jan-postit-colors { margin: 4px 0 2px; }
 .jan-postit-note { font-size: 11px; color: var(--jan-dim, #6b7684); margin: 6px 0 0; }
+.jan-postit-addrow { display: flex; gap: 6px; align-items: center; }
+.jan-postit-addrow > button { font-size: 12px; }
