@@ -365,6 +365,8 @@ export function CommandPalette(p: CommandPaletteProps) {
       { id:'business-cards', cat:'도구', icon:'cards', label:'명함 관리', desc:'연락처 저장 · 검색 · vCard/CSV 내보내기.', run: () => p.onCards?.() },
       { id:'spell', cat:'도구', icon:'check', label:'맞춤법 검사 켬/끔', desc:'spellcheck 켬/끔.', run: toggleSpellCheck },
       { id:'web', cat:'도구', icon:'globe', label:'웹 검색', desc:'구글에서 키워드 검색.', run: webSearch },
+      { id:'ai-write', cat:'도구', icon:'sparkle', label:'문서 자동 작성', desc:'주제 한 줄로 문서 한 벌을 만듭니다.', hint:'Alt+J', run: () => window.dispatchEvent(new CustomEvent('jan-ai-write', { detail: {} })) },
+      { id:'ai-connect', cat:'도구', icon:'settings', label:'AI 연결', desc:'내가 쓰는 AI 를 잇고 연결을 시험합니다.', run: () => window.dispatchEvent(new Event('jan-ai-connect')) },
       { id:'ai', cat:'도구', icon:'ai', label:'AI 어시스턴트', desc:'AI 도우미 모달.', hint:'Ctrl+/', run: () => p.onAi?.() },
       { id:'chat', cat:'도구', icon:'ai', label:'AI 챗 패널', desc:'AI 채팅 사이드 패널.', run: () => p.onChat?.() },
       { id:'search', cat:'도구', icon:'search', label:'모든 메모에서 찾기', desc:'모든 메모 검색.', hint:'Ctrl+Shift+F', run: () => p.onSearch?.() },

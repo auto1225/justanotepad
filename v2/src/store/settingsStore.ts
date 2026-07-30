@@ -5,12 +5,15 @@ import { persist } from 'zustand/middleware'
  * 사용자 설정 — API 키, 동기화, 인용 스타일, 협업.
  */
 export type CitationStyle = 'apa' | 'ieee' | 'mla'
-export type AiProvider = 'anthropic' | 'openai' | 'proxy' | 'none'
+export type AiProvider = 'anthropic' | 'openai' | 'google' | 'local' | 'proxy' | 'none'
 export type SyncProvider = 'none' | 'local' | 'dropbox' | 'onedrive' | 'supabase'
 
 interface SettingsState {
   anthropicKey: string
   openaiKey: string
+  googleKey: string
+  /** 내 컴퓨터에서 도는 모델 서버 (Ollama · LM Studio) — 키가 없어도 쓴다 */
+  localUrl: string
   aiProvider: AiProvider
   aiModel: string
 
@@ -39,6 +42,8 @@ interface SettingsState {
 const DEFAULTS = {
   anthropicKey: '',
   openaiKey: '',
+  googleKey: '',
+  localUrl: 'http://localhost:11434/v1',
   aiProvider: 'none' as AiProvider,
   aiModel: 'gpt-4o-mini',
   supabaseUrl: '',

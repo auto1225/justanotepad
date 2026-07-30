@@ -31,8 +31,28 @@ export interface AiCallResult {
 
 const TIMEOUT_MS = 30000
 const VISION_TIMEOUT_MS = 45000
+/** 긴 문서를 쓸 때는 오래 기다린다 — 열 쪽짜리 보고서는 30초로 끝나지 않는다 */
+const LONG_TIMEOUT_MS = 180000
 const DEFAULT_OPENAI_MODEL = 'gpt-4o-mini'
 const DEFAULT_ANTHROPIC_MODEL = 'claude-sonnet-4-6'
+const DEFAULT_GOOGLE_MODEL = 'gemini-2.5-flash'
+const DEFAULT_LOCAL_MODEL = 'llama3.1'
+const DEFAULT_MAX_TOKENS = 2048
+
+/** 제공자마다 기본으로 쓸 모델 */
+export function defaultModelFor(provider: string): string {
+  if (provider === 'anthropic') return DEFAULT_ANTHROPIC_MODEL
+  if (provider === 'google') return DEFAULT_GOOGLE_MODEL
+  if (provider === 'local') return DEFAULT_LOCAL_MODEL
+  return DEFAULT_OPENAI_MODEL
+}
+
+/** 이 부탁에 얼마를 쓰고 얼마를 기다릴까 */
+export interface AiRunOptions {
+  /** 답으로 받을 최대 길이 (긴 문서는 8000 쯤) */
+  maxTokens?: number
+  timeoutMs?: number
+}
 
 interface AnthropicResponse {
   content?: Array<{ text?: string }>
@@ -77,8 +97,8 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-async function callAnthropic(prompt: string, model: string, key: string): Promise<AiCallResult> {
-  const t = withTimeout()
+async function callAnthropic(prompt: string, model: string, key: string, o: AiRunOptions = {}): Promise<AiCallResult> {
+  const t = withTimeout(o.timeoutMs || TIMEOUT_MS)
   try {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -90,8 +110,8 @@ async function callAnthropic(prompt: string, model: string, key: string): Promis
         'anthropic-dangerous-direct-browser-access': 'true',
       },
       body: JSON.stringify({
-        model: model || 'claude-sonnet-4-6',
-        max_tokens: 2048,
+        model: model || DEFAULT_ANTHROPIC_MODEL,
+        max_tokens: o.maxTokens || DEFAULT_MAX_TOKENS,
         messages: [{ role: 'user', content: prompt }],
       }),
     })
@@ -103,7 +123,7 @@ async function callAnthropic(prompt: string, model: string, key: string): Promis
     const text = (data.content || []).map((block) => block.text || '').join('')
     return { ok: true, text }
   } catch (e: unknown) {
-    if (errorName(e) === 'AbortError') return { ok: false, error: 'Anthropic 타임아웃 (30초 초과)' }
+    if (errorName(e) === 'AbortError') return { ok: false, error: 'Anthropic 응답이 늦어 그만두었다' }
     return { ok: false, error: 'Anthropic 네트워크 오류: ' + errorMessage(e) }
   } finally {
     t.cancel()
@@ -116,8 +136,8 @@ function imagePayload(dataUrl: string): { mimeType: string; data: string } {
   return { mimeType, data: data || '' }
 }
 
-async function callOpenAI(prompt: string, model: string, key: string): Promise<AiCallResult> {
-  const t = withTimeout()
+async function callOpenAI(prompt: string, model: string, key: string, o: AiRunOptions = {}): Promise<AiCallResult> {
+  const t = withTimeout(o.timeoutMs || TIMEOUT_MS)
   try {
     const r = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -127,9 +147,9 @@ async function callOpenAI(prompt: string, model: string, key: string): Promise<A
         Authorization: `Bearer ${key}`,
       },
       body: JSON.stringify({
-        model: model || 'gpt-4o-mini',
+        model: model || DEFAULT_OPENAI_MODEL,
         messages: [{ role: 'user', content: prompt }],
-        max_tokens: 2048,
+        max_tokens: o.maxTokens || DEFAULT_MAX_TOKENS,
       }),
     })
     if (!r.ok) {
@@ -140,7 +160,7 @@ async function callOpenAI(prompt: string, model: string, key: string): Promise<A
     const text = data.choices?.[0]?.message?.content || ''
     return { ok: true, text }
   } catch (e: unknown) {
-    if (errorName(e) === 'AbortError') return { ok: false, error: 'OpenAI 타임아웃 (30초 초과)' }
+    if (errorName(e) === 'AbortError') return { ok: false, error: 'OpenAI 응답이 늦어 그만두었다' }
     return { ok: false, error: 'OpenAI 네트워크 오류: ' + errorMessage(e) }
   } finally {
     t.cancel()
@@ -223,6 +243,74 @@ async function callAnthropicVision(prompt: string, dataUrl: string, model: strin
   }
 }
 
+interface GoogleResponse {
+  candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
+  error?: { message?: string }
+}
+
+/** 구글 제미나이 — 키를 주소에 붙이지 않고 헤더로 보낸다 (주소는 기록에 남는다) */
+async function callGoogle(prompt: string, model: string, key: string, o: AiRunOptions = {}): Promise<AiCallResult> {
+  const t = withTimeout(o.timeoutMs || TIMEOUT_MS)
+  const name = encodeURIComponent(model || DEFAULT_GOOGLE_MODEL)
+  try {
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${name}:generateContent`, {
+      method: 'POST',
+      signal: t.signal,
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: { maxOutputTokens: o.maxTokens || DEFAULT_MAX_TOKENS },
+      }),
+    })
+    const data = await r.json().catch(() => ({})) as GoogleResponse
+    if (!r.ok) return { ok: false, error: safeError(`Google ${r.status}`, data.error?.message || '') }
+    const text = (data.candidates?.[0]?.content?.parts || []).map((part) => part.text || '').join('')
+    return { ok: true, text }
+  } catch (e: unknown) {
+    if (errorName(e) === 'AbortError') return { ok: false, error: 'Google 응답이 늦어 그만두었다' }
+    return { ok: false, error: 'Google 연결 오류: ' + errorMessage(e) }
+  } finally {
+    t.cancel()
+  }
+}
+
+/** 주소 끝을 다듬는다 — 사용자가 적는 값이라 /v1 이 붙었는지 제각각이다 */
+export function localBase(url: string): string {
+  const u = (url || 'http://localhost:11434/v1').trim().replace(/\/+$/, '')
+  return /\/v\d+$/.test(u) ? u : u + '/v1'
+}
+
+/**
+ * 내 컴퓨터에서 도는 모델 서버 (Ollama · LM Studio).
+ * 둘 다 OpenAI 와 같은 말투를 쓰므로 같은 길로 부른다 — 키가 필요 없다.
+ */
+async function callLocal(prompt: string, model: string, url: string, o: AiRunOptions = {}): Promise<AiCallResult> {
+  const t = withTimeout(o.timeoutMs || LONG_TIMEOUT_MS)   // 집 컴퓨터는 느릴 수 있다
+  try {
+    const r = await fetch(localBase(url) + '/chat/completions', {
+      method: 'POST',
+      signal: t.signal,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: model || DEFAULT_LOCAL_MODEL,
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: o.maxTokens || DEFAULT_MAX_TOKENS,
+      }),
+    })
+    if (!r.ok) {
+      const err = await r.text().catch(() => '')
+      return { ok: false, error: safeError(`내 컴퓨터 모델 ${r.status}`, err) }
+    }
+    const data = await r.json() as OpenAIResponse
+    return { ok: true, text: data.choices?.[0]?.message?.content || '' }
+  } catch (e: unknown) {
+    if (errorName(e) === 'AbortError') return { ok: false, error: '내 컴퓨터 모델이 답하지 않아 그만두었다' }
+    return { ok: false, error: '내 컴퓨터 모델에 닿지 않는다 — 서버가 도는지, 주소가 맞는지 살펴본다 (' + errorMessage(e) + ')' }
+  } finally {
+    t.cancel()
+  }
+}
+
 /** Vercel /api/v2-ai 프록시 호출 — 사용자 키 불필요. */
 async function callProxy(prompt: string, providerHint: 'anthropic' | 'openai', model: string, dataUrl?: string): Promise<AiCallResult> {
   const t = withTimeout(dataUrl ? VISION_TIMEOUT_MS : TIMEOUT_MS)
@@ -271,24 +359,37 @@ async function callProxyWithFallback(prompt: string, model: string, dataUrl?: st
   }
 }
 
-/** 메인 진입점. provider 에 따라 적절한 호출. */
-export async function runAi(mode: AiMode, text: string): Promise<AiCallResult> {
+/**
+ * 부탁 하나를 지금 연결된 곳으로 보낸다 — 모든 AI 기능이 지나는 한 문.
+ * 지시문을 손대지 않으므로, 문서 자동 작성처럼 스스로 지시문을 짜는 쪽에서 쓴다.
+ */
+export async function chatAi(prompt: string, o: AiRunOptions = {}): Promise<AiCallResult> {
   const s = useSettingsStore.getState()
-  const prompt = PROMPTS[mode](text)
+  const model = s.aiModel || defaultModelFor(s.aiProvider)
   if (s.aiProvider === 'anthropic') {
-    if (!s.anthropicKey) return { ok: false, error: '설정에서 Anthropic API 키를 입력하세요' }
-    return callAnthropic(prompt, resolveModelForProvider('anthropic', s.aiModel || DEFAULT_ANTHROPIC_MODEL), s.anthropicKey)
+    if (!s.anthropicKey) return { ok: false, error: 'AI 연결 창에서 Anthropic 키를 넣으세요' }
+    return callAnthropic(prompt, resolveModelForProvider('anthropic', model), s.anthropicKey, o)
   }
   if (s.aiProvider === 'openai') {
-    if (!s.openaiKey) return { ok: false, error: '설정에서 OpenAI API 키를 입력하세요' }
-    return callOpenAI(prompt, resolveModelForProvider('openai', s.aiModel || DEFAULT_OPENAI_MODEL), s.openaiKey)
+    if (!s.openaiKey) return { ok: false, error: 'AI 연결 창에서 OpenAI 키를 넣으세요' }
+    return callOpenAI(prompt, resolveModelForProvider('openai', model), s.openaiKey, o)
+  }
+  if (s.aiProvider === 'google') {
+    if (!s.googleKey) return { ok: false, error: 'AI 연결 창에서 Google 키를 넣으세요' }
+    return callGoogle(prompt, model.startsWith('gemini') ? model : DEFAULT_GOOGLE_MODEL, s.googleKey, o)
+  }
+  if (s.aiProvider === 'local') {
+    return callLocal(prompt, model, s.localUrl, o)
   }
   if (s.aiProvider === 'proxy') {
-    // 모델 prefix 로 어느 backend 인지 추론
-    const model = s.aiModel || DEFAULT_OPENAI_MODEL
     return callProxyWithFallback(prompt, model || DEFAULT_OPENAI_MODEL)
   }
-  return { ok: false, error: 'AI 제공자가 설정되지 않음 — 설정 모달에서 선택' }
+  return { ok: false, error: 'AI 가 연결되지 않았다 — AI 탭의 「AI 연결」 에서 잇는다' }
+}
+
+/** 미리 갖춘 지시문(요약·번역·다듬기…)에 글을 얹어 보낸다. */
+export async function runAi(mode: AiMode, text: string): Promise<AiCallResult> {
+  return chatAi(PROMPTS[mode](text))
 }
 
 export async function runAiVision(prompt: string, dataUrl: string): Promise<AiCallResult> {
@@ -314,6 +415,8 @@ export function aiConfigured(): boolean {
   const s = useSettingsStore.getState()
   if (s.aiProvider === 'anthropic') return !!s.anthropicKey
   if (s.aiProvider === 'openai') return !!s.openaiKey
+  if (s.aiProvider === 'google') return !!s.googleKey
+  if (s.aiProvider === 'local') return !!s.localUrl        // 내 컴퓨터 모델은 키가 없다
   if (s.aiProvider === 'proxy') return true
   return false
 }

@@ -51,6 +51,12 @@ export function installWordKeymap(editor: Editor, opts: {
       return
     }
 
+    /* 문서 자동 작성 — 수식어 하나로. 문서에 초점이 없어도 열려야 하므로 초점 검사보다 앞에 둔다.
+       Alt 자리는 그림·표 개체가 거의 다 쓰고 있어 (Alt+W 는 감싸기, Alt+K 는 그림 자리)
+       남은 j 를 「짓기」 로 삼았다. AI 연결은 한 번 하는 일이라 자리표를 두지 않고
+       리본 AI 탭과 명령 팔레트로 연다 (둘 다 키보드로 끝까지 갈 수 있다). */
+    if (alt && !ctrl && !shift && k === 'j') { e.preventDefault(); window.dispatchEvent(new CustomEvent('jan-ai-write', { detail: {} })); return }
+
     // 서식/편집 계열은 편집기에 포커스가 있을 때만 — 아니면 Ctrl+R(새로고침)·Ctrl+L(주소창) 같은
     // 브라우저 기본 동작을 돌려준다
     if (!editor.isFocused) return

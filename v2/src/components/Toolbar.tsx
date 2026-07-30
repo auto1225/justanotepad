@@ -104,6 +104,8 @@ import { downloadHtmlFile, downloadDocFile } from '../lib/htmlDocExport'
 import { MathStudio } from './MathStudio'
 import { getSavableHtml } from '../extensions/PageDocument'
 import { errText } from '../lib/errText'
+import { openAiConnect } from '../lib/aiConnect'
+import { openAiWrite } from '../lib/aiWrite'
 import { createImageCapture, createSpeechRecognition, getDisplayMedia } from '../lib/browserApis'
 
 /** v1·외부 백업에서 읽어 들이는 메모 — 키 이름이 버전마다 달라 넉넉히 받는다 */
@@ -1912,9 +1914,11 @@ export function Toolbar(p: ToolbarProps) {
 
     /* 5. 미디어 */
     
-    /* 6. 도구 */
+    /* 6. 도우미 — 글을 손봐 주고 문서를 살펴 주는 것들.
+       (창을 열어 만들고 적는 「도구」 묶음과 이름이 겹쳐 있었다. pick 은 먼저 만난 것만
+        집으므로, 겹친 채로는 이 묶음의 모든 기능이 리본에서 사라진다.) */
     {
-      label: '도구', items: [
+      label: '도우미', items: [
         { label: 'AI 도우미', hint: 'Ctrl+/', icon: 'ai', onClick: () => run(p.onAi) },
         { label: 'AI 챗 패널', icon: 'ai', onClick: () => run(p.onChat) },
         { divider: '검색 / 편집', label: '' },
@@ -2145,15 +2149,48 @@ export function Toolbar(p: ToolbarProps) {
   const isAi = (it: MenuItem) => !it.divider && AI_KEYS.some((k) => it.label.startsWith(k))
   const notAi = (items: MenuItem[]) => items.filter((it) => it.divider || !isAi(it))
   const aiFrom = (items: MenuItem[]) => items.filter(isAi)
-  const aiTools = aiFrom(pick('도구'))
+  const aiTools = aiFrom(pick('도우미'))
   /* AI 탭 = 사람 대신 글·그림을 만들어 주는 것만. 번역·문서 건강처럼 '검사'에 가까운 것은 검토 탭,
      마인드맵·워드 클라우드처럼 '다르게 보기'는 보기 탭으로 보냈다 (한 기능은 한 자리에). */
   const aiItems: MenuItem[] = [
+    /* 첫자리는 「없는 문서를 만들어 내는 일」 — 도우미(있는 글을 손보는 일)보다 앞에 둔다 */
+    { divider: '문서 만들기', label: '' },
+    {
+      short: '문서 자동 작성',
+      label: '문서 자동 작성',
+      hint: 'Alt+J',
+      icon: 'sparkle',
+      help: 'ai-write',
+      onClick: () => run(() => openAiWrite()),
+      menu: [
+        { label: '업무 보고서', onClick: () => openAiWrite('report') },
+        { label: '사업 · 제품 기획서', onClick: () => openAiWrite('plan') },
+        { label: '제안서', onClick: () => openAiWrite('proposal') },
+        { label: '회의록', onClick: () => openAiWrite('meeting') },
+        { label: '강의 노트 · 강의 계획', onClick: () => openAiWrite('lecture') },
+        { label: '사용 안내서 · 매뉴얼', onClick: () => openAiWrite('manual') },
+        { label: '공지문 · 안내문', onClick: () => openAiWrite('notice') },
+        { label: '업무 편지 · 공문', onClick: () => openAiWrite('mail') },
+        { label: '연구 계획 · 논문 개요', onClick: () => openAiWrite('paper') },
+        { label: '분석 리포트', onClick: () => openAiWrite('analysis') },
+        { label: '그 밖 — 갈래까지 알아서', onClick: () => openAiWrite('free') },
+      ],
+    },
+    /* 있는 글을 손봐 주는 것들 — 요약·다듬기·이어 쓰기는 도우미 창 안에 있다.
+       OCR 은 도구 탭의 「글자 인식」 과 같은 일이라 여기 두지 않는다 (한 기능 한 자리). */
     { divider: '쓰기 도우미', label: '' },
     ...aiTools.filter((it) => it.label.startsWith('AI ')),
     { divider: '이미지 · 인식', label: '' },
     { short: 'AI 그림', label: 'AI 이미지 생성 (Pollinations)', icon: 'sparkle', onClick: () => run(() => { void aiImageStub() }) },
-
+    { divider: '연결', label: '' },
+    {
+      short: 'AI 연결',
+      label: 'AI 연결',
+      hint: '내가 쓰는 AI 를 잇는다',
+      icon: 'settings',
+      help: 'ai-connect',
+      onClick: () => run(openAiConnect),
+    },
   ]
 
   /* 표·그림을 고르면 나타나는 개체 탭 (한글의 맥락 탭) */
@@ -2678,7 +2715,7 @@ export function Toolbar(p: ToolbarProps) {
   /* 보기 탭의 '시각화'로 보낼 것 — 문서를 다른 눈으로 보는 기능 */
   const VIEW_KEYS = ['마인드맵', '플래시카드', '워드 클라우드', '포모도로']
 
-  const toolsRest = notAi(pick('도구'))
+  const toolsRest = notAi(pick('도우미'))
 
   /* ── 검수 탭 (워드 「검토」) 손잡이 ──────────────────────
      고친 자리를 남기고 훑어보는 일, 소리로 들어 보는 일, 낭독기로도 읽히게 하는 일,
@@ -2756,7 +2793,7 @@ export function Toolbar(p: ToolbarProps) {
         { label: '한 줄로 알려 주기 (토스트)', short: '한 줄', icon: 'info', onClick: () => run(() => flash(countLine(countReport(editor)))) },
       ],
     },
-    ...take(aiFrom(pick('도구')), ['문서 건강']),
+    ...take(aiFrom(pick('도우미')), ['문서 건강']),
 
     { divider: '소리 · 접근성', label: '' },
     {
@@ -2775,7 +2812,7 @@ export function Toolbar(p: ToolbarProps) {
     { label: '접근성 검사 — 낭독기로 읽히나 보기', short: '접근성', icon: 'eye', onClick: () => run(openA11y) },
 
     { divider: '언어', label: '' },
-    ...take(aiFrom(pick('도구')), ['번역']),
+    ...take(aiFrom(pick('도우미')), ['번역']),
     {
       label: '한자로 바꾸기',
       short: '한자',
@@ -2918,7 +2955,7 @@ export function Toolbar(p: ToolbarProps) {
         {
           /* 마인드맵·낱말 구름처럼 「문서를 다른 눈으로 보는」 것들 — 이름이 길어 한 자리에 모았다 */
           label: '다르게 보기 (마인드맵 · 낱말 구름 · 플래시카드)', short: '다르게', icon: 'sparkle',
-          menu: [...take(toolsRest, VIEW_KEYS), ...take(aiFrom(pick('도구')), ['마인드맵', '워드 클라우드'])],
+          menu: [...take(toolsRest, VIEW_KEYS), ...take(aiFrom(pick('도우미')), ['마인드맵', '워드 클라우드'])],
         },
       ],
     },
@@ -2956,7 +2993,6 @@ export function Toolbar(p: ToolbarProps) {
     '한국어 타이포': { label: '문서 스타일 창 열기', onClick: () => p.onTypo() },
     '제목': { label: '문서 스타일 창 열기', onClick: () => p.onTypo() },
     '서식 복사 · 내 스타일': { label: '내 스타일 관리 열기', onClick: () => p.onSnippets() },
-    '쓰기 도우미': { label: 'AI 도우미 열기', onClick: () => p.onAi() },
   }
 
   return (

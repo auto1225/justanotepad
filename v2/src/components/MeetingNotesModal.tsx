@@ -16,6 +16,9 @@ import {
   type MeetingKind,
   type MeetingSegment,
 } from '../lib/meetingNotes'
+import { writeFromTranscript } from '../lib/aiWrite'
+import { aiConfigured } from '../lib/aiApi'
+import { openAiConnect } from '../lib/aiConnect'
 
 interface MeetingNotesModalProps {
   editor: Editor | null
@@ -92,9 +95,15 @@ export function MeetingNotesModal({ editor, initialKind = 'meeting', onClose }: 
   const [audioRef, setAudioRef] = useState(draftSeed.audioRef || '')
   const [audioName, setAudioName] = useState(draftSeed.audioName || '')
   const [status, setStatus] = useState('')
+  const [aiBusy, setAiBusy] = useState(false)
 
   const mountedRef = useRef(true)
-  useEffect(() => () => { mountedRef.current = false }, [])
+  /* 붙을 때 참으로 되돌려 놓는다 — 개발 모드는 효과를 한 번 붙였다 떼고 다시 붙이므로,
+     떼는 자리에서만 거짓으로 두면 그 뒤로 영영 거짓이 된다 (그러면 「다 됐다」 를 알릴 길이 막힌다) */
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
   const sttRef = useRef<STTHandle | null>(null)
   const recorderRef = useRef<MediaRecorder | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -287,6 +296,31 @@ export function MeetingNotesModal({ editor, initialKind = 'meeting', onClose }: 
     }
   }
 
+  /**
+   * 받아 적은 글을 AI 에게 넘겨 제대로 된 문서로 세운다.
+   *
+   * 이 창의 「자동 정리」 는 이 컴퓨터에서 낱말을 세어 뽑은 것이라 얼개만 잡아 준다.
+   * 여기서 한 걸음 더 — 말한 순서를 회의록의 순서로 옮기고, 결정과 할 일을 갈라 적고,
+   * 흐릿한 대목은 지어내지 않고 【확인: …】 로 남긴 문서를 받는다.
+   */
+  async function aiWriteUp() {
+    const body = transcriptText.trim() || manualText.trim()
+    if (!body) { setStatus('받아 적은 글이 없습니다.'); return }
+    if (!aiConfigured()) {
+      setStatus('AI 가 이어지지 않았습니다 — 「AI 연결」 에서 잇고 다시 누릅니다.')
+      return
+    }
+    setAiBusy(true)
+    setStatus(kind === 'meeting' ? '회의록을 쓰는 중…' : '강의 노트를 쓰는 중…')
+    const r = await writeFromTranscript(body, kind === 'meeting' ? 'meeting' : 'lecture', title)
+    if (!mountedRef.current) return
+    setAiBusy(false)
+    if (!r.ok || !r.html) { setStatus('자동 작성 실패: ' + (r.error || '까닭을 알 수 없다')); return }
+    if (!editor) { setStatus('열어 둔 문서가 없습니다.'); return }
+    editor.chain().focus().insertContent(r.html).run()
+    setStatus(`문서로 세워 넣었습니다 — 글자 ${r.chars?.toLocaleString()}자`)
+  }
+
   function insertIntoMemo() {
     if (!editor) return
     const html = buildMeetingHtml({
@@ -417,9 +451,20 @@ export function MeetingNotesModal({ editor, initialKind = 'meeting', onClose }: 
             </div>
 
             <div className="jan-meeting-actions">
-              <button onClick={insertIntoMemo} className="primary" disabled={!editor || (!segments.length && !transcriptText.trim())}>메모에 삽입</button>
+              <button
+                onClick={() => void aiWriteUp()}
+                className="primary"
+                disabled={aiBusy || !editor || (!segments.length && !transcriptText.trim() && !manualText.trim())}
+                title={kind === 'meeting'
+                  ? '받아 적은 글을 AI 가 회의록으로 세운다 — 결정과 할 일을 갈라 적는다'
+                  : '받아 적은 글을 AI 가 강의 노트로 세운다 — 핵심과 곁가지를 갈라 적는다'}
+              >
+                {aiBusy ? '쓰는 중…' : (kind === 'meeting' ? 'AI 로 회의록 만들기' : 'AI 로 강의 노트 만들기')}
+              </button>
+              <button onClick={insertIntoMemo} disabled={!editor || (!segments.length && !transcriptText.trim())}>받아 적은 대로 넣기</button>
               <button onClick={exportTxt} disabled={!segments.length}>TXT</button>
               <button onClick={exportSrt} disabled={!segments.length}>SRT</button>
+              {!aiConfigured() && <button onClick={openAiConnect}>AI 연결</button>}
             </div>
             {status && <div className="jan-meeting-status">{status}</div>}
           </section>

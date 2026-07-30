@@ -67,6 +67,8 @@ import { WordSuggestPanel, type SuggestMode } from './WordSuggestPanel'
 import { ProtectPanel } from './ProtectPanel'
 import { CountPanel } from './CountPanel'
 import { ImageConvertPanel } from './ImageConvertPanel'
+import { AiConnectPanel } from './AiConnectPanel'
+import { AiWritePanel } from './AiWritePanel'
 import { PostitReopen } from './PostitReopen'
 import { applyTrackView } from '../lib/trackChanges'
 import { activateProtect } from '../lib/docProtect'
@@ -230,6 +232,9 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   const [showCount, setShowCount] = useState(false)
   /* 이미지 변환 — 도구 탭에서 연다 (예전에는 물음 창 세 번이었다) */
   const [showImgConv, setShowImgConv] = useState(false)
+  /* AI 연결 · 문서 자동 작성 — 편집기가 없어도 열려야 하므로 따로 둔다 */
+  const [showAiConn, setShowAiConn] = useState(false)
+  const [aiWriteKind, setAiWriteKind] = useState<string | null>(null)
   /* 표 서식 창 — 테두리·채우기·맞춤 */
   const [tableFormat, setTableFormat] = useState<string | null>(null)
   const [showHelp, setShowHelp] = useState(false)
@@ -719,6 +724,18 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       document.removeEventListener('keydown', onKey, true)
     }
   }, [editor])
+
+  /* AI 창은 문서가 없을 때도 열린다 (연결은 문서와 무관하고, 자동 작성은 새 메모를 만든다) */
+  useEffect(() => {
+    const onConn = () => setShowAiConn(true)
+    const onWrite = (e: Event) => setAiWriteKind((e as CustomEvent<{ kind?: string }>).detail?.kind || 'report')
+    window.addEventListener('jan-ai-connect', onConn)
+    window.addEventListener('jan-ai-write', onWrite)
+    return () => {
+      window.removeEventListener('jan-ai-connect', onConn)
+      window.removeEventListener('jan-ai-write', onWrite)
+    }
+  }, [])
 
   // 이미지 "그림판에서 편집" 이벤트 수신 → 주석 편집 모달
   useEffect(() => {
@@ -1334,6 +1351,8 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       {showProtect && <ProtectPanel editor={editor} onClose={() => setShowProtect(false)} />}
       {showCount && <CountPanel editor={editor} onClose={() => setShowCount(false)} />}
       {showImgConv && <ImageConvertPanel editor={editor} onClose={() => setShowImgConv(false)} />}
+      {showAiConn && <AiConnectPanel onClose={() => setShowAiConn(false)} />}
+      {aiWriteKind && <AiWritePanel initialKind={aiWriteKind} onClose={() => setAiWriteKind(null)} />}
       {/* 껐다 켰을 때 지난번 포스트잇을 그 자리에 되살린다 (브라우저가 저절로 창을 못 띄우게 막으므로 한 번 물어본다) */}
       <PostitReopen />
       {tableFormat && <TableFormatPanel editor={editor} tab={tableFormat} onClose={() => setTableFormat(null)} />}

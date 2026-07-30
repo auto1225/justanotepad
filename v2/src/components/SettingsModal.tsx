@@ -28,6 +28,7 @@ import {
   type ByocSyncHealth,
   type ByocStatus,
 } from '../lib/byocSync'
+import { connState, openAiConnect } from '../lib/aiConnect'
 
 interface SettingsModalProps {
   onClose: () => void
@@ -55,6 +56,7 @@ function formatLastSyncAt(value: number): string {
 }
 
 export function SettingsModal({ onClose, focusSection }: SettingsModalProps) {
+  const aiNow = connState()
   const [status, setStatus] = useState<string>('')
   const [supabaseUser, setSupabaseUser] = useState<string>('')
   const [checkingSession, setCheckingSession] = useState(false)
@@ -334,69 +336,15 @@ export function SettingsModal({ onClose, focusSection }: SettingsModalProps) {
             </section>
           )}
           <section className="jan-settings-section">
-            <h4>AI 제공자</h4>
+            <h4>AI 연결</h4>
             <div className="jan-settings-info">
-              Ctrl+/ 로 AI 도우미 호출. 키는 브라우저 localStorage 에만 저장 (서버 전송 X).
+              제공자 고르기 · 키 넣기 · 모델 고르기 · 연결 시험을 한 창에서 한다
+              (AI 탭의 「AI 연결」 과 같은 창이다).
             </div>
             <div className="jan-settings-row">
-              <label>제공자:</label>
-              <select
-                value={settings.aiProvider}
-                onChange={(e) => {
-                  const provider = e.target.value
-                  settings.setKey('aiProvider', provider)
-                  // 공용 aiModel 이 이전 프로바이더의 모델로 남아 API 400 이 나는 것을 방지
-                  const model = settings.aiModel
-                  if (provider === 'anthropic' && !model.startsWith('claude')) settings.setKey('aiModel', 'claude-sonnet-4-6')
-                  if (provider === 'openai' && model.startsWith('claude')) settings.setKey('aiModel', 'gpt-4o-mini')
-                }}
-              >
-                <option value="none">사용 안 함</option>
-                <option value="anthropic">Anthropic Claude</option>
-                <option value="openai">OpenAI ChatGPT</option>
-                <option value="proxy">서버 프록시 (키 불필요)</option>
-              </select>
+              <span>지금: <strong>{aiNow.ready ? `${aiNow.label} · ${aiNow.model}` : '이어지지 않음'}</strong></span>
+              <button className="jan-primary" onClick={() => { openAiConnect(); onClose() }}>AI 연결 창 열기</button>
             </div>
-            {settings.aiProvider === 'anthropic' && (
-              <>
-                <input
-                  type="password"
-                  placeholder="Anthropic API key (sk-ant-...)"
-                  value={settings.anthropicKey}
-                  onChange={(e) => settings.setKey('anthropicKey', e.target.value)}
-                />
-                <input
-                  type="text"
-                  placeholder="모델명 (예: claude-sonnet-4-6)"
-                  value={settings.aiModel}
-                  onChange={(e) => settings.setKey('aiModel', e.target.value)}
-                />
-              </>
-            )}
-            {settings.aiProvider === 'openai' && (
-              <>
-                <input
-                  type="password"
-                  placeholder="OpenAI API key (sk-...)"
-                  value={settings.openaiKey}
-                  onChange={(e) => settings.setKey('openaiKey', e.target.value)}
-                />
-                <input
-                  type="text"
-                  placeholder="모델명 (예: gpt-4o-mini)"
-                  value={settings.aiModel}
-                  onChange={(e) => settings.setKey('aiModel', e.target.value)}
-                />
-              </>
-            )}
-            {settings.aiProvider === 'proxy' && (
-              <>
-                <div className="jan-settings-info" style={{padding:'8px 10px',background:'rgba(76,175,80,0.08)',borderLeft:'3px solid #4caf50',borderRadius:4,marginTop:6}}>
-                  서버 프록시 모드 — 사용자 키 불필요. 서버에서 forward.
-                </div>
-                <input type="text" placeholder="모델명 (기본: gpt-4o-mini, 또는 claude-sonnet-4-6)" value={settings.aiModel} onChange={(e) => settings.setKey('aiModel', e.target.value)} />
-              </>
-            )}
           </section>
 
           <section className="jan-settings-section jan-settings-byoc-section">

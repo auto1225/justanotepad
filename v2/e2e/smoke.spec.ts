@@ -582,7 +582,7 @@ test.describe('v2 smoke', () => {
     await expect(page.locator('.jan-meeting-transcript-list article')).toHaveCount(2)
     await expect(page.locator('.jan-meeting-result')).toContainText('액션 아이템')
 
-    await page.getByRole('button', { name: '메모에 삽입' }).click()
+    await page.getByRole('button', { name: '받아 적은 대로 넣기' }).click()
     await expect(page.locator('.ProseMirror').first()).toContainText('동기화 점검 회의')
     await expect(page.locator('.ProseMirror').first()).toContainText('Dropbox 백업 테스트')
   })

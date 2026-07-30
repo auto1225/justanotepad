@@ -7868,3 +7868,95 @@ body.jan-hide-highlight [data-highlight] { background: none !important; box-shad
   padding: 6px 8px 6px 14px; box-shadow: 0 3px 10px rgba(0,0,0,0.18); font-size: 12px;
 }
 .jan-postit-reopen button { font-size: 12px; padding: 3px 10px; border-radius: 999px; cursor: pointer; }
+
+/* ── AI 연결 ─────────────────────────────────────────────────────────────
+   내가 쓰는 AI 를 잇는 창. 「지금 무엇에 이어져 있나」 를 맨 위에 한 줄로 두고,
+   시험 결과는 맨 아래에 되고/안 되고를 색으로 갈라 보여 준다. */
+.jan-aiconn { width: min(620px, 96vw); max-width: min(620px, 96vw); }
+.jan-aiconn-body { display: flex; flex-direction: column; gap: 10px; }
+.jan-aiconn-now {
+  font-size: 12px; padding: 7px 10px; border-radius: 6px;
+  background: var(--jan-soft, #f2f4f7); border-left: 3px solid var(--jan-dim, #9aa4b2);
+}
+.jan-aiconn-now.is-ready { border-left-color: #1f7a4d; background: rgba(31,122,77,0.08); }
+.jan-aiconn-list { border: 1px solid var(--jan-border, #d8dce3); border-radius: 7px; padding: 8px 10px; margin: 0; }
+.jan-aiconn-list > legend { font-size: 11px; color: var(--jan-dim, #6b7684); padding: 0 4px; }
+.jan-aiconn-list > label {
+  display: grid; grid-template-columns: auto 1fr; gap: 1px 8px;
+  padding: 5px 2px; cursor: pointer; border-radius: 5px;
+}
+.jan-aiconn-list > label > input { grid-row: span 2; align-self: center; }
+.jan-aiconn-list > label > strong { font-size: 12.5px; }
+.jan-aiconn-list > label > span { font-size: 11px; color: var(--jan-dim, #6b7684); }
+.jan-aiconn-list > label.is-active { background: var(--jan-soft, #eef2f7); }
+.jan-aiconn-key, .jan-aiconn-local { display: flex; flex-direction: column; gap: 6px; }
+.jan-aiconn-keyrow { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.jan-aiconn-keyrow > button { font-size: 12px; padding: 3px 10px; cursor: pointer; }
+.jan-aiconn-keyrow > a { font-size: 11px; color: var(--jan-accent, #1f6feb); }
+.jan-aiconn-warn { font-size: 11.5px; color: #a8410f; margin: 0; }
+.jan-aiconn-found { display: flex; flex-direction: column; gap: 4px; }
+.jan-aiconn-found > div {
+  display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center;
+  font-size: 11.5px; padding: 4px 6px; border: 1px solid var(--jan-border, #d8dce3); border-radius: 5px;
+}
+.jan-aiconn-found > div.is-active { border-color: #1f7a4d; background: rgba(31,122,77,0.06); }
+.jan-aiconn-found span { color: var(--jan-dim, #6b7684); }
+.jan-aiconn-result { font-size: 12px; padding: 7px 10px; border-radius: 6px; border-left: 3px solid; }
+.jan-aiconn-result.is-ok { border-left-color: #1f7a4d; background: rgba(31,122,77,0.09); }
+.jan-aiconn-result.is-bad { border-left-color: #b3341a; background: rgba(179,52,26,0.08); }
+
+/* ── 문서 자동 작성 ──────────────────────────────────────────────────────
+   주제 한 줄로 문서 한 벌. 목차를 먼저 받아 손보는 걸음이 있어 창이 길어질 수 있다 —
+   본문만 흐르게 두고 아래 단추 줄은 붙어 있게 한다. */
+.jan-aiwrite { width: min(760px, 96vw); max-width: min(760px, 96vw); }
+.jan-aiwrite-body { display: flex; flex-direction: column; gap: 9px; max-height: 68vh; overflow: auto; }
+.jan-aiwrite-noconn {
+  display: flex; align-items: center; gap: 10px; font-size: 12px;
+  padding: 8px 10px; border-radius: 6px;
+  background: rgba(179,52,26,0.07); border-left: 3px solid #b3341a;
+}
+.jan-aiwrite-noconn > span { flex: 1; }
+.jan-aiwrite-topic { display: flex; flex-direction: column; gap: 3px; }
+.jan-aiwrite-topic > span { font-size: 11px; color: var(--jan-dim, #6b7684); }
+.jan-aiwrite-topic > textarea {
+  width: 100%; font: inherit; font-size: 13px; line-height: 1.5; padding: 6px 8px;
+  border: 1px solid var(--jan-border, #d8dce3); border-radius: 6px; resize: vertical;
+}
+.jan-aiwrite-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: start; }
+.jan-aiwrite-frame { font-size: 11px; color: var(--jan-dim, #6b7684); margin: -3px 0 0; }
+.jan-aiwrite-pick { border: 1px solid var(--jan-border, #d8dce3); border-radius: 7px; padding: 5px 8px 6px; margin: 0; }
+.jan-aiwrite-pick > legend { font-size: 11px; color: var(--jan-dim, #6b7684); padding: 0 4px; }
+.jan-aiwrite-pick > label {
+  display: inline-flex; align-items: center; gap: 3px; font-size: 12px;
+  margin-right: 8px; padding: 2px 4px; border-radius: 4px; cursor: pointer;
+}
+.jan-aiwrite-pick > label.is-active { background: var(--jan-soft, #eef2f7); font-weight: 600; }
+.jan-aiwrite-busy {
+  display: flex; align-items: center; gap: 8px; font-size: 12px;
+  padding: 8px 10px; border-radius: 6px; background: var(--jan-soft, #f2f4f7);
+  border-left: 3px solid var(--jan-accent, #1f6feb);
+}
+.jan-aiwrite-busy > em { font-style: normal; font-size: 11px; color: var(--jan-dim, #6b7684); }
+.jan-aiwrite-error {
+  font-size: 12px; padding: 8px 10px; border-radius: 6px;
+  background: rgba(179,52,26,0.08); border-left: 3px solid #b3341a;
+}
+.jan-aiwrite-done { display: flex; flex-direction: column; gap: 7px; }
+.jan-aiwrite-preview {
+  max-height: 300px; overflow: auto; padding: 12px 14px; font-size: 12.5px; line-height: 1.6;
+  border: 1px solid var(--jan-border, #d8dce3); border-radius: 7px; background: var(--jan-paper, #fff);
+}
+.jan-aiwrite-preview h1 { font-size: 17px; margin: 0 0 8px; }
+.jan-aiwrite-preview h2 { font-size: 14.5px; margin: 12px 0 5px; }
+.jan-aiwrite-preview h3 { font-size: 13px; margin: 9px 0 4px; }
+.jan-aiwrite-preview p, .jan-aiwrite-preview li { margin: 3px 0; }
+.jan-aiwrite-preview table { border-collapse: collapse; width: 100%; margin: 7px 0; }
+.jan-aiwrite-preview th, .jan-aiwrite-preview td {
+  border: 1px solid var(--jan-border, #d8dce3); padding: 4px 7px; text-align: left; font-size: 12px;
+}
+.jan-aiwrite-preview th { background: var(--jan-soft, #f2f4f7); }
+.jan-aiwrite-donerow { display: flex; gap: 6px; flex-wrap: wrap; }
+.jan-aiwrite-donerow > button { font-size: 12px; padding: 4px 12px; cursor: pointer; }
+@media (max-width: 700px) {
+  .jan-aiwrite-row { grid-template-columns: 1fr; }
+}

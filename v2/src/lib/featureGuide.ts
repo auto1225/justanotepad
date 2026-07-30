@@ -136,6 +136,18 @@ export const FEATURE_GUIDE: Record<string, FeatureGuide> = {
     when: '행사에서 받은 명함을 정리할 때.',
     art: 'cards',
   },
+  'ai-write': {
+    title: '문서 자동 작성',
+    summary: '주제 한 줄을 적으면 보고서·기획서·회의록·강의 노트 같은 문서를 한 벌로 만들어 줍니다. 목차를 먼저 받아 손본 뒤 본문을 채울 수도 있습니다.',
+    when: '빈 화면 앞에서 첫 줄이 떨어지지 않을 때.',
+    art: 'sparkle',
+  },
+  'ai-connect': {
+    title: 'AI 연결',
+    summary: '내가 쓰는 AI(Claude · ChatGPT · Gemini)를 잇습니다. 키는 이 브라우저에만 남고 우리 서버로 가지 않습니다. 내 컴퓨터에서 도는 모델(Ollama · LM Studio)은 키 없이 잇습니다.',
+    when: 'AI 기능을 처음 쓸 때 한 번.',
+    art: 'settings',
+  },
   'image-convert': {
     title: '이미지 변환',
     summary: 'HEIC·PNG·JPG 형식을 바꾸고 크기를 줄여 문서에 가볍게 넣습니다.',

@@ -64,6 +64,15 @@ const SHORTCUTS: Array<{ category: string; items: Array<[string, string]> }> = [
       ['Ctrl+Alt+M', '고른 글에 메모 달기'],
     ],
   },
+  {
+    /* AI — 수식어는 하나만 */
+    category: 'AI',
+    items: [
+      ['Alt+J', '문서 자동 작성'],
+      ['Ctrl+/', 'AI 도우미'],
+      ['Ctrl+P', '명령 팔레트에서 「AI 연결」 찾기'],
+    ],
+  },
 ]
 
 export function KeyboardHelp({ onClose }: KeyboardHelpProps) {
