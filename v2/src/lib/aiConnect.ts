@@ -73,7 +73,7 @@ export const PROVIDERS: ProviderInfo[] = [
   {
     id: 'proxy',
     label: '이 앱의 서버',
-    note: '키 없이 바로 쓴다 (앱을 서버에 올려 둔 때만 된다)',
+    note: '키 없이 바로 쓴다 — 서버에 키를 넣어 둔 때만 된다',
     models: ['gpt-4o-mini', 'claude-sonnet-4-6'],
     freeModel: true,
   },

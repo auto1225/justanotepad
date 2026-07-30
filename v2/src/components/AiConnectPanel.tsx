@@ -10,6 +10,9 @@ interface Props {
   onClose: () => void
 }
 
+/** 모델 고르는 칸에서 「직접 적기」 를 나타내는 표 (모델 이름과 겹치지 않는 값) */
+const CUSTOM = '__직접__'
+
 /**
  * AI 연결 — 내가 쓰는 AI 를 이 앱에 잇는 자리.
  *
@@ -30,9 +33,12 @@ export function AiConnectPanel({ onClose }: Props) {
   const [finding, setFinding] = useState(false)
   const [found, setFound] = useState<LocalFind[] | null>(null)
   const keyRef = useRef<HTMLInputElement>(null)
+  const resultRef = useRef<HTMLDivElement>(null)
 
   const provider = settings.aiProvider
   const info = providerInfo(provider)
+  /* 목록에 있는 모델을 골라 두었나 (아니면 이름을 직접 적는 칸을 낸다) */
+  const known = !!info?.models.includes(settings.aiModel)
   const state = connState()
   const key = info?.keyField ? settings[info.keyField] : ''
   const warn = info?.keyField ? keyWarning(provider, key) : ''
@@ -42,6 +48,12 @@ export function AiConnectPanel({ onClose }: Props) {
     document.addEventListener('keydown', onKey, true)
     return () => document.removeEventListener('keydown', onKey, true)
   }, [onClose])
+
+  /* 시험 결과가 오면 그 줄로 굴려 보여 준다 — 창이 길어 아래로 밀려 있으면
+     눌렀는데 아무 일도 없는 것처럼 보인다 */
+  useEffect(() => {
+    if (result) resultRef.current?.scrollIntoView({ block: 'nearest' })
+  }, [result])
 
   /* 제공자를 바꾸면 시험 결과는 지난 이야기가 된다 */
   function pick(id: AiProvider) {
@@ -225,39 +237,42 @@ export function AiConnectPanel({ onClose }: Props) {
 
           {provider === 'proxy' && (
             <p className="jan-chartdlg-hint">
-              앱을 서버에 올려 두고 그 서버에 키를 넣어 둔 때만 된다 (개인 컴퓨터에서 그냥 열었다면
-              닿지 않는다). 「연결 시험」 으로 갈린다.
+              앱을 올려 둔 서버에 키를 넣어 두었을 때만 된다. 넣지 않았다면 「연결 시험」 이
+              「서버에 키 미설정」 이라고 알려 준다 — 그때는 위에서 내 키나 내 컴퓨터 모델을 고른다.
             </p>
           )}
 
           {info && info.models.length > 0 && (
             <label className="jan-chartdlg-field">
               <span>모델</span>
-              <select value={settings.aiModel} aria-label="모델" onChange={(e) => setModel(e.target.value)}>
+              <select
+                value={known ? settings.aiModel : CUSTOM}
+                aria-label="모델"
+                onChange={(e) => setModel(e.target.value === CUSTOM ? '' : e.target.value)}
+              >
                 {info.models.map((m) => <option key={m} value={m}>{m}</option>)}
-                {!info.models.includes(settings.aiModel) && settings.aiModel && (
-                  <option value={settings.aiModel}>{settings.aiModel} (직접 적음)</option>
-                )}
+                <option value={CUSTOM}>직접 적기…</option>
               </select>
             </label>
           )}
-          {info?.freeModel && (
+          {/* 목록에 없는 것을 골랐을 때만 적는 칸을 낸다 — 새 모델이 나와도 기다리지 않게 */}
+          {info?.freeModel && !known && (
             <label className="jan-chartdlg-field">
-              <span>모델 이름을 직접 적기</span>
+              <span>모델 이름</span>
               <input
                 type="text"
                 value={settings.aiModel}
                 aria-label="모델 이름"
-                placeholder="새 모델이 나오면 여기에 이름을 적는다"
+                placeholder={'예: ' + (info.models[0] || 'llama3.1')}
                 onChange={(e) => setModel(e.target.value)}
               />
             </label>
           )}
 
           {result && (
-            <div className={'jan-aiconn-result' + (result.ok ? ' is-ok' : ' is-bad')} role="status">
+            <div ref={resultRef} className={'jan-aiconn-result' + (result.ok ? ' is-ok' : ' is-bad')} role="status">
               {result.ok
-                ? <span>이어졌다 — {(result.ms / 1000).toFixed(1)}초에 답했다. 모델의 말: 「{result.said}」</span>
+                ? <span>이어졌다 — {result.ms < 100 ? '곧바로' : (result.ms / 1000).toFixed(1) + '초에'} 답했다. 모델의 말: 「{result.said}」</span>
                 : <span>못 이었다 — {result.error}</span>}
             </div>
           )}

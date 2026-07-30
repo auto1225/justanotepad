@@ -7960,3 +7960,24 @@ body.jan-hide-highlight [data-highlight] { background: none !important; box-shad
 @media (max-width: 700px) {
   .jan-aiwrite-row { grid-template-columns: 1fr; }
 }
+
+/* 다 된 문서의 단추 줄은 아래에 붙여 둔다 — 긴 문서를 훑는 동안에도 늘 눌릴 자리에 */
+.jan-aiwrite-donerow {
+  position: sticky; bottom: 0; z-index: 2;
+  background: var(--jan-bg, #fff); padding: 6px 0 2px;
+  border-top: 1px solid var(--jan-border, #e3e6eb);
+}
+
+/* 창 본문 안의 단추도 단추처럼 보이게 — 지금까지는 아래 단추 줄에만 옷이 입혀져 있어,
+   본문에 둔 「새 메모로 앉히기」·「연결 시험」 같은 것이 글자처럼 보였다 */
+.jan-aiwrite-donerow button, .jan-aiconn-keyrow button {
+  border: 1px solid var(--jan-border, #d8dce3); border-radius: 6px;
+  background: var(--jan-bg, #fff); color: inherit; cursor: pointer;
+}
+.jan-aiwrite-donerow button:hover:not(:disabled),
+.jan-aiconn-keyrow button:hover:not(:disabled) { background: var(--jan-soft, #f2f4f7); }
+.jan-aiwrite-donerow button.jan-primary, .jan-aiconn-keyrow button.jan-primary {
+  background: var(--jan-accent, #d97757); border-color: var(--jan-accent, #d97757);
+  color: #fff; font-weight: 600;
+}
+.jan-aiwrite-donerow button:disabled, .jan-aiconn-keyrow button:disabled { opacity: 0.5; cursor: not-allowed; }

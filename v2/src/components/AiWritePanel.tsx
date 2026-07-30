@@ -63,6 +63,7 @@ export function AiWritePanel({ initialKind, onClose }: Props) {
   const [error, setError] = useState('')
 
   const topicRef = useRef<HTMLTextAreaElement>(null)
+  const doneRef = useRef<HTMLDivElement>(null)
   const editor = useDocStore((s) => s.editor)
   const newMemo = useMemosStore((s) => s.newMemo)
   const updateCurrent = useMemosStore((s) => s.updateCurrent)
@@ -73,6 +74,12 @@ export function AiWritePanel({ initialKind, onClose }: Props) {
   const ready = aiConfigured()
 
   useEffect(() => { topicRef.current?.focus() }, [])
+
+  /* 문서가 오면 그 앞머리로 굴려 준다 — 창이 길어 미리보기가 아래에 묻힌다.
+     단추 줄은 CSS 로 아래에 붙여 두어, 긴 문서를 훑는 동안에도 늘 눌릴 자리에 있다 */
+  useEffect(() => {
+    if (html) doneRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+  }, [html])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); onClose() } }
@@ -270,7 +277,7 @@ export function AiWritePanel({ initialKind, onClose }: Props) {
           {error && <div className="jan-aiwrite-error" role="alert">{error}</div>}
 
           {html && !waiting && (
-            <div className="jan-aiwrite-done">
+            <div className="jan-aiwrite-done" ref={doneRef}>
               {/* 미리보기 — 이 html 은 cleanDocHtml 을 지나온 것이다 (허용한 태그와 colspan·rowspan 만 남고
                   script·style·on… 은 모두 떨어진다). 모델이 낸 글이므로 그 걸름망 없이는 붙이지 않는다. */}
               <div className="jan-aiwrite-preview" aria-label="만들어진 문서 미리보기" dangerouslySetInnerHTML={{ __html: html }} />
