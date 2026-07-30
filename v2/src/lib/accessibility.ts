@@ -64,6 +64,7 @@ export function contrastRatio(fg: string, bg: string): number | null {
 
 /** 종이 바탕색 — 쪽 색을 바꿔 두었다면 그 색과 견준다 */
 function paperColor(editor: Editor): string {
+  if (editor.isDestroyed) return '#ffffff'
   const page = editor.view.dom.querySelector('[data-jan-page]') as HTMLElement | null
   const el = page || (editor.view.dom as HTMLElement)
   let node: HTMLElement | null = el

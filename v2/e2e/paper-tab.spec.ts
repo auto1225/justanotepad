@@ -91,7 +91,7 @@ test.describe('논문 탭', () => {
 
   test('BibTeX 를 붙여넣으면 인용 목록에 쌓이고 .bib 로 나간다', async ({ page }) => {
     await ready(page)
-    await page.locator('button[aria-label^="BibTeX 가져오기"]').first().click()
+    await page.locator('button[aria-label^="BibTeX(.bib) 가져오기"]').first().click()
     const prompt = page.locator('.jan-prompt-modal')
     await expect(prompt).toBeVisible()
     await prompt.locator('input, textarea').first().fill(
@@ -110,7 +110,7 @@ test.describe('논문 탭', () => {
     await expect(page.locator('button[aria-label^="인용 관리 창"]')).toHaveAttribute('aria-label', /1건/)
 
     const download = page.waitForEvent('download')
-    await page.locator('button[aria-label^=".bib 로 내보내기"]').first().click()
+    await page.locator('button[aria-label^="인용 목록을 .bib"]').first().click()
     const file = await download
     expect(file.suggestedFilename()).toMatch(/\.bib$/)
   })
@@ -139,13 +139,13 @@ test.describe('논문 탭', () => {
     expect(shown).toMatch(/초록|Abstract|검사|점검/)
   })
 
-  test('LaTeX 내보내기는 .tex 파일로 나간다', async ({ page }) => {
+  test('문서 전체를 .tex 로 저장한다 (수식 문법이 아니라 문서 내보내기다)', async ({ page }) => {
     const editor = await ready(page)
     await editor.click()
     await page.keyboard.type('레이더 주차 감지')
     await paperTab(page)
     const download = page.waitForEvent('download')
-    await page.locator('button[aria-label^="LaTeX(.tex)"]').first().click()
+    await page.locator('button[aria-label^="문서 전체를 LaTeX(.tex)"]').first().click()
     const file = await download
     expect(file.suggestedFilename()).toMatch(/\.tex$/)
   })

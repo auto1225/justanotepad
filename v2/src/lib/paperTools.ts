@@ -74,6 +74,8 @@ export function insertDataAvailabilityBlock(editor: Editor): void {
 /* ── 그림/표 목록 자동 생성 (List of Figures / Tables) ── */
 function captionTexts(editor: Editor, block: 'figcap' | 'tabcap'): string[] {
   const out: string[] = []
+  /* 양식을 갈아입히는 동안 편집기가 잠깐 떨어질 수 있다 — 그때 화면을 뒤지면 오류가 찍힌다 */
+  if (!editor || editor.isDestroyed) return out
   editor.view.dom.querySelectorAll(`p[data-paper-block="${block}"]`).forEach((p) => {
     out.push((p.textContent || '').trim())
   })
@@ -122,6 +124,7 @@ export interface LintItem {
 
 export function lintPaper(editor: Editor): LintItem[] {
   const items: LintItem[] = []
+  if (!editor || editor.isDestroyed) return items
   const dom = editor.view.dom
   const fullText = editor.state.doc.textBetween(0, editor.state.doc.content.size, '\n')
 

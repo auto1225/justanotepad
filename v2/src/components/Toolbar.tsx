@@ -1548,14 +1548,13 @@ export function Toolbar(p: ToolbarProps) {
             { short: '약어 목록', label: '약어 목록 자동 뽑기 (본문에서 찾아 모은다)', icon: 'hash', onClick: () => run(() => insertAcronymList(editor)) },
             { short: '그림 목록', label: '그림 목록 (List of Figures)', icon: 'image', onClick: () => run(() => insertListOfFigures(editor)) },
             { short: '표 목록', label: '표 목록 (List of Tables)', icon: 'table', onClick: () => run(() => insertListOfTables(editor)) },
-            { short: '구성 요소 창', label: '논문 구성 요소 창에서 고르기', icon: 'menu', onClick: () => run(p.onPaper) },
           ],
         },
 
         { divider: '번호 수식 · 참조', label: '' },
         { short: '번호 수식', label: '번호 붙은 수식 넣기 (n) — 식 참조가 따라간다', icon: 'hash', onClick: () => run(() => { void eqNumbered() }) },
         {
-          short: '수식 틀', label: '수식 틀에서 고르기 (분수·적분·행렬·화학식)', icon: 'hash',
+          short: '수식 틀', label: '수식 틀에서 고르기 (분수·적분·행렬 — LaTeX 문법으로 쓴다)', icon: 'hash',
           onClick: () => run(() => { void eqFromTemplate() }),
           menu: MATH_TEMPLATES.slice(0, 10).map((t): MenuItem => ({
             short: t.label, label: `수식 틀: ${t.label}`, icon: 'hash',
@@ -1582,12 +1581,17 @@ export function Toolbar(p: ToolbarProps) {
             onClick: () => run(() => { setCitationStyle(c.value as CitationStyle); flash(`학술 표기 — ${c.label}`) }),
           })),
         },
-        { short: 'BibTeX', label: 'BibTeX 가져오기 (Scholar·Zotero 글 붙여넣기)', icon: 'upload', onClick: () => run(() => { void askBibtex() }) },
-        { short: '.bib 저장', label: '.bib 로 내보내기 (Overleaf 에서 바로 쓴다)', icon: 'download', onClick: () => run(() => { exportBibtex(memoTitle()) }) },
+        { short: '.bib 열기', label: 'BibTeX(.bib) 가져오기 — Scholar·Zotero 글을 인용 목록에 보탠다', icon: 'upload', onClick: () => run(() => { void askBibtex() }) },
+        { short: '.bib 저장', label: '인용 목록을 .bib 파일로 저장 — Overleaf 에서 바로 쓴다', icon: 'download', onClick: () => run(() => { exportBibtex(memoTitle()) }) },
 
         { divider: '제출 전', label: '' },
         { short: '논문 검사', label: '논문 검사 (제출 전 자동 점검)', icon: 'shield', onClick: () => run(runPaperLint) },
-        { short: 'LaTeX', label: 'LaTeX(.tex) 내보내기 — Overleaf 용', icon: 'download', onClick: () => run(exportTex) },
+        {
+          /* 「LaTeX」 만 적어 두면 수식 문법과 헷갈린다 — 이 단추는 문서 전체를 .tex 파일로 내보낸다.
+             수식을 쓰는 것은 「수식 틀」·수식 스튜디오 쪽이다 (거기서도 LaTeX 문법을 쓴다). */
+          short: '.tex 저장', label: '문서 전체를 LaTeX(.tex) 파일로 저장 — Overleaf 에 올려 조판한다', icon: 'download',
+          onClick: () => run(exportTex),
+        },
       ],
     },
 
@@ -2034,7 +2038,7 @@ export function Toolbar(p: ToolbarProps) {
             { label: 'HWPX (한글) 내보내기', short: 'HWPX', icon: 'file-text', onClick: () => run(exportHwpx) },
             { label: 'Word(.doc) 내보내기', short: 'DOC', icon: 'file-text', onClick: () => run(exportDocx) },
             { label: '모든 형식 한꺼번에 (MD·HTML·LaTeX·HWPX·DOC)', short: '모두', icon: 'download', onClick: () => run(() => { void exportAll() }) },
-            { label: 'LaTeX 하나만 내보내려면 — 논문 탭에 있다', short: 'LaTeX 위치', icon: 'info', onClick: () => run(() => { setRibbonTab('논문'); flash('논문 탭 › 제출 전 › LaTeX 내보내기') }) },
+            { label: 'LaTeX(.tex) 하나만 저장하려면 — 논문 탭에 있다', short: '.tex 위치', icon: 'info', onClick: () => run(() => { setRibbonTab('논문'); flash('논문 탭 › 제출 전 › .tex 저장') }) },
           ],
         },
         { divider: '공유 · 백업', label: '' },

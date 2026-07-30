@@ -33,6 +33,7 @@ function textOf(editor: Editor, from?: number, to?: number): string {
 
 /** 화면에 그려진 줄 수 — 접힌 줄까지 세려면 실제로 놓인 자리를 봐야 한다 */
 function countLines(editor: Editor): number {
+  if (editor.isDestroyed) return 0
   const root = editor.view.dom
   const blocks = root.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, blockquote, td, th')
   let lines = 0

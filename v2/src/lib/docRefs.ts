@@ -286,6 +286,7 @@ export function putBibliography(editor: Editor, sources: Source[], style: CiteSt
 /* ── 캡션 목차 (그림·표 목차) ─────────────────────────── */
 
 export function putCaptionList(editor: Editor, kind: 'figure' | 'table'): boolean {
+  if (editor.isDestroyed) return false
   const root = editor.view.dom
   const sel = kind === 'figure' ? '.paper-figcap, [data-paper-block="figcap"]' : '.paper-tabcap, [data-paper-block="tabcap"]'
   const caps = [...root.querySelectorAll(sel)]
