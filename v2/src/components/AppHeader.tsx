@@ -305,13 +305,14 @@ export function AppHeader(p: AppHeaderProps) {
             {pomoText}
           </button>
         )}
-        <button className="jan-header-btn" data-help="cmd-palette" onClick={p.onCmdPalette} title="명령 팔레트 (Ctrl+Shift+P)" aria-label="명령 팔레트"><Icon name="cmd" /></button>
-        <button className="jan-header-btn jan-bar-foldable" data-help="global-search" onClick={p.onGlobalSearch || p.onSearch} title="전체 검색 (Ctrl+Shift+F)" aria-label="전체 검색"><Icon name="search" /></button>
-        <button className="jan-header-btn jan-bar-foldable" data-help="ai" onClick={p.onAi || p.onChat} title="AI 도우미 (Ctrl+/)" aria-label="AI 도우미"><Icon name="ai" /></button>
-        <button className="jan-header-btn jan-header-extra" data-help="quick-memo" onClick={p.onCalendar} title="빠른 메모 (Ctrl+Shift+J)" aria-label="빠른 메모"><Icon name="page" /></button>
-        <button className={'jan-header-btn jan-header-extra' + (focusMode ? ' is-active' : '')} data-help="focus" onClick={() => toggleFocus()} title="집중 모드 (F11)" aria-label="집중 모드"><Icon name="eye" /></button>
+        <button className="jan-header-btn" data-help="cmd-palette" onClick={p.onCmdPalette} title="명령 팔레트 (Ctrl+Shift+P)" aria-label="명령 팔레트"><Icon name="cmd" /><span className="jan-header-btn-label">명령</span></button>
+        <button className="jan-header-btn jan-bar-foldable" data-help="global-search" onClick={p.onGlobalSearch || p.onSearch} title="모든 메모에서 찾기 (Ctrl+Shift+F)" aria-label="전체 검색"><Icon name="search" /><span className="jan-header-btn-label">찾기</span></button>
+        <button className="jan-header-btn jan-bar-foldable" data-help="ai" onClick={p.onAi || p.onChat} title="AI 도우미 (Ctrl+/)" aria-label="AI 도우미"><Icon name="ai" /><span className="jan-header-btn-label">AI</span></button>
+        <button className="jan-header-btn jan-header-extra" data-help="quick-memo" onClick={p.onCalendar} title="빠른 메모 (Ctrl+Shift+J)" aria-label="빠른 메모"><Icon name="page" /><span className="jan-header-btn-label">빠른 메모</span></button>
+        <button className={'jan-header-btn jan-header-extra' + (focusMode ? ' is-active' : '')} data-help="focus" onClick={() => toggleFocus()} title="집중 모드 (F11)" aria-label="집중 모드"><Icon name="eye" /><span className="jan-header-btn-label">집중</span></button>
         <button className="jan-header-btn jan-header-role-btn jan-header-extra" data-help="roles" onClick={openRoleDash} title="내 도구 / 역할 팩" aria-label="내 도구 / 역할 팩">
           <Icon name="briefcase" />
+          <span className="jan-header-btn-label">내 도구</span>
           {roleCount > 0 && <span className="jan-header-role-badge">{roleCount}</span>}
         </button>
         {showHomeHub && (
@@ -327,8 +328,8 @@ export function AppHeader(p: AppHeaderProps) {
           </div>
         )}
         <span className="jan-header-sep" aria-hidden="true" />
-        <button className="jan-header-btn jan-bar-foldable" data-help="theme" onClick={cycleTheme} title={`테마: ${theme}`} aria-label="테마"><Icon name={themeIcon} /></button>
-        <button className="jan-header-btn jan-bar-foldable" data-help="settings" onClick={p.onSettings} title="설정 (Ctrl+,)" aria-label="설정"><Icon name="settings" /></button>
+        <button className="jan-header-btn jan-bar-foldable" data-help="theme" onClick={cycleTheme} title={`테마: ${theme}`} aria-label="테마"><Icon name={themeIcon} /><span className="jan-header-btn-label">테마</span></button>
+        <button className="jan-header-btn jan-bar-foldable" data-help="settings" onClick={p.onSettings} title="설정 (Ctrl+,)" aria-label="설정"><Icon name="settings" /><span className="jan-header-btn-label">설정</span></button>
         <div className="jan-header-more-wrap" onPointerDown={(e) => e.stopPropagation()}>
           <button
             className="jan-header-btn jan-header-more-btn"
@@ -340,6 +341,7 @@ export function AppHeader(p: AppHeaderProps) {
             aria-haspopup="menu"
           >
             <Icon name="sliders" />
+            <span className="jan-header-btn-label">더보기</span>
           </button>
           {showMobileMore && (
             <div className="jan-header-more-menu" role="menu">
@@ -358,7 +360,7 @@ export function AppHeader(p: AppHeaderProps) {
           )}
         </div>
         <span className="jan-header-divider" />
-        <button className="jan-header-btn jan-header-extra" onClick={p.onAccount} title="로그인 / 계정" aria-label="로그인"><Icon name="login" /></button>
+        <button className="jan-header-btn jan-header-extra" onClick={p.onAccount} title="로그인 / 계정" aria-label="로그인"><Icon name="login" /><span className="jan-header-btn-label">로그인</span></button>
         {isTauri && (
           <>
             <button className="jan-header-btn jan-header-extra" onClick={tauriPin} title="항상 위에 (데스크톱)" aria-label="핀"><Icon name="pin" /></button>
