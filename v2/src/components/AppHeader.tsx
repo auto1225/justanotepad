@@ -1,7 +1,6 @@
 ﻿import { useEffect, useState } from 'react'
 import { Icon } from './Icons'
 import { useUIStore } from '../store/uiStore'
-import { useThemeStore } from '../store/themeStore'
 import { useMemosStore } from '../store/memosStore'
 import { useRoleToolsStore } from '../store/roleToolsStore'
 import { flash } from '../lib/flash'
@@ -68,11 +67,7 @@ export function HeaderLeading() {
 }
 
 export function AppHeader(p: AppHeaderProps) {
-  const focusMode = useUIStore((s) => s.focusMode)
-  const toggleFocus = useUIStore((s) => s.toggleFocus)
-  const theme = useThemeStore((s) => s.theme)
-  const setTheme = useThemeStore((s) => s.setTheme)
-  const { newMemo, list, updateCurrent } = useMemosStore()
+  const { list } = useMemosStore()
   const roleCount = useRoleToolsStore((s) => s.selectedRoleIds.length)
   const [showMobileMore, setShowMobileMore] = useState(false)
   const [showHomeHub, setShowHomeHub] = useState(false)
@@ -120,73 +115,6 @@ export function AppHeader(p: AppHeaderProps) {
     return () => document.removeEventListener('pointerdown', close)
   }, [showMobileMore])
 
-  function cycleTheme() {
-    setTheme(theme === 'light' ? 'dark' : theme === 'dark' ? 'auto' : 'light')
-  }
-
-  const themeIcon: 'sun' | 'moon' | 'auto' =
-    theme === 'light' ? 'sun' : theme === 'dark' ? 'moon' : 'auto'
-
-  /* === v1 전용 핸들러 (인라인 구현) === */
-  const openWebSearch = () => {
-    /* v1 의 인앱 웹 브라우저 호출 — onSearch prop 으로 모달 열기 */
-    p.onSearch()
-  }
-  const openJustPin = () => {
-    /* 새 메모를 빠른 메모 모드로 생성 */
-    if (p.onPostit) p.onPostit()
-    else { newMemo(); alert('새 JustPin 메모 생성됨') }
-  }
-  const insertLectureTemplate = () => {
-    if (p.onLectureNotes) {
-      p.onLectureNotes()
-      return
-    }
-    newMemo()
-    setTimeout(() => {
-      updateCurrent({
-        title: '강의노트 — ' + new Date().toLocaleDateString('ko-KR'),
-        content: `<h2>강의 정보</h2><p><strong>과목:</strong> </p><p><strong>교수:</strong> </p><p><strong>날짜:</strong> ${new Date().toLocaleDateString('ko-KR')}</p><h2>핵심 개념</h2><ul><li></li></ul><h2>본문</h2><p></p><h2>질문 / 복습 포인트</h2><ul><li></li></ul>`,
-      })
-    }, 50)
-  }
-  const insertMeetingTemplate = () => {
-    if (p.onMeetingNotes) {
-      p.onMeetingNotes()
-      return
-    }
-    newMemo()
-    setTimeout(() => {
-      updateCurrent({
-        title: '회의노트 — ' + new Date().toLocaleDateString('ko-KR'),
-        content: `<h2>회의 정보</h2><p><strong>일시:</strong> ${new Date().toLocaleString('ko-KR')}</p><p><strong>참석자:</strong> </p><p><strong>안건:</strong> </p><h2>논의 내용</h2><p></p><h2>결정사항</h2><ul><li></li></ul><h2>액션 아이템 (담당자/마감일)</h2><ul><li></li></ul>`,
-      })
-    }, 50)
-  }
-  const openImageConverter = () => {
-    const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*'
-    inp.onchange = () => {
-      const file = inp.files?.[0]; if (!file) return
-      const r = new FileReader()
-      r.onload = () => {
-        const img = new Image()
-        img.onload = () => {
-          const w = Number(window.prompt('새 가로 (px):', String(img.width))) || img.width
-          const ratio = w / img.width
-          const h = Math.round(img.height * ratio)
-          const cv = document.createElement('canvas'); cv.width = w; cv.height = h
-          cv.getContext('2d')!.drawImage(img, 0, 0, w, h)
-          const fmt = window.prompt('포맷 (png/jpeg/webp):', 'webp') || 'webp'
-          const dataUrl = cv.toDataURL('image/' + fmt, 0.85)
-          const a = document.createElement('a'); a.href = dataUrl; a.download = `converted.${fmt}`
-          document.body.appendChild(a); a.click(); document.body.removeChild(a)
-        }
-        img.src = String(r.result)
-      }
-      r.readAsDataURL(file)
-    }
-    inp.click()
-  }
   const openRoleDash = () => {
     if (p.onRoles) p.onRoles()
     else alert('역할 팩 패널을 열 수 없습니다.')
@@ -249,47 +177,14 @@ export function AppHeader(p: AppHeaderProps) {
   type MoreItem = { label: string; icon: Parameters<typeof Icon>[0]['name']; help?: string; onClick: () => void | Promise<void> }
   const moreSections: Array<{ title: string; items: MoreItem[] }> = [
     {
-      title: '만들기 도구',
-      items: [
-        { label: '그림판', icon: 'paint', help: 'paint', onClick: () => p.onPaint?.() },
-        { label: '글자 인식 (OCR)', icon: 'image-text', help: 'ocr', onClick: p.onOcr },
-        { label: '이미지 변환', icon: 'image', help: 'image-convert', onClick: openImageConverter },
-        { label: '명함 · 카드', icon: 'cards', help: 'cards', onClick: () => p.onCards?.() },
-      ],
-    },
-    {
-      title: '기록',
-      items: [
-        { label: '회의 노트', icon: 'users', help: 'meeting', onClick: insertMeetingTemplate },
-        { label: '강의 노트', icon: 'mic', help: 'lecture', onClick: insertLectureTemplate },
-        { label: '빠른 메모', icon: 'page', help: 'quick-memo', onClick: p.onCalendar },
-        { label: 'JustPin 포스트잇', icon: 'pin', help: 'postit', onClick: openJustPin },
-      ],
-    },
-    {
-      title: '찾기 · 집중',
-      items: [
-        { label: '전체 검색', icon: 'search', help: 'global-search', onClick: () => (p.onGlobalSearch || p.onSearch)() },
-        { label: '웹 검색', icon: 'globe', help: 'web-search', onClick: openWebSearch },
-        { label: '집중 모드', icon: 'eye', help: 'focus', onClick: () => toggleFocus() },
-        { label: '홈 허브', icon: 'home', help: 'home', onClick: openHomeHub },
-      ],
-    },
-    {
-      title: '내보내기 · 계정',
-      items: [
-        { label: '공유', icon: 'users', help: 'share', onClick: p.onShare },
-        { label: '동기화', icon: 'sync', help: 'sync', onClick: openSync },
-        { label: '내 도구 · 역할 팩', icon: 'briefcase', help: 'roles', onClick: openRoleDash },
-        { label: '설정', icon: 'settings', help: 'settings', onClick: p.onSettings },
-      ],
-    },
-    {
+      /* 만들기 도구·기록은 「도구」 탭으로, 찾기·집중·테마·설정은 파일·보기 탭으로 옮겼다.
+         여기에는 리본에 자리가 마땅치 않은 앱 살림만 남긴다 (좁은 화면의 뒷문 구실도 한다). */
       title: '앱',
       items: [
-        { label: '테마 바꾸기', icon: themeIcon, help: 'theme', onClick: cycleTheme },
-        { label: '도움말', icon: 'help', help: 'help', onClick: p.onHelp },
-        { label: '버전 · 변경 내역', icon: 'info', help: 'about', onClick: p.onAbout },
+        { label: '최근 메모 (홈 허브)', icon: 'home', help: 'home', onClick: openHomeHub },
+        { label: '동기화', icon: 'sync', help: 'sync', onClick: openSync },
+        { label: '도움말 (F1)', icon: 'help', help: 'help', onClick: p.onHelp },
+        { label: '앱 정보 · 변경 내역', icon: 'info', help: 'about', onClick: p.onAbout },
         { label: 'CMS 관리자', icon: 'shield', help: 'cms', onClick: openCms },
       ],
     },
@@ -305,11 +200,6 @@ export function AppHeader(p: AppHeaderProps) {
             {pomoText}
           </button>
         )}
-        <button className="jan-header-btn" data-help="cmd-palette" onClick={p.onCmdPalette} title="명령 팔레트 (Ctrl+Shift+P)" aria-label="명령 팔레트"><Icon name="cmd" /><span className="jan-header-btn-label">명령</span></button>
-        <button className="jan-header-btn jan-bar-foldable" data-help="global-search" onClick={p.onGlobalSearch || p.onSearch} title="모든 메모에서 찾기 (Ctrl+Shift+F)" aria-label="전체 검색"><Icon name="search" /><span className="jan-header-btn-label">찾기</span></button>
-        <button className="jan-header-btn jan-bar-foldable" data-help="ai" onClick={p.onAi || p.onChat} title="AI 도우미 (Ctrl+/)" aria-label="AI 도우미"><Icon name="ai" /><span className="jan-header-btn-label">AI</span></button>
-        <button className="jan-header-btn jan-header-extra" data-help="quick-memo" onClick={p.onCalendar} title="빠른 메모 (Ctrl+Shift+J)" aria-label="빠른 메모"><Icon name="page" /><span className="jan-header-btn-label">빠른 메모</span></button>
-        <button className={'jan-header-btn jan-header-extra' + (focusMode ? ' is-active' : '')} data-help="focus" onClick={() => toggleFocus()} title="집중 모드 (F11)" aria-label="집중 모드"><Icon name="eye" /><span className="jan-header-btn-label">집중</span></button>
         <button className="jan-header-btn jan-header-role-btn jan-header-extra" data-help="roles" onClick={openRoleDash} title="내 도구 / 역할 팩" aria-label="내 도구 / 역할 팩">
           <Icon name="briefcase" />
           <span className="jan-header-btn-label">내 도구</span>
@@ -328,8 +218,6 @@ export function AppHeader(p: AppHeaderProps) {
           </div>
         )}
         <span className="jan-header-sep" aria-hidden="true" />
-        <button className="jan-header-btn jan-bar-foldable" data-help="theme" onClick={cycleTheme} title={`테마: ${theme}`} aria-label="테마"><Icon name={themeIcon} /><span className="jan-header-btn-label">테마</span></button>
-        <button className="jan-header-btn jan-bar-foldable" data-help="settings" onClick={p.onSettings} title="설정 (Ctrl+,)" aria-label="설정"><Icon name="settings" /><span className="jan-header-btn-label">설정</span></button>
         <div className="jan-header-more-wrap" onPointerDown={(e) => e.stopPropagation()}>
           <button
             className="jan-header-btn jan-header-more-btn"

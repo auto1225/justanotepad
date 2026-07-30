@@ -63,6 +63,8 @@ import { CITATION_STYLES } from '../lib/citationFormat'
 import type { CitationStyle } from '../lib/citationFormat'
 import { citationCount, citationStyle, exportBibtex, importBibtex, setCitationStyle } from '../lib/paperCites'
 import { MATH_TEMPLATES } from '../lib/paperTools'
+import { convertImageFile } from '../lib/imageConvert'
+import { useThemeStore } from '../store/themeStore'
 import { currentCellFormula, setCellFormula, suggestFormula } from '../lib/tableCompute'
 import { FORMULA_FUNCTIONS, NUMBER_FORMATS } from '../lib/tableFormula'
 import { pickTableSize } from '../lib/tableInsert'
@@ -154,6 +156,10 @@ interface ToolbarProps {
   onLectureNotes: () => void
   onMeetingNotes: () => void
   onTrash: () => void
+  /* 도구·파일 탭이 쓰는 앱 살림 — 머리부 아이콘에서 옮겨 왔다 */
+  onCards: () => void
+  onSettings: () => void
+  onHelp: () => void
 }
 
 const SYMBOL_GROUPS: Array<{ label: string; chars: string[] }> = [
@@ -168,6 +174,8 @@ interface MenuItem {
   label: string; short?: string; hint?: string; icon?: IconName; divider?: string; onClick?: () => void
   /** 눌러서 펼치는 차림표 (워드의 「▾」 단추) */
   menu?: MenuItem[]
+  /** 그림이 있는 설명 카드 키 (featureGuide) — 없으면 이름으로 카드를 만든다 */
+  help?: string
   /** 작은 단추 — 세 개씩 층층이 쌓인다 */
   small?: boolean
   /** 격자 — 아홉 칸 맞춤처럼 */
@@ -305,6 +313,21 @@ export function Toolbar(p: ToolbarProps) {
     return () => window.removeEventListener('jan-math-edit', onEdit)
   }, [editor])
   const ui = useUIStore()
+  /* 테마 — 머리부 아이콘에서 파일 탭으로 옮겼다 */
+  const theme = useThemeStore((st) => st.theme)
+  const setTheme = useThemeStore((st) => st.setTheme)
+  const THEME_CHOICES: { key: 'light' | 'dark' | 'auto'; label: string }[] = [
+    { key: 'light', label: '밝게' },
+    { key: 'dark', label: '어둡게' },
+    { key: 'auto', label: '기기 설정에 맞춤' },
+  ]
+  const themeName = THEME_CHOICES.find((t) => t.key === theme)?.label || theme
+  const cycleTheme = () => {
+    const at = THEME_CHOICES.findIndex((t) => t.key === theme)
+    const next = THEME_CHOICES[(at + 1) % THEME_CHOICES.length]
+    setTheme(next.key)
+    flash(`테마 — ${next.label}`)
+  }
 
   /* 맞춤법 검사 켬/끔 — F7 도 이 길로 온다 (그래서 훅보다 위에 둔다) */
   const toggleSpellCheck = () => {
@@ -1235,10 +1258,7 @@ export function Toolbar(p: ToolbarProps) {
             { short: '음성 녹음', label: '음성 녹음', icon: 'mic', onClick: () => run(recordAudio) },
             { short: '음성 입력', label: '음성 입력 (받아쓰기)', icon: 'mic', onClick: () => run(startVoiceInput) },
             { short: '읽어주기', label: '읽어주기 (TTS)', icon: 'speaker', onClick: () => run(speakSelection) },
-            { short: '회의 노트', label: '회의 노트 (녹음+받아쓰기)', icon: 'users', onClick: () => run(p.onMeetingNotes) },
-            { short: '강의 노트', label: '강의 노트 (녹음+받아쓰기)', icon: 'mic', onClick: () => run(p.onLectureNotes) },
             { short: '파일 첨부', label: '파일 첨부', icon: 'paperclip', onClick: () => run(p.onAtt) },
-            { short: '그림판', label: '그림판 (그리기·손글씨·도형)', icon: 'paint', onClick: () => run(p.onPaint) },
           ],
         },
 
@@ -1568,6 +1588,24 @@ export function Toolbar(p: ToolbarProps) {
         { divider: '제출 전', label: '' },
         { short: '논문 검사', label: '논문 검사 (제출 전 자동 점검)', icon: 'shield', onClick: () => run(runPaperLint) },
         { short: 'LaTeX', label: 'LaTeX(.tex) 내보내기 — Overleaf 용', icon: 'download', onClick: () => run(exportTex) },
+      ],
+    },
+
+    /* 3.6 도구 — 문서에 넣는 것이 아니라 「따로 창을 열어 만들고 적는」 앱 도구.
+       예전에는 머리부 더보기(⋯) 안에만 있어 아무도 찾지 못했다. */
+    {
+      label: '도구', items: [
+        { divider: '만들기', label: '' },
+        { short: '그림판', label: '그림판 (그리기·손글씨·도형)', icon: 'paint', help: 'paint', onClick: () => run(p.onPaint) },
+        { short: '글자 인식', label: '글자 인식 (그림에서 글 뽑기 · OCR)', icon: 'image-text', help: 'ocr', onClick: () => run(p.onOcr) },
+        { short: '변환', label: '이미지 변환 (크기·형식 바꿔 내려받기)', icon: 'image', help: 'image-convert', onClick: () => run(convertImageFile) },
+        { short: '명함', label: '명함 · 카드 만들기', icon: 'cards', help: 'cards', onClick: () => run(p.onCards) },
+
+        { divider: '기록', label: '' },
+        { short: '회의 노트', label: '회의 노트 (녹음 + 받아쓰기)', icon: 'users', help: 'meeting', onClick: () => run(p.onMeetingNotes) },
+        { short: '강의 노트', label: '강의 노트 (녹음 + 받아쓰기)', icon: 'mic', help: 'lecture', onClick: () => run(p.onLectureNotes) },
+        { short: '빠른 메모', label: '빠른 메모 (작은 창에 바로 적기)', hint: 'Ctrl+Shift+J', icon: 'page', help: 'quick-memo', onClick: () => run(p.onQuick) },
+        { short: '포스트잇', label: '포스트잇 (JustPin — 화면에 붙여 두기)', icon: 'pin', help: 'postit', onClick: () => run(p.onPostit) },
       ],
     },
 
@@ -1970,7 +2008,6 @@ export function Toolbar(p: ToolbarProps) {
           label: '새 메모', hint: 'Ctrl+N', icon: 'plus',
           onClick: () => run(p.onNewMemo),
           menu: [
-            { label: '빠른 메모 (작은 창에 바로 적기)', short: '빠른 메모', icon: 'plus', onClick: () => run(p.onQuick) },
           ],
         },
         { label: '열기', hint: 'Ctrl+O', icon: 'open', onClick: () => run(p.onOpen) },
@@ -2020,6 +2057,21 @@ export function Toolbar(p: ToolbarProps) {
         { short: '잠금', label: '비밀번호로 잠그기 (내용 암호화)', icon: 'lock', onClick: () => run(p.onLock) },
         { label: '휴지통', icon: 'box', onClick: () => run(p.onTrash) },
         { short: '정보', label: '앱 정보 · 버전', icon: 'info', onClick: () => run(p.onAbout) },
+
+        /* 머리부 아이콘으로 흩어져 있던 앱 살림을 파일 탭에 모았다 (그림만으로는 못 알아본다) */
+        { divider: '앱', label: '' },
+        { short: '명령', label: '명령 팔레트 (이름으로 명령 찾기)', hint: 'Ctrl+Shift+P', icon: 'cmd', help: 'cmd-palette', onClick: () => run(cmdPalette) },
+        { short: '찾기', label: '모든 메모에서 찾기', hint: 'Ctrl+Shift+F', icon: 'search', help: 'global-search', onClick: () => run(p.onSearch) },
+        {
+          short: '테마', label: `테마 바꾸기 (지금 ${themeName})`, icon: 'palette', help: 'theme',
+          onClick: () => run(cycleTheme),
+          menu: THEME_CHOICES.map((t): MenuItem => ({
+            short: t.label, label: `테마: ${t.label}`, icon: 'palette',
+            onClick: () => run(() => { setTheme(t.key); flash(`테마 — ${t.label}`) }),
+          })),
+        },
+        { short: '설정', label: '설정 창 열기', hint: 'Ctrl+,', icon: 'settings', help: 'settings', onClick: () => run(p.onSettings) },
+        { short: '도움말', label: '도움말 · 단축키', hint: 'F1', icon: 'help', help: 'help', onClick: () => run(p.onHelp) },
       ],
     },
   ]
@@ -2072,7 +2124,6 @@ export function Toolbar(p: ToolbarProps) {
       ],
     },
     { label: '찾기 · 바꾸기', short: '찾기', hint: 'Ctrl+F', icon: 'find', onClick: () => run(p.onFind) },
-    { label: '모든 메모에서 찾기', short: '전체 검색', icon: 'search', onClick: () => run(p.onSearch) },
 
     { divider: '서식 지우기', label: '' },
     {
@@ -2084,9 +2135,6 @@ export function Toolbar(p: ToolbarProps) {
         { label: '글자·문단 서식 모두 지우기', short: '모두', icon: 'close', onClick: () => run(() => editor.chain().focus().unsetAllMarks().clearNodes().run()) },
       ],
     },
-
-    { divider: '명령 찾기', label: '' },
-    { label: '명령 팔레트 (이름으로 명령 찾기)', short: '명령', hint: 'Ctrl+Shift+P', icon: 'cmd', onClick: () => run(cmdPalette) },
   ]
   /* AI 는 우리 강점이라 별도 탭으로 올린다 — 도구·미디어에 섞여 있던 것을 옮긴다 */
   const AI_KEYS = ['AI ', 'OCR', '번역', '문서 건강 점수', '워드 클라우드', '마인드맵']
@@ -2101,7 +2149,7 @@ export function Toolbar(p: ToolbarProps) {
     ...aiTools.filter((it) => it.label.startsWith('AI ')),
     { divider: '이미지 · 인식', label: '' },
     { short: 'AI 그림', label: 'AI 이미지 생성 (Pollinations)', icon: 'sparkle', onClick: () => run(() => { void aiImageStub() }) },
-    ...aiTools.filter((it) => it.label.startsWith('OCR')),
+
   ]
 
   /* 표·그림을 고르면 나타나는 개체 탭 (한글의 맥락 탭) */
@@ -2882,6 +2930,8 @@ export function Toolbar(p: ToolbarProps) {
     { label: 'AI', items: aiItems, extra: true },
     /* 논문은 문서 일반과 결이 달라 부가 탭으로 세운다 — 학회 양식·구성 요소·DOI 인용은 논문에만 있다 */
     { label: '논문', items: pick('논문'), extra: true },
+    /* 도구 = 창을 열어 만들고 적는 앱 도구 (문서 편집이 아니라서 부가 탭에 둔다) */
+    { label: '도구', items: pick('도구'), extra: true },
     /* 자료 탭이 워드 「참조」 자리다 — 예전 「논문」 탭의 학술 기능도 이 안에 녹였다
        (목차·캡션·인용·번호 매기기가 두 군데로 갈라져 있던 것을 한 자리로 모았다) */
     { label: '자료', items: pick('자료') },

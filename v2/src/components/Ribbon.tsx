@@ -29,6 +29,8 @@ export interface RibbonItem {
   small?: boolean
   /** 격자로 늘어놓을 항목들 — 아홉 칸 맞춤·색판처럼 */
   grid?: { cols: number; items: RibbonItem[] }
+  /** 그림이 있는 설명 카드 키 (featureGuide) — 머리부에서 옮겨 온 단추가 카드를 잃지 않게 */
+  help?: string
   /** 펼쳤을 때 보일 것을 직접 그린다 — 워드의 색판·선 두께 고르개처럼 */
   panel?: () => React.ReactNode
 }
@@ -239,7 +241,7 @@ function DropButton({ item, caption }: { item: RibbonItem; caption: string }) {
         aria-label={item.label}
         aria-haspopup="menu"
         aria-expanded={open}
-        data-help={`ribbon:${item.label}`}
+        data-help={item.help || `ribbon:${item.label}`}
         data-help-hint={item.hint || undefined}
         data-help-group={caption || undefined}
       >
@@ -415,7 +417,7 @@ export function Ribbon({
                             title={it.hint ? `${it.label} (${it.hint})` : it.label}
                             aria-label={it.label}
                             /* 설명 카드 — 따로 적어 둔 안내가 있으면 그것을, 없으면 이름·단축키로 만든다 */
-                            data-help={`ribbon:${it.label}`}
+                            data-help={it.help || `ribbon:${it.label}`}
                             data-help-hint={it.hint || undefined}
                             data-help-group={sec.caption || undefined}
                           >

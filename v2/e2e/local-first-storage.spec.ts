@@ -145,9 +145,15 @@ test.describe('local-first memo storage', () => {
 
     const moreMenu = page.locator('.jan-header-more-menu')
     await expect(moreMenu).toBeVisible()
-    await expect(moreMenu.getByRole('menuitem', { name: '명함 · 카드' })).toBeVisible()
-    // 좁은 화면에서는 설정도 더보기 메뉴 안에 있다 (통합 바에는 팔레트와 더보기만 남는다)
-    await moreMenu.getByRole('menuitem', { name: '설정' }).click()
+    // 더보기에는 앱 살림만 남는다 (만들기·기록은 도구 탭, 찾기·테마·설정은 파일 탭으로 나갔다)
+    await expect(moreMenu.getByRole('menuitem', { name: /도움말/ })).toBeVisible()
+    await page.keyboard.press('Escape')
+
+    // 좁은 화면에서도 탭으로 그 기능에 닿는다 — 명함은 도구 탭, 설정은 파일 탭
+    await page.getByRole('tab', { name: '도구', exact: true }).click()
+    await expect(page.locator('.jan-ribbon-body button[aria-label^="명함"]')).toBeVisible()
+    await page.getByRole('tab', { name: '파일', exact: true }).click()
+    await page.locator('.jan-ribbon-body button[aria-label^="설정 창 열기"]').first().click()
     await expect(page.locator('.jan-settings-modal')).toBeVisible({ timeout: 15000 })
     await page.locator('.jan-settings-modal').getByRole('button', { name: '닫기' }).click()
 

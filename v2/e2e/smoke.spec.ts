@@ -145,7 +145,7 @@ test.describe('v2 smoke', () => {
     await page.goto('./')
     await page.locator('.ProseMirror').first().waitFor()
     // 코어(문서 작업) 7 + 부가 2 — '도구' 는 없애고 검토/보기/입력·유틸 메뉴로 나눠 담았다
-    for (const label of ['파일', '편집', '보기', '삽입', '텍스트', '디자인', '서식', '레이아웃', '검수', 'AI', '논문', '자료']) {
+    for (const label of ['파일', '편집', '보기', '삽입', '텍스트', '디자인', '서식', '레이아웃', '검수', 'AI', '논문', '도구', '자료']) {
       await expect(page.getByRole('tab', { name: label, exact: true })).toBeVisible({ timeout: 5000 })
     }
     await page.getByRole('tab', { name: '파일', exact: true }).click()
@@ -261,7 +261,9 @@ test.describe('v2 smoke', () => {
     await page.reload()
     await page.locator('.ProseMirror').first().waitFor({ state: 'visible', timeout: 15000 })
 
-    await page.getByRole('button', { name: '설정', exact: true }).click()
+    // 설정은 파일 탭 「앱」 묶음으로 옮겼다 (머리부 아이콘에서)
+    await page.getByRole('tab', { name: '파일', exact: true }).click()
+    await page.locator('.jan-ribbon-body button[aria-label^="설정 창 열기"]').first().click()
     await expect(page.locator('.jan-settings-modal')).toBeVisible()
     await page.getByRole('button', { name: '페이지 설정 열기' }).click()
     await expect(page.locator('.jan-page-settings-modal')).toBeVisible()
@@ -570,9 +572,9 @@ test.describe('v2 smoke', () => {
     await page.goto('./')
     await page.locator('.ProseMirror').first().waitFor({ state: 'visible', timeout: 15000 })
 
-    // 회의 노트는 헤더 정리 후 더보기(⋯) 메뉴로 옮겼다
-    await page.locator('.jan-header-more-btn').click()
-    await page.locator('.jan-header-more-menu').getByRole('menuitem', { name: '회의 노트' }).click()
+    // 회의 노트는 도구 탭 「기록」 묶음에 있다 (더보기 안에 묻혀 있던 것을 꺼냈다)
+    await page.getByRole('tab', { name: '도구', exact: true }).click()
+    await page.locator('.jan-ribbon-body button[aria-label^="회의 노트"]').first().click()
     await expect(page.locator('.jan-meeting-modal')).toBeVisible()
     await page.locator('.jan-meeting-capture input').first().fill('동기화 점검 회의')
     await page.locator('.jan-meeting-capture textarea').nth(1).fill('오늘 회의에서는 v2 동기화 정책을 확정했습니다.\n민수 담당으로 다음 주까지 Dropbox 백업 테스트를 진행해야 합니다.')
@@ -817,7 +819,8 @@ test.describe('v2 smoke', () => {
     const menu = page.locator('.jan-header-more-menu')
     await expect(menu).toBeVisible()
     await expect(menu.locator('button').first()).toBeVisible()
-    expect(await menu.locator('button').count()).toBeGreaterThan(10)
+    /* 만들기·기록은 도구 탭으로, 찾기·테마·설정은 파일 탭으로 나갔다 — 여기엔 앱 살림만 남는다 */
+    expect(await menu.locator('button').count()).toBeGreaterThanOrEqual(5)
 
     const menuBox = await menu.boundingBox()
     expect(menuBox).not.toBeNull()
@@ -826,8 +829,8 @@ test.describe('v2 smoke', () => {
     expect(Math.ceil((menuBox?.y || 0) + (menuBox?.height || 0))).toBeLessThanOrEqual(740)
 
     // 메뉴에서 고른 기능이 실제로 열린다 (첫 항목은 그림판)
-    await menu.getByRole('menuitem', { name: '공유' }).click()
-    await expect(page.locator('.jan-share-modal')).toBeVisible({ timeout: 15000 })
+    await menu.getByRole('menuitem', { name: /도움말/ }).click()
+    await expect(page.locator('.jan-help-modal')).toBeVisible({ timeout: 15000 })
   })
 
   test('좁은 화면에서도 리본 탭·명령이 화면 안에 들어온다', async ({ page }) => {

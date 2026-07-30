@@ -219,6 +219,8 @@ test.describe('글자 모양 도구 상자', () => {
     await page.goto('./')
     await page.locator('.ProseMirror').first().waitFor({ state: 'visible', timeout: 15000 })
 
+    // 명령 팔레트는 파일 탭 「앱」 묶음으로 옮겼다 — 그림 카드(featureGuide)는 그대로 따라왔다
+    await page.getByRole('tab', { name: '파일', exact: true }).click()
     await page.locator('[data-help="cmd-palette"]').first().hover()
     const card = page.locator('.jan-help-tip')
     await expect(card).toBeVisible({ timeout: 3000 })
@@ -274,12 +276,12 @@ test.describe('글자 모양 도구 상자', () => {
       extra: t.classList.contains('is-extra'),
     })))
     expect(tabs.filter((t) => !t.extra).map((t) => t.label)).toEqual(['파일', '편집', '보기', '삽입', '텍스트', '디자인', '서식', '레이아웃', '검수', '자료'])
-    expect(tabs.filter((t) => t.extra).map((t) => t.label)).toEqual(['AI', '논문'])
+    expect(tabs.filter((t) => t.extra).map((t) => t.label)).toEqual(['AI', '논문', '도구'])
     await expect(page.locator('.jan-ribbon-tab-split')).toHaveCount(1) // 코어와 부가 사이 경계선
 
     // 같은 기능이 두 탭에 있으면 어디서 하는 일인지 헷갈린다 — 겹침 0 을 지킨다
     const seen = new Map<string, string[]>()
-    for (const t of ['파일', '편집', '보기', '삽입', '텍스트', '디자인', '서식', '레이아웃', '검수', 'AI', '논문', '자료']) {
+    for (const t of ['파일', '편집', '보기', '삽입', '텍스트', '디자인', '서식', '레이아웃', '검수', 'AI', '논문', '도구', '자료']) {
       await page.getByRole('tab', { name: t, exact: true }).click()
       await page.waitForTimeout(120)
       const labels = await page.evaluate(() =>
@@ -293,16 +295,22 @@ test.describe('글자 모양 도구 상자', () => {
     expect(dupes).toEqual([])
   })
 
-  test('유틸은 유틸끼리 — 더보기 메뉴가 갈래로 나뉘어 있다', async ({ page }) => {
+  test('만들기·기록은 도구 탭으로 나오고, 더보기에는 앱 살림만 남는다', async ({ page }) => {
     await page.goto('./')
     await page.locator('.ProseMirror').first().waitFor({ state: 'visible', timeout: 15000 })
-    await page.locator('.jan-header-more-btn').click()
 
+    /* 예전에는 그림판·회의 노트가 더보기(⋯) 안에만 있어 찾을 수 없었다 — 이제 탭에 나와 있다 */
+    await page.getByRole('tab', { name: '도구', exact: true }).click()
+    const caps = await page.locator('.jan-ribbon-group .jan-ribbon-cap').allInnerTexts()
+    expect(caps).toEqual(['만들기', '기록'])
+    await expect(page.locator('.jan-ribbon-body button[aria-label^="그림판"]')).toHaveCount(1)
+    await expect(page.locator('.jan-ribbon-body button[aria-label^="회의 노트"]')).toHaveCount(1)
+
+    await page.locator('.jan-header-more-btn').click()
     const menu = page.locator('.jan-header-more-menu')
     await expect(menu).toBeVisible()
     const sections = await menu.locator('.jan-more-sec-title').allInnerTexts()
-    expect(sections.length).toBeGreaterThanOrEqual(4)
-    expect(sections).toContain('만들기 도구')
-    expect(await menu.getByRole('menuitem').count()).toBeGreaterThanOrEqual(16)
+    expect(sections).toEqual(['앱'])
+    expect(await menu.getByRole('menuitem').count()).toBe(5)
   })
 })

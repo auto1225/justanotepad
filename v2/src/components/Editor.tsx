@@ -1149,6 +1149,9 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
         onToggleOutline={() => setShowOutline((v) => !v)}
         outlineOpen={showOutline}
         onTrash={() => setShowTrash(true)}
+        onCards={() => setShowCards(true)}
+        onSettings={() => setShowSettings(true)}
+        onHelp={() => setShowHelp(true)}
       />
       <TagsBar />
       <div className="jan-app-body">
