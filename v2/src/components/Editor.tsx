@@ -1012,17 +1012,24 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
     return () => window.removeEventListener('jan-open-roles', openRoles)
   }, [])
 
+  /* 처음 온 사람에게 역할 팩을 한 번 보여 준다.
+     다만 그 사이에 사람이 무언가 하고 있으면 덮지 않는다 — 열어 둔 창이 있으면 물러나 기다렸다가,
+     손을 놓았을 때 뜬다. (덮고 뜨면 눌러 둔 것이 안 눌리고, 왜 안 되는지도 모른다) */
   useEffect(() => {
-    const timer = window.setTimeout(() => {
+    let timer = 0
+    const busy = () => !!document.querySelector('.jan-modal-overlay, .jan-ribbon-dropdown')
+    const tryShow = () => {
       try {
         if (localStorage.getItem('jan-v2-role-onboarded') === '1') return
+        if (busy()) { timer = window.setTimeout(tryShow, 2000); return }   // 아직 쓰는 중이다
         localStorage.setItem('jan-v2-role-onboarded', '1')
         setInitialRoleTool(null)
         setShowRoles(true)
       } catch {
         // localStorage can be blocked by privacy settings; skip onboarding then.
       }
-    }, 2500)
+    }
+    timer = window.setTimeout(tryShow, 2500)
     return () => window.clearTimeout(timer)
   }, [])
 

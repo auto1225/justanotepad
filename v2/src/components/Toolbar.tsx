@@ -2156,7 +2156,8 @@ export function Toolbar(p: ToolbarProps) {
     /* 첫자리는 「없는 문서를 만들어 내는 일」 — 도우미(있는 글을 손보는 일)보다 앞에 둔다 */
     { divider: '문서 만들기', label: '' },
     {
-      short: '문서 자동 작성',
+      /* 줄인 이름은 넉 자를 넘기면 단추 밖으로 잘린다 (묶음 이름이 「문서 만들기」 라 뜻은 이어진다) */
+      short: '자동 작성',
       label: '문서 자동 작성',
       hint: 'Alt+J',
       icon: 'sparkle',

@@ -136,6 +136,28 @@ function imagePayload(dataUrl: string): { mimeType: string; data: string } {
   return { mimeType, data: data || '' }
 }
 
+/**
+ * OpenAI 키가 살아 있는지만 물어본다.
+ * /v1/models 는 브라우저에서 답을 읽을 수 있는 문이라(허락 머리가 붙어 온다),
+ * 글쓰기 문이 막혀 「닿지 못했다」 로만 보일 때 무엇이 잘못됐는지 여기서 갈린다.
+ */
+export async function openaiKeyState(key: string): Promise<'ok' | 'bad' | 'unknown'> {
+  const t = withTimeout(12000)
+  try {
+    const r = await fetch('https://api.openai.com/v1/models', {
+      signal: t.signal,
+      headers: { Authorization: `Bearer ${key}` },
+    })
+    if (r.ok) return 'ok'
+    if (r.status === 401 || r.status === 403) return 'bad'
+    return 'unknown'
+  } catch {
+    return 'unknown'
+  } finally {
+    t.cancel()
+  }
+}
+
 async function callOpenAI(prompt: string, model: string, key: string, o: AiRunOptions = {}): Promise<AiCallResult> {
   const t = withTimeout(o.timeoutMs || TIMEOUT_MS)
   try {
@@ -161,7 +183,15 @@ async function callOpenAI(prompt: string, model: string, key: string, o: AiRunOp
     return { ok: true, text }
   } catch (e: unknown) {
     if (errorName(e) === 'AbortError') return { ok: false, error: 'OpenAI 응답이 늦어 그만두었다' }
-    return { ok: false, error: 'OpenAI 네트워크 오류: ' + errorMessage(e) }
+    /* OpenAI 는 글쓰기 부탁의 「답」에 브라우저용 허락 머리를 붙이지 않는다.
+       그래서 키가 틀렸을 때도 브라우저는 그 거절문을 읽지 못하고 「닿지 못했다」 로만 안다.
+       무엇이 잘못됐는지 갈라 주려고, 읽을 수 있는 문(/v1/models)으로 키부터 물어본다. */
+    const why = await openaiKeyState(key)
+    if (why === 'bad') return { ok: false, error: 'OpenAI 키가 맞지 않는다 — 키를 다시 살펴보세요' }
+    if (why === 'ok') {
+      return { ok: false, error: 'OpenAI 가 이 브라우저에서 온 글쓰기 부탁을 막았다 (키는 맞다) — Claude·Gemini 를 쓰거나, 앱을 올려 둔 서버의 프록시를 거쳐야 한다' }
+    }
+    return { ok: false, error: 'OpenAI 에 닿지 못했다: ' + errorMessage(e) }
   } finally {
     t.cancel()
   }
@@ -326,9 +356,12 @@ async function callProxy(prompt: string, providerHint: 'anthropic' | 'openai', m
         image: dataUrl ? imagePayload(dataUrl) : undefined,
       }),
     })
-    const data = await r.json().catch(() => ({ ok: false, error: 'JSON 파싱 실패' })) as ProxyResponse
+    const data = await r.json().catch(() => ({ ok: false, error: '' })) as ProxyResponse
+    if (r.status === 404) {
+      return { ok: false, error: '이 앱을 올려 둔 서버에 프록시(/api/v2-ai)가 없다 — 내 키를 쓰거나 내 컴퓨터 모델을 고르세요' }
+    }
     if (!r.ok || !data.ok) {
-      return { ok: false, error: safeError(`Proxy ${r.status}`, data.error || '') }
+      return { ok: false, error: safeError(`서버 프록시 ${r.status}`, data.error || '까닭을 알려 주지 않았다') }
     }
     return { ok: true, text: data.text || '' }
   } catch (e: unknown) {
@@ -353,10 +386,9 @@ async function callProxyWithFallback(prompt: string, model: string, dataUrl?: st
   const fallback = await callProxy(prompt, fallbackBackend, fallbackModel, dataUrl)
   if (fallback.ok) return fallback
 
-  return {
-    ok: false,
-    error: [primary.error, fallback.error].filter(Boolean).join(' / '),
-  }
+  /* 두 곳에 물어보고 둘 다 안 되면 까닭을 함께 적는다 — 같은 말이면 한 번만 */
+  const reasons = [...new Set([primary.error, fallback.error].filter(Boolean))]
+  return { ok: false, error: reasons.join(' / ') }
 }
 
 /**

@@ -1,4 +1,4 @@
-import { chatAi, defaultModelFor, localBase } from './aiApi'
+import { chatAi, defaultModelFor, localBase, openaiKeyState } from './aiApi'
 import { useSettingsStore, type AiProvider } from '../store/settingsStore'
 
 /**
@@ -44,7 +44,7 @@ export const PROVIDERS: ProviderInfo[] = [
   {
     id: 'openai',
     label: 'ChatGPT (OpenAI)',
-    note: '값싼 모델부터 좋은 모델까지 폭이 넓다',
+    note: '값싼 모델부터 좋은 모델까지 폭이 넓다 (브라우저에서 곧장 쓰기는 OpenAI 쪽이 막을 때가 있다)',
     keyField: 'openaiKey',
     keyHint: 'sk-... 로 시작하는 키',
     keyPrefix: 'sk-',
@@ -153,7 +153,18 @@ const PING = '연결 확인이다. 다른 말 없이 「연결됨」 이라고�
  * 키가 틀렸는지, 요금이 떨어졌는지, 모델 이름이 없는지는 답을 받아 봐야 갈린다.
  */
 export async function testConnection(): Promise<TestResult> {
+  const s = useSettingsStore.getState()
   const started = performance.now()
+
+  /* OpenAI 만 먼저 키를 따로 물어본다 — 글쓰기 문은 답에 브라우저용 허락 머리가 없어,
+     키가 틀려도 「닿지 못했다」 로만 보인다. 읽을 수 있는 문으로 미리 갈라 준다. */
+  if (s.aiProvider === 'openai' && s.openaiKey) {
+    const state = await openaiKeyState(s.openaiKey)
+    if (state === 'bad') {
+      return { ok: false, ms: Math.round(performance.now() - started), error: 'OpenAI 키가 맞지 않는다 — 키를 다시 살펴보세요' }
+    }
+  }
+
   const r = await chatAi(PING, { maxTokens: 24, timeoutMs: 30000 })
   const ms = Math.round(performance.now() - started)
   if (!r.ok) return { ok: false, ms, error: r.error || '까닭을 알 수 없다' }
