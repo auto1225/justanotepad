@@ -29,6 +29,7 @@ export function AiConnectPanel({ onClose }: Props) {
   const settings = useSettingsStore()
   const [showKey, setShowKey] = useState(false)
   const [testing, setTesting] = useState(false)
+  const [waited, setWaited] = useState(0)
   const [result, setResult] = useState<TestResult | null>(null)
   const [finding, setFinding] = useState(false)
   const [found, setFound] = useState<LocalFind[] | null>(null)
@@ -83,11 +84,20 @@ export function AiConnectPanel({ onClose }: Props) {
 
   async function test() {
     setTesting(true)
+    setWaited(0)
     setResult(null)
     const r = await testConnection()
     setResult(r)
     setTesting(false)
   }
+
+  /* 기다리는 동안 초를 센다 — 내 컴퓨터 모델은 처음 한 번 모델을 올리느라 한참 걸린다.
+     아무 기별이 없으면 멈춘 줄 알고 창을 닫아 버린다. */
+  useEffect(() => {
+    if (!testing) return
+    const t = window.setInterval(() => setWaited((v) => v + 1), 1000)
+    return () => window.clearInterval(t)
+  }, [testing])
 
   async function find() {
     setFinding(true)
@@ -99,9 +109,11 @@ export function AiConnectPanel({ onClose }: Props) {
       flash('내 컴퓨터에서 도는 모델을 못 찾았다 — Ollama 나 LM Studio 를 켜고 다시 찾는다', 3600)
       return
     }
-    connectLocal(list[0])
+    const ok = connectLocal(list[0])
     setResult(null)
-    flash(`${list[0].kind} 에 이었다 — 모델 ${list[0].models.length}개`)
+    flash(ok
+      ? `${list[0].kind} 에 이었다 — 모델 ${list[0].models.length}개`
+      : `${list[0].kind} 는 켜져 있는데 받아 둔 모델이 없다 — 아래 안내대로 하나 받는다`, 4000)
   }
 
   function clearKey() {
@@ -211,21 +223,31 @@ export function AiConnectPanel({ onClose }: Props) {
                     <div key={f.url} className={f.url === settings.localUrl ? 'is-active' : ''}>
                       <strong>{f.kind}</strong>
                       <span>{f.url}</span>
-                      <select
-                        value={f.url === settings.localUrl ? settings.aiModel : (f.models[0] || '')}
-                        aria-label={f.kind + ' 모델 고르기'}
-                        onChange={(e) => { connectLocal(f, e.target.value); setResult(null) }}
-                      >
-                        {f.models.map((m) => <option key={m} value={m}>{m}</option>)}
-                      </select>
+                      {f.models.length > 0 ? (
+                        <select
+                          value={f.url === settings.localUrl ? settings.aiModel : (f.models[0] || '')}
+                          aria-label={f.kind + ' 모델 고르기'}
+                          onChange={(e) => { connectLocal(f, e.target.value); setResult(null) }}
+                        >
+                          {f.models.map((m) => <option key={m} value={m}>{m}</option>)}
+                        </select>
+                      ) : <em>받아 둔 모델 없음</em>}
                     </div>
                   ))}
                 </div>
               )}
               {found && found.length === 0 && (
                 <p className="jan-aiconn-warn">
-                  켜져 있는 모델 서버를 못 찾았다. Ollama 는 설치하고 한 번 모델을 받아 두면
-                  (ollama pull llama3.1) 컴퓨터를 켤 때 함께 돈다.
+                  켜져 있는 모델 서버를 못 찾았다. Ollama 를 설치하고 한 번 모델을 받아 두면
+                  (터미널에서 ollama pull qwen2.5:3b) 컴퓨터를 켤 때 함께 돈다.
+                </p>
+              )}
+              {/* 서버는 켜져 있는데 받아 둔 모델이 없는 자리 — 방금 설치한 사람이 여기에 선다 */}
+              {found && found.length > 0 && found.every((f) => f.models.length === 0) && (
+                <p className="jan-aiconn-warn">
+                  {found[0].kind} 는 켜져 있는데 받아 둔 모델이 하나도 없다.
+                  터미널에서 <strong>ollama pull qwen2.5:3b</strong> 를 한 번 실행하고 다시 찾는다
+                  (한국어가 되는 작은 모델, 약 2GB).
                 </p>
               )}
               <p className="jan-chartdlg-hint">
@@ -280,7 +302,11 @@ export function AiConnectPanel({ onClose }: Props) {
 
         <div className="jan-modal-foot">
           <span className="jan-chartdlg-hint">
-            {provider === 'none' ? 'AI 를 고르면 시험할 수 있다' : '시험은 아주 짧은 부탁 한 번이다 (요금이 거의 들지 않는다)'}
+            {provider === 'none'
+              ? 'AI 를 고르면 시험할 수 있다'
+              : testing && provider === 'local' && waited > 8
+                ? '내 컴퓨터 모델은 처음 한 번 모델을 올리느라 오래 걸린다 — 그대로 기다린다'
+                : '시험은 아주 짧은 부탁 한 번이다 (요금이 거의 들지 않는다)'}
           </span>
           <button onClick={onClose}>닫기</button>
           <button
@@ -288,7 +314,7 @@ export function AiConnectPanel({ onClose }: Props) {
             onClick={() => void test()}
             disabled={testing || provider === 'none' || !state.ready}
           >
-            {testing ? '물어보는 중…' : '연결 시험'}
+            {testing ? `물어보는 중… ${waited}초` : '연결 시험'}
           </button>
         </div>
       </div>

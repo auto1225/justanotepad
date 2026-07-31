@@ -146,7 +146,8 @@ export interface TestResult {
   error?: string
 }
 
-const PING = '연결 확인이다. 다른 말 없이 「연결됨」 이라고만 답해라.'
+/* 작은 모델도 알아들을 만큼 단출하게 (꺾쇠나 특수 기호를 넣으면 그것부터 되묻는 모델이 있다) */
+const PING = '한국어로 연결됨 이라고만 답하세요.'
 
 /**
  * 진짜로 한 번 물어본다 — 「저장했다」 가 아니라 「이어졌다」 를 확인하는 유일한 길.
@@ -165,7 +166,10 @@ export async function testConnection(): Promise<TestResult> {
     }
   }
 
-  const r = await chatAi(PING, { maxTokens: 24, timeoutMs: 30000 })
+  /* 내 컴퓨터 모델은 첫 부탁 때 모델을 메모리에 올린다 — 그 한 번이 1~2분 걸리기도 한다.
+     여기서 30초에 끊으면 「답하지 않는다」 고 잘못 알려 주게 된다. */
+  const patience = s.aiProvider === 'local' ? 180000 : 30000
+  const r = await chatAi(PING, { maxTokens: 24, timeoutMs: patience })
   const ms = Math.round(performance.now() - started)
   if (!r.ok) return { ok: false, ms, error: r.error || '까닭을 알 수 없다' }
   const said = (r.text || '').trim().replace(/\s+/g, ' ').slice(0, 40)
@@ -219,15 +223,24 @@ export async function discoverLocal(): Promise<LocalFind[]> {
     const models = await askModels(port.url)
     return models ? { url: port.url, models, kind: port.kind } : null
   }))
+  /* 모델을 받아 둔 곳을 앞에 놓는다 — 켜 두기만 하고 빈 서버가 먼저 잡히지 않게 */
   return found.filter((f): f is LocalFind => f !== null)
+    .sort((a, b) => b.models.length - a.models.length)
 }
 
-/** 찾은 내 컴퓨터 모델로 곧바로 잇는다 */
-export function connectLocal(find: LocalFind, model?: string): void {
+/**
+ * 찾은 내 컴퓨터 모델로 곧바로 잇는다.
+ * 모델을 하나도 안 받아 둔 서버라면 이름을 비워 두지 않는다 — 빈 이름으로 부탁하면
+ * 「그런 모델 없다」 는 말만 돌아와, 무엇이 빠졌는지 알 길이 없다.
+ */
+export function connectLocal(find: LocalFind, model?: string): boolean {
+  const pick = model || find.models[0] || ''
   const s = useSettingsStore.getState()
   s.setKey('localUrl', find.url)
-  s.setKey('aiModel', model || find.models[0] || '')
   s.setKey('aiProvider', 'local')
+  if (!pick) return false          // 서버는 찾았지만 받아 둔 모델이 없다
+  s.setKey('aiModel', pick)
+  return true
 }
 
 /**
