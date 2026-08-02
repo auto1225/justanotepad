@@ -75,3 +75,45 @@ test('그림을 넣고 글을 더 쳐도 그림이 남아 있고, 글이 아래 
   /* 늘어나도 되는 쪽(한 쪽보다 큰 그림·표)은 예외라 약간의 여유는 둔다 */
   expect(Math.max(0, ...over)).toBeLessThan(4)
 })
+
+test('저장소 주소(jan-blob://) 그림이 있어도 쪽 나눔이 멈추지 않는다', async ({ page }) => {
+  /* 앱은 그림을 jan-blob:// 로 담아 두고 나중에 진짜 자료로 바꿔 물린다. 그 사이 img 는
+     complete=true 인데 naturalHeight=0 이다. 이것을 「아직 안 온 그림」 으로 보고 쪽 나눔을
+     멈춰 두었더니, 7쪽짜리 문서가 1쪽이 되어 죄다 아래로 넘쳤다 — 내가 넣은 가드가 만든 일이다.
+     기다릴 것은 「지금 받아오는 중인 것」 뿐이다. */
+  await page.goto('./')
+  await page.evaluate(() => localStorage.setItem('jan-v2-role-onboarded', '1'))
+  await page.reload()
+  const doc = page.locator('.ProseMirror').first()
+  await doc.waitFor({ state: 'visible' })
+  await doc.click()
+
+  for (let i = 1; i <= 60; i += 1) {
+    await page.keyboard.type(`문단 ${i} — 여러 쪽이 되도록 채우는 글이다.`)
+    await page.keyboard.press('Enter')
+  }
+  await page.waitForTimeout(1200)
+  const before = await page.locator('[data-jan-page]').count()
+  expect(before).toBeGreaterThan(1)
+
+  /* 브라우저가 못 읽는 주소의 그림을 앱을 통해 넣는다 — 저장소 주소와 같은 상태가 된다.
+     (DOM 에 직접 꽂으면 문서가 바뀌지 않아 쪽 나눔이 다시 돌지 않는다 — 그러면 시험이 헛것이 된다) */
+  await doc.click()
+  await page.keyboard.press('Control+End')
+  await page.locator('.jan-ribbon-tab', { hasText: /^삽입$/ }).first().click()
+  await page.locator('.jan-ribbon-body button[aria-label="그림 넣기 (파일에서)"] .jan-ribbon-caret').first().click()
+  await page.locator('button', { hasText: /인터넷 주소/ }).first().click()
+  const ask = page.locator('.jan-modal-overlay').last()
+  await ask.locator('input, textarea').first().fill('jan-blob://test-not-a-real-blob')
+  await ask.getByRole('button', { name: '확인' }).first().click()
+  await expect(doc.locator('img')).toHaveCount(1)
+  await page.waitForTimeout(2000)
+
+  /* 문서를 새로 연다 — 실패는 여기서 난다. 이미 나뉘어 있던 쪽은 그대로 남으므로
+     「열 때 나누는가」 를 봐야 한다 (실제로 7쪽짜리가 1쪽으로 열렸다). */
+  await page.reload()
+  await doc.waitFor({ state: 'visible' })
+  await page.waitForTimeout(3000)
+  const after = await page.locator('[data-jan-page]').count()
+  expect(after).toBeGreaterThan(1)
+})

@@ -851,8 +851,14 @@ function hasPendingImages(view: EditorView): boolean {
   const imgs = view.dom.querySelectorAll('img')
   for (let i = 0; i < imgs.length; i += 1) {
     const img = imgs[i] as HTMLImageElement
-    if (!img.getAttribute('src')) continue
-    if (!img.complete || img.naturalHeight === 0) return true
+    const src = img.getAttribute('src') || ''
+    if (!src) continue
+    /* 우리 저장소 주소(jan-blob://)는 브라우저가 못 읽는다 — 나중에 진짜 자료로 바뀐다.
+       그 사이 img 는 complete=true 인데 naturalHeight=0 이다. 이것을 「아직 안 왔다」 로
+       보면 쪽 나눔이 영영 멈춘다 (7쪽짜리가 1쪽이 되어 죄다 넘쳤다 — 실제로 그랬다).
+       기다릴 것은 「지금 받아오는 중인 것」 뿐이다. */
+    if (!/^(https?:|data:|blob:)/i.test(src)) continue
+    if (!img.complete) return true
   }
   return false
 }
