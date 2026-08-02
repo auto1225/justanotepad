@@ -140,7 +140,7 @@ import Highlight from '@tiptap/extension-highlight'
 import { Lightbox } from './Lightbox'
 import type { RoleToolId } from '../lib/roles'
 import type { MeetingKind } from '../lib/meetingNotes'
-import { externalizeLargeDataUrlsInHtml, resolveBlobRefsInElement } from '../lib/blobRefs'
+import { externalizeLargeDataUrlsInHtml, resolveBlobRefsInElement, watchBlobRefs } from '../lib/blobRefs'
 import { pushActiveSnapshot } from '../lib/activeSync'
 import { downloadAttachment } from '../lib/attachments'
 import { flash } from '../lib/flash'
@@ -607,6 +607,13 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   useEffect(() => {
     if (!editor) return
     return watchPaperNumbers(editor)
+  }, [editor])
+
+  /* 저장소 주소(jan-blob://)를 계속 지켜보며 진짜 그림으로 바꾼다 —
+     쪽 나눔이 그림을 옮기면 그 자리가 새로 그려지고 주소가 되돌아가기 때문이다 */
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return
+    return watchBlobRefs(editor.view.dom as HTMLElement)
   }, [editor])
 
   /* 「멈춤」 으로 표시된 움직이는 그림은 첫 장면만 보여 준다 */

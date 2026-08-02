@@ -216,3 +216,44 @@ export async function getBlobStorageStats(): Promise<{ count: number; bytes: num
     return { count: 0, bytes: 0 }
   }
 }
+
+/**
+ * 저장소 주소(jan-blob://)를 계속 지켜보며 진짜 그림으로 바꿔 준다.
+ *
+ * 예전에는 메모를 바꿀 때 한 번만 바꿨다. 그런데 쪽 나눔이 그림을 다른 쪽으로 옮기면
+ * ProseMirror 가 그 자리를 새로 그리고, 새로 그린 img 의 주소는 다시 jan-blob:// 이다.
+ * 브라우저는 그 주소를 읽지 못하므로 그림이 통째로 사라진다 —
+ * 「그림이 안 나온다」 · 「옮기면 없어진다」 가 모두 이 자리에서 났다.
+ *
+ * 그래서 한 번이 아니라 계속 본다. 새로 나타난 것만 바꾸므로 하는 일은 거의 없다.
+ */
+export function watchBlobRefs(root: HTMLElement): () => void {
+  let timer: number | undefined
+  let running = false
+
+  const run = async () => {
+    timer = undefined
+    if (running) return
+    running = true
+    try { await resolveBlobRefsInElement(root) } catch { /* 못 바꾼 것은 다음 기회에 */ }
+    finally { running = false }
+  }
+  const schedule = () => { if (timer === undefined) timer = window.setTimeout(run, 50) }
+
+  const mo = new MutationObserver((records) => {
+    for (const r of records) {
+      if (r.type === 'attributes') { schedule(); return }
+      for (const n of Array.from(r.addedNodes)) {
+        if (n.nodeType !== 1) continue
+        const el = n as Element
+        if (el.tagName === 'IMG' || el.querySelector?.('img, audio, video')) { schedule(); return }
+      }
+    }
+  })
+  mo.observe(root, { subtree: true, childList: true, attributes: true, attributeFilter: ['src'] })
+  void run()
+  return () => {
+    mo.disconnect()
+    if (timer !== undefined) window.clearTimeout(timer)
+  }
+}
