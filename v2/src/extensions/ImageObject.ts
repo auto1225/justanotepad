@@ -315,12 +315,27 @@ export const ImageObject = Image.extend({
     if (a.alt) imgAttrs.alt = String(a.alt)
     if (a.title) imgAttrs.title = String(a.title)
 
+    /* 알맹이가 오기 전에 자리를 잡아 둔다.
+       빈 그림은 1×1 이라 그대로 두면 높이가 거의 0으로 잡힌다. 그 상태로 조판이 한 번
+       끝나고, 잠시 뒤 진짜 그림이 물리면 높이가 수백 px 로 뛰어 쪽이 통째로 밀린다.
+       원래 크기를 알고 있으니(data-nw·nh) 비율을 미리 일러 준다 — 그림이 와도 자리가
+       그대로라 다시 조판할 일이 없다. */
+    const nw = Number(a.nw) || 0
+    const nh = Number(a.nh) || 0
+    /* 비율만 일러 주면 모자란다 — 빈 그림은 1×1 이라 폭이 1px 로 잡히고, 비율을 지켜 봐야
+       높이도 1px 이다. 원래 폭까지 함께 일러 줘야 진짜 그림이 왔을 때와 같은 자리가 된다
+       (본문보다 넓은 그림은 본문 폭에 맞춘다 — 물린 뒤와 똑같이). 뒤에 오는 imgStyle 이
+       사람이 정한 크기를 덮어쓰므로, 손으로 크기를 준 그림은 그 값이 이긴다. */
+    const reserve = isStoreRef && !crop && nw > 0 && nh > 0
+      ? `width:min(100%,${nw}px);aspect-ratio:${nw}/${nh};`
+      : ''
+
     const caption = typeof a.caption === 'string' && a.caption !== '' ? a.caption : null
     const shift = a.dx || a.dy ? `transform:translate(${Number(a.dx) || 0}px, ${Number(a.dy) || 0}px);` : ''
 
     // 자르지도 캡션도 없으면 img 하나로 끝낸다 — 밖에서 들어온 맨 img 와 같은 모양
     if (!crop && !caption) {
-      const css = imgStyle(a, false) + wrapStyle(a) + shift
+      const css = reserve + imgStyle(a, false) + wrapStyle(a) + shift
       if (css) imgAttrs.style = css
       return ['img', imgAttrs]
     }
@@ -334,7 +349,7 @@ export const ImageObject = Image.extend({
     } else if (a.width) {
       box += `width:${a.width};`
     }
-    imgAttrs.style = inner + imgStyle(a, !!crop)
+    imgAttrs.style = reserve + inner + imgStyle(a, !!crop)
 
     const imgPart: unknown[] = crop
       ? ['span', { class: 'jan-img-clip', style: box }, ['img', imgAttrs]]

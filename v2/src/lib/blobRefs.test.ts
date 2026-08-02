@@ -116,6 +116,35 @@ describe('그림 저장소', () => {
     expect(await resolveBlobRefsInHtml(packed)).toBe(html)
   })
 
+  it('이미 물려 있는 그림에는 다시 손대지 않는다', async () => {
+    /* 같은 값을 넣어도 브라우저는 「고쳐졌다」 고 알린다. 그 알림을 듣고 있던
+       watchBlobRefs 가 깨어나 또 넣으면 50ms 마다 끝없이 돈다 — 그때마다 조판이
+       다시 돌아 쪽 수가 뒤집히고 그림이 자리를 잡지 못했다. 사용자 화면에서
+       그림이 끝내 안 보이던 진짜 까닭이다. */
+    const { saveDataUrlAsBlobRef, resolveBlobRefsInElement } = await freshModule()
+    const ref = await saveDataUrlAsBlobRef(DATA)
+
+    const root = document.createElement('div')
+    root.innerHTML = `<img data-blob-ref="${ref}" src="data:image/gif;base64,R0lGOD">`
+    document.body.appendChild(root)
+
+    const writes: string[] = []
+    const mo = new MutationObserver((rs) => {
+      for (const r of rs) if (r.attributeName === 'src') writes.push('src')
+    })
+    mo.observe(root, { subtree: true, attributes: true, attributeFilter: ['src'] })
+
+    await resolveBlobRefsInElement(root)
+    await resolveBlobRefsInElement(root)
+    await resolveBlobRefsInElement(root)
+    await new Promise((r) => setTimeout(r, 0))
+    mo.disconnect()
+    root.remove()
+
+    /* 처음 한 번만 쓴다 — 뒤의 두 번은 이미 물려 있으므로 손대지 않는다 */
+    expect(writes.length).toBe(1)
+  })
+
   it('작은 그림은 건드리지 않는다 — 주소로 바꿔 봐야 손해다', async () => {
     const { externalizeLargeDataUrlsInHtml } = await freshModule()
     const small = 'data:image/png;base64,AAAA'

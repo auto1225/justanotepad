@@ -221,7 +221,16 @@ export async function resolveBlobRefsInElement(root: ParentNode | null): Promise
     if (missingRefs.has(id)) { markMissing(element, id); continue }
 
     const url = await resolveBlobRefToObjectUrl(src)
-    if (url) { element.src = url; continue }
+    if (url) {
+      /* 이미 물려 있으면 손대지 않는다.
+         같은 값을 다시 넣어도 브라우저는 「고쳐졌다」 고 알리고, 이것을 지켜보던
+         MutationObserver(watchBlobRefs)가 다시 깨어나 50ms 뒤 또 넣는다 — 끝이 없다.
+         그 사이 편집기는 노드를 다시 그리며 src 를 1×1 빈 그림으로 되돌리므로
+         그림이 1×1 과 제 크기 사이를 오가고, 그때마다 조판이 다시 돌아
+         쪽 수가 뒤집히고 화면이 떨렸다. 그림이 끝내 자리를 잡지 못한 까닭이다. */
+      if (element.getAttribute('src') !== url) element.src = url
+      continue
+    }
 
     /* 못 찾았다. 조용히 사라지게 두지 않는다 —
        무엇이 비었는지 보이게 하고, 브라우저가 그 주소를 다시 부르지 않게 한다. */
@@ -311,7 +320,10 @@ export function watchBlobRefs(root: HTMLElement): () => void {
 
   const run = async () => {
     timer = undefined
-    if (running) return
+    /* 앞의 일이 아직 안 끝났으면 버리지 말고 뒤로 미룬다.
+       버리면 그때 들어온 그림은 아무도 다시 찾아 주지 않아 영영 빈 그림으로 남는다.
+       예전에는 50ms 마다 헛도는 되풀이가 이것을 가려 주고 있었다. */
+    if (running) { schedule(); return }
     running = true
     try { await resolveBlobRefsInElement(root) } catch { /* 못 바꾼 것은 다음 기회에 */ }
     finally { running = false }
