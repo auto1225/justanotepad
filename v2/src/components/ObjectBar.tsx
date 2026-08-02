@@ -28,6 +28,22 @@ export function ObjectBar({ editor }: Props) {
   /* 막대가 떠 있는지 — 그리는 중에 만지면 안 되므로 효과에서만 적어 둔다 */
   useEffect(() => { showing.current = spot != null }, [spot])
 
+
+/**
+ * 개체 도구막대를 놓을 세로 자리.
+ * 개체가 화면 위쪽에 있으면 8px 로 붙였는데, 그 자리가 리본이다 — 막대가 리본을 덮어
+ * 「그림 넣기」 같은 명령이 눌리지 않았다. 위에 자리가 없으면 개체 아래로 내려 놓는다.
+ */
+function barTop(box: DOMRect, lift: number): number {
+  const ribbon = document.querySelector('.jan-ribbon, .jan-ribbon-body')
+  const floor = (ribbon ? ribbon.getBoundingClientRect().bottom : 0) + 6
+  const above = box.top - lift
+  if (above >= floor) return above
+  const below = box.bottom + 8
+  /* 아래도 화면 밖이면 그때는 리본 아래 첫 자리 */
+  return below + 40 < window.innerHeight ? below : floor
+}
+
   const measure = useCallback(() => {
     if (!editor || editor.isDestroyed) { setSpot(null); return }
     const sel = editor.state.selection
@@ -44,7 +60,7 @@ export function ObjectBar({ editor }: Props) {
           left: box.left,
           /* 표 손잡이 띠(위쪽 열 선택 띠)보다 더 위에 둔다 —
              겹치면 열을 고르려고 누른 손이 막대에 막힌다 */
-          top: Math.max(box.top - 58, 8),
+          top: barTop(box, 58),
           label: size ? `${size.rows}행 ${size.cols}열` : '표',
         })
         return
@@ -57,7 +73,7 @@ export function ObjectBar({ editor }: Props) {
         setSpot({
           kind: sel.node.type.name === 'image' ? 'image' : 'shape',
           left: box.left,
-          top: Math.max(box.top - 40, 8),
+          top: barTop(box, 40),
           label: sel.node.type.name === 'image' ? '그림' : '도형',
         })
         return
