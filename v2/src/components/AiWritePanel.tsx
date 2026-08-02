@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  DOC_KINDS, LENGTHS, TONES, docKind, makeOutline, writeDoc,
-  type DocLength, type DocSpec, type DocTone,
+  DOC_KINDS, LENGTHS, SOURCE_MODES, TONES, docKind, makeOutline, writeDoc,
+  type DocLength, type DocSources, type DocSpec, type DocTone,
 } from '../lib/aiWrite'
 import { aiConfigured } from '../lib/aiApi'
 import { connState, openAiConnect } from '../lib/aiConnect'
@@ -23,9 +23,10 @@ interface Draft {
   length: DocLength
   tone: DocTone
   reader: string
+  sources: DocSources
 }
 
-const BLANK: Draft = { kind: 'report', length: 'normal', tone: 'plain', reader: '' }
+const BLANK: Draft = { kind: 'report', length: 'normal', tone: 'plain', reader: '', sources: 'given' }
 
 /** 지난번에 고른 갈래·분량·말투를 그대로 꺼낸다 (주제만 새로 적게) */
 function loadDraft(): Draft {
@@ -54,6 +55,7 @@ export function AiWritePanel({ initialKind, onClose }: Props) {
   const [tone, setTone] = useState<DocTone>(saved.tone)
   const [reader, setReader] = useState(saved.reader)
   const [extra, setExtra] = useState('')
+  const [sources, setSources] = useState<DocSources>(saved.sources || 'given')
 
   const [busy, setBusy] = useState<'' | 'outline' | 'write'>('')
   const [startedAt, setStartedAt] = useState(0)
@@ -98,12 +100,12 @@ export function AiWritePanel({ initialKind, onClose }: Props) {
 
   function remember(patch: Partial<Draft>) {
     try {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify({ kind, length, tone, reader, ...patch }))
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ kind, length, tone, reader, sources, ...patch }))
     } catch { /* 못 적어도 그만 */ }
   }
 
   function currentSpec(): DocSpec {
-    return { topic, kind, length, tone, reader, extra }
+    return { topic, kind, length, tone, reader, extra, sources }
   }
 
   async function runOutline() {
@@ -243,6 +245,30 @@ export function AiWritePanel({ initialKind, onClose }: Props) {
                 </label>
               ))}
             </fieldset>
+          </div>
+
+          {/* 어디까지 끌어다 쓸까 — 받아 적은 것만 정리할 사람과, 자료까지 붙여 공부할 사람은 다른 문서를 원한다 */}
+          <div className="jan-aiwrite-row">
+            <fieldset className="jan-aiwrite-pick jan-aiwrite-sources">
+              <legend>자료</legend>
+              {SOURCE_MODES.map((m) => (
+                <label key={m.key} className={sources === m.key ? 'is-active' : ''} title={m.hint}>
+                  <input
+                    type="radio"
+                    name="jan-aiwrite-sources"
+                    checked={sources === m.key}
+                    aria-label={m.label + ' — ' + m.hint}
+                    onChange={() => { setSources(m.key); remember({ sources: m.key }) }}
+                  />
+                  {m.label}
+                </label>
+              ))}
+            </fieldset>
+            <p className="jan-aiwrite-frame">
+              {sources === 'web'
+                ? '널리 알려진 사실과 연구를 보태고, 절마다 출처를 밝힌다. 그림이 필요한 자리는 〔그림 n〕 으로 남긴다.'
+                : '적어 준 것 밖으로 나가지 않는다. 비는 자리는 【확인: …】 으로 남긴다.'}
+            </p>
           </div>
 
           <label className="jan-aiwrite-topic">

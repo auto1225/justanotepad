@@ -196,6 +196,45 @@ test.describe('문서 자동 작성', () => {
     expect(body.max_tokens).toBeGreaterThan(2000)
   })
 
+  test('자료를 어디까지 쓸지 고르면 그 울타리가 지시문에 실려 간다', async ({ page }) => {
+    /* 받아 적은 것만 정리하려는 사람과, 자료까지 붙여 공부할 사람은 다른 문서를 원한다.
+       고른 것이 정말 부탁에 실려 나가는지 — 여기서 그것만 본다. */
+    await fresh(page)
+    const seen: string[] = []
+    await fakeClaude(page, FAKE_DOC, seen)
+    const conn = await connectClaude(page)
+    await conn.getByRole('button', { name: '닫기' }).first().click()
+
+    await page.keyboard.press('Alt+j')
+    const dlg = page.locator('.jan-aiwrite')
+    await dlg.getByLabel('무엇을 만들까').fill('켈빈 항적 강의 노트')
+
+    /* 처음에는 「준 자료만」 이다 — 묻지 않았는데 밖으로 나가지 않는다 */
+    await expect(dlg.getByLabel(/^준 자료만/)).toBeChecked()
+    await dlg.getByRole('button', { name: '바로 만들기' }).click()
+    await expect(dlg.locator('.jan-aiwrite-preview')).toBeVisible()
+    const given = JSON.parse(seen[0]) as { messages: Array<{ content: string }> }
+    expect(given.messages[0].content).toContain('준 자료만')
+    expect(given.messages[0].content).toContain('밖에서 사실 · 숫자 · 이름 · 연구를 끌어오지 않는다')
+
+    /* 「웹 자료까지」 로 바꾸면 출처와 그림 자리를 함께 내라는 말이 실린다 */
+    await fresh(page)
+    await fakeClaude(page, FAKE_DOC, seen)
+    const conn2 = await connectClaude(page)
+    await conn2.getByRole('button', { name: '닫기' }).first().click()
+    await page.keyboard.press('Alt+j')
+    const dlg2 = page.locator('.jan-aiwrite')
+    await dlg2.getByLabel('무엇을 만들까').fill('켈빈 항적 강의 노트')
+    await dlg2.getByLabel(/^웹 자료까지/).check()
+    await expect(dlg2.getByText(/절마다 출처를 밝힌다/)).toBeVisible()
+    await dlg2.getByRole('button', { name: '바로 만들기' }).click()
+    await expect(dlg2.locator('.jan-aiwrite-preview')).toBeVisible()
+    const web = JSON.parse(seen[seen.length - 1]) as { messages: Array<{ content: string }> }
+    expect(web.messages[0].content).toContain('웹 자료까지')
+    expect(web.messages[0].content).toContain('출처: 지은이, 제목, 해')
+    expect(web.messages[0].content).toContain('〔그림 n')
+  })
+
   test('목차를 먼저 받아 고쳐 넣으면 그 목차로 본문을 쓴다', async ({ page }) => {
     await fresh(page)
     const seen: string[] = []

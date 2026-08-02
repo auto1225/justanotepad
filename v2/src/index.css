@@ -7931,6 +7931,9 @@ body.jan-hide-highlight [data-highlight] { background: none !important; box-shad
   margin-right: 8px; padding: 2px 4px; border-radius: 4px; cursor: pointer;
 }
 .jan-aiwrite-pick > label.is-active { background: var(--jan-soft, #eef2f7); font-weight: 600; }
+/* 자료 울타리 — 고른 것에 따라 아래 설명이 바뀌므로 설명 줄과 나란히 놓는다 */
+.jan-aiwrite-sources > label.is-active { background: rgba(31,111,235,0.10); }
+.jan-aiwrite-row > .jan-aiwrite-frame { align-self: center; margin: 0; line-height: 1.5; }
 .jan-aiwrite-busy {
   display: flex; align-items: center; gap: 8px; font-size: 12px;
   padding: 8px 10px; border-radius: 6px; background: var(--jan-soft, #f2f4f7);

@@ -220,6 +220,48 @@ export interface DocSpec {
   reader: string
   /** 더 알려 줄 것 (아는 사실 · 수치 · 꼭 넣을 것) */
   extra: string
+  /** 어디까지 끌어다 쓸까 — 준 자료만인가, 밖의 자료까지인가 (없으면 준 자료만) */
+  sources?: DocSources
+}
+
+/**
+ * 자료의 울타리.
+ *  given — 준 것 밖으로 나가지 않는다. 강의를 받아 적은 그대로 정리할 때.
+ *  web   — 밖의 자료까지 끌어온다. 그림 자리와 출처 후보를 함께 낸다.
+ * 이 갈래는 사람이 고르는 것이다 — 받아 적은 것만 정리하려는 사람에게
+ * 밖에서 끌어온 이야기를 섞으면, 그것이 강의에서 나온 말인지 아닌지 알 수 없게 된다.
+ */
+export type DocSources = 'given' | 'web'
+
+export const SOURCE_MODES: Array<{ key: DocSources; label: string; hint: string; rule: string }> = [
+  {
+    key: 'given',
+    label: '준 자료만',
+    hint: '받아 적은 것 · 적어 준 것 안에서',
+    rule: [
+      '- 위에 준 자료 안에서만 쓴다. 밖에서 사실 · 숫자 · 이름 · 연구를 끌어오지 않는다.',
+      '- 준 자료에 없어 비는 자리는 【확인: 무엇】 으로 남긴다.',
+    ].join('\n'),
+  },
+  {
+    key: 'web',
+    label: '웹 자료까지',
+    hint: '그림 자리와 출처를 함께 낸다',
+    rule: [
+      '- 준 자료를 뼈대로 삼되, 널리 알려진 사실 · 값 · 연구를 보태 살을 붙인다.',
+      '- 보탠 것은 어디서 온 말인지 밝힌다. 절 끝에 「출처: 지은이, 제목, 해」 한 줄을 붙인다.',
+      '- 그림이 있어야 알아듣는 자리에는 그 자리에 문단 하나로',
+      '  〔그림 n — 무엇을 보여 주는 그림인가 · 어떤 자료를 찾으면 되나〕 라고 적는다.',
+      '  (앱이 그 자리에 그림을 앉힌다 — 직접 그림을 그리거나 주소를 지어내지 않는다)',
+      '- 마지막에 「더 볼 것」 절을 두고, 실제로 있는 책 · 논문 · 문서를 지은이 · 해와 함께 적는다.',
+      '- 확실하지 않은 것은 적지 않는다. 그럴듯한 가짜 출처보다 빈자리가 낫다.',
+    ].join('\n'),
+  },
+]
+
+export function sourceRule(s: DocSpec): string {
+  const m = SOURCE_MODES.find((x) => x.key === (s.sources || 'given')) || SOURCE_MODES[0]
+  return `자료의 울타리 — ${m.label}:\n${m.rule}`
 }
 
 const HTML_RULE = [
@@ -295,6 +337,8 @@ export function writePrompt(s: DocSpec, outline: string): string {
     '지킬 것:',
     QUALITY_RULE,
     '',
+    sourceRule(s),
+    '',
     HTML_RULE,
   ].join('\n')
 }
@@ -314,6 +358,8 @@ export function directPrompt(s: DocSpec): string {
     '',
     '지킬 것:',
     QUALITY_RULE,
+    '',
+    sourceRule(s),
     '',
     HTML_RULE,
   ].join('\n')
@@ -479,6 +525,9 @@ export async function writeFromTranscript(
   transcript: string,
   kind: 'meeting' | 'lecture',
   title: string,
+  /* 받아 적은 글은 기본이 「준 자료만」 이다 — 회의록에 밖의 이야기가 섞이면
+     그것이 회의에서 나온 말인지 알 수 없게 된다. 강의 노트는 사람이 넓힐 수 있다. */
+  sources: DocSources = 'given',
 ): Promise<WriteResult> {
   const body = transcript.trim()
   if (!body) return { ok: false, error: '받아 적은 글이 없다' }
@@ -503,6 +552,8 @@ export async function writeFromTranscript(
     '',
     '지킬 것:',
     QUALITY_RULE,
+    '',
+    sourceRule({ sources } as DocSpec),
     '',
     HTML_RULE,
     '',
