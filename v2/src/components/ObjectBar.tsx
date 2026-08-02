@@ -3,6 +3,7 @@ import type { Editor } from '@tiptap/react'
 import { NodeSelection } from '@tiptap/pm/state'
 import { CellSelection } from 'prosemirror-tables'
 import { isAnimated } from '../lib/stillImage'
+import { currentImage, setImageAlign, setImageWrap } from '../lib/imageWord'
 import { applyBorders, applyShading } from '../lib/tableBorders'
 import { cellSelectionSize } from '../lib/tableSelect'
 import { distributeColumns, distributeRows } from '../lib/tableWord'
@@ -170,6 +171,21 @@ function barTop(box: DOMRect, lift: number): number {
           <button onClick={() => fire('jan-image-dialog', { tab: 'adjust' })} title="색 보정 (Alt+T)">보정...</button>
           <button onClick={() => fire('jan-image-dialog', { tab: 'caption' })} title="캡션 (Alt+C)">캡션...</button>
           <button onClick={() => fire('jan-image-dialog', { tab: 'size' })} title="크기·위치 (Alt+P)">속성...</button>
+          <span className="divider" />
+          {/* 아래 넷은 그림 전용 막대(ImageMenu)에 따로 있던 것 — 막대가 둘이라 서로 겹쳐
+              손잡이까지 가렸다. 하나로 합친다. */}
+          <button onClick={() => setImageWrap(editor, 'inline', '배치: 글자처럼 취급')} title="글자처럼 취급 (Alt+W 로 차례로)">글자처럼</button>
+          <button onClick={() => setImageAlign(editor, 'left')} title="왼쪽 맞춤">◧</button>
+          <button onClick={() => setImageAlign(editor, 'center')} title="가운데 맞춤">▣</button>
+          <button onClick={() => setImageAlign(editor, 'right')} title="오른쪽 맞춤">◨</button>
+          <button onClick={() => fire('jan-image-dialog', { tab: 'alt' })} title="대체 텍스트 — 낭독기가 읽어 준다 (Alt+A)">대체</button>
+          <button
+            onClick={() => {
+              const hit = currentImage(editor)
+              if (hit) window.dispatchEvent(new CustomEvent('jan-edit-image-in-paint', { detail: { src: hit.node.attrs.src, pos: hit.pos } }))
+            }}
+            title="그림판에서 주석 달기 (화살표 · 상자 · 글)"
+          >주석</button>
         </>
       )}
 

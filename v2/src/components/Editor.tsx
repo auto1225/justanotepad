@@ -48,7 +48,6 @@ import { SlashMenu } from './SlashMenu'
 import { TableHandles } from './TableHandles'
 import { TableContextMenu } from './TableContextMenu'
 import { BubbleToolbar } from './BubbleToolbar'
-import { ImageMenu } from './ImageMenu'
 import { ImageHandles } from './ImageHandles'
 import { ImageContextMenu } from './ImageContextMenu'
 import { ImageDialog } from './ImageDialog'
@@ -1380,7 +1379,6 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       <TableContextMenu editor={editor} />
       <BubbleToolbar editor={editor} />
       <ObjectBar editor={editor} />
-      <ImageMenu editor={editor} />
       <ImageHandles editor={editor} />
       <ImageContextMenu editor={editor} />
       {imgDialog && <ImageDialog editor={editor} tab={imgDialog} onClose={() => setImgDialog(null)} />}
