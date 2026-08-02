@@ -15,9 +15,6 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    # 다시 지은 배포본을 스스로 커밋하기 위해 쓰기 권한이 필요하다
-    permissions:
-      contents: write
     defaults:
       run:
         working-directory: v2
@@ -46,27 +43,26 @@ jobs:
           path: v2/dist
           retention-days: 7
 
-      # 이 저장소는 커밋된 dist-v2/ 를 그대로 서빙한다. 소스만 고치고 다시 짓지 않으면
-      # 깃에는 고침이 있는데 사이트에는 없는 상태가 된다 — 실제로 두 번 겪은 자리다.
-      # 사람의 기억에 맡기지 않고, main 에 올라올 때마다 여기서 다시 지어 맞춘다.
-      - name: 배포본이 소스와 어긋나면 다시 지어 커밋한다
+      # 배포본이 소스와 어긋나면 알려만 준다.
+      #
+      # 처음에는 CI 가 스스로 다시 지어 커밋하게 했다. 그런데 리눅스(CI)와 윈도우(내 컴퓨터)는
+      # 소스 파일의 줄바꿈이 달라(autocrlf) 번들 내용이 달라지고, 그래서 파일 이름의 해시까지
+      # 달라진다. 서로가 서로의 빌드를 「어긋났다」 고 보고 끝없이 덮어썼다 —
+      # 밀 때마다 되감기 충돌이 났다. 도움이 아니라 방해였다.
+      #
+      # 그래서 고치지 않고 짚어만 준다. 사람이 올리기 전에 npm run build 를 하면 된다.
+      # (근본은 줄바꿈을 한 가지로 맞추는 것이다 — .gitattributes 로 eol=lf.
+      #  저장소 전체를 다시 쓰는 일이라 따로 다룬다.)
+      - name: 배포본이 소스와 어긋나는지 본다
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         working-directory: .
         run: |
-          # 소스맵(.map)은 빼고 견준다 — 리눅스에서 지은 것과 윈도우에서 지은 것이
-          # 경로 적는 방식만 달라서, 그것까지 세면 밀 때마다 「어긋났다」 가 되어
-          # 고칠 것이 없는데도 커밋이 쌓인다 (실제로 한 번 그렇게 났다).
           if git diff --quiet -- dist-v2 ':(exclude)dist-v2/**/*.map'; then
-            echo "배포본이 소스와 같다 — 할 일 없음"
-            exit 0
+            echo "배포본이 소스와 같다"
+          else
+            echo "::warning::배포본이 소스와 다르게 지어졌다. 줄바꿈 탓일 수 있고, 다시 짓지 않은 것일 수도 있다 — 올리기 전에 npm run build 를 확인한다"
+            git diff --stat -- dist-v2 ':(exclude)dist-v2/**/*.map' | tail -3
           fi
-          echo "::warning::배포본이 소스와 달랐다 — 다시 지어 커밋한다 (다음부터는 올리기 전에 npm run build)"
-          git diff --stat -- dist-v2 | tail -5
-          git config user.name  "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add dist-v2
-          git commit -m "배포본을 소스에 맞춘다 (CI 자동) [skip ci]"
-          git push
 
   e2e:
     needs: test
