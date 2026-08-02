@@ -24,6 +24,7 @@ import { AuthorityMark, IndexMark } from '../extensions/RefMarks'
 import { DeleteMark, InsertMark, TrackChanges } from '../extensions/TrackChanges'
 import { EditGuard } from '../extensions/EditGuard'
 import { applyDesign, watermarkSvgOf, type DocDesign } from '../lib/docDesign'
+import { watchPaperNumbers } from '../lib/paperRefs'
 import { DesignPanel } from './DesignPanel'
 import { Model3D } from '../extensions/Model3D'
 import { CharOverlap, DropCapAttr, EmphasisDot, RubyText } from '../extensions/TextObjects'
@@ -600,6 +601,13 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
     },
     [editorExtensions, scheduleEditorContentCommit]
   )
+
+  /* 그림 · 표 · 수식 번호는 문서가 바뀌면 스스로 따라간다 —
+     「번호 모두 다시 매기기」 를 잊어 「그림 3에서 보듯」 이 엉뚱한 그림을 가리키는 일이 없게 */
+  useEffect(() => {
+    if (!editor) return
+    return watchPaperNumbers(editor)
+  }, [editor])
 
   /* 세로 눈금자를 쪽마다 하나씩 놓기 위해 현재 쪽 수를 따라간다 (독립 페이지 모델) */
   const [pageCount, setPageCount] = useState(1)

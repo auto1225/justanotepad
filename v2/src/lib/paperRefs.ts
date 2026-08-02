@@ -128,6 +128,40 @@ export function renumberPaperTags(editor: Editor): number {
 
 export { paperTagLabel }
 
+/**
+ * 번호를 손으로 다시 매기지 않아도 되게 — 문서가 바뀌면 스스로 따라간다.
+ *
+ * 그림 하나를 가운데 끼워 넣으면 그 뒤의 번호가 모두 한 칸씩 밀린다. 그런데 지금까지는
+ * 「번호 모두 다시 매기기」 를 누를 때만 맞춰졌다. 누르는 것을 잊으면 「그림 3에서 보듯」 이
+ * 엉뚱한 그림을 가리킨다 — 글이 조용히 틀린다. 그 자리를 사람 손에 맡길 일이 아니다.
+ *
+ * 번호가 실제로 어긋났을 때만 트랜잭션을 낸다 (attrs 만 바꾸므로 커서와 스크롤은 그대로다).
+ * 되돌리기가 번호 맞추기 한 걸음에 걸리지 않도록 잠깐 쉬었다 처리한다.
+ */
+export function watchPaperNumbers(editor: Editor, waitMs = 400): () => void {
+  let timer: number | undefined
+  let inFlight = false
+
+  const run = () => {
+    if (editor.isDestroyed || inFlight) return
+    inFlight = true
+    try { renumberPaperTags(editor) } finally { inFlight = false }
+  }
+
+  const onTransaction = ({ transaction }: { transaction: { docChanged: boolean } }) => {
+    /* 우리가 낸 번호 트랜잭션에 다시 반응하지 않는다 */
+    if (!transaction.docChanged || inFlight) return
+    window.clearTimeout(timer)
+    timer = window.setTimeout(run, waitMs)
+  }
+
+  editor.on('transaction', onTransaction)
+  return () => {
+    window.clearTimeout(timer)
+    editor.off('transaction', onTransaction)
+  }
+}
+
 /** 렌더 후 사용자 피드백용 요약 */
 export function renumberWithFeedback(editor: Editor): void {
   const changed = renumberPaperTags(editor)
