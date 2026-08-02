@@ -10,7 +10,7 @@
  *
  * 올릴 때는 이 파일만 고치면 상태줄과 「앱 정보」 가 함께 따라간다.
  */
-export const APP_VERSION = 'V1.009'
+export const APP_VERSION = 'V1.010'
 
 /** 판 번호를 숫자로 견주어야 할 때 (V1.012 → { major: 1, minor: 12 }) */
 export function parseVersion(v: string = APP_VERSION): { major: number; minor: number } {
