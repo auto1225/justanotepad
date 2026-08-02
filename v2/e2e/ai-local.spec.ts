@@ -48,7 +48,8 @@ test.beforeAll(async () => {
         const prompt = body.messages?.[0]?.content || ''
         asked.push({ model: body.model || '', prompt })
         res.writeHead(200, head)
-        res.end(JSON.stringify({ choices: [{ message: { content: prompt.includes('연결 확인') ? '연결됨' : DOC } }] }))
+        /* 연결 시험은 짧은 인사만 묻는다 — 그 밖의 부탁이라야 문서를 돌려준다 */
+        res.end(JSON.stringify({ choices: [{ message: { content: prompt.includes('연결됨 이라고만') ? '연결됨' : DOC } }] }))
       })
       return
     }

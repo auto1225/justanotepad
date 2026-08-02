@@ -97,7 +97,7 @@ test.describe('AI 연결', () => {
     expect(seen).toHaveLength(1)
     const body = JSON.parse(seen[0]) as { model: string; messages: Array<{ content: string }> }
     expect(body.model).toMatch(/^claude/)
-    expect(body.messages[0].content).toContain('연결 확인')
+    expect(body.messages[0].content).toContain('연결됨')
   })
 
   test('키가 틀리면 까닭을 그대로 보여 준다 — 「저장했다」 로 넘기지 않는다', async ({ page }) => {
