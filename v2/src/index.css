@@ -7464,6 +7464,50 @@ body:has(.jan-modal-overlay) .jan-bubble-toolbar { display: none; }
 .jan-signdlg-ink { width: 100%; height: 160px; border: 1px dashed var(--jan-border, #d8dce3); border-radius: 8px; touch-action: none; cursor: crosshair; background: #fff; }
 .jan-signature { break-inside: avoid; }
 
+/* 도장 창 — 왼쪽에서 새기고 오른쪽에서 본다.
+   미리보기 뒤에 격자를 깔아 둔다. 도장은 배경이 비어 있어야 서명줄 위에 겹쳐 찍히는데,
+   흰 바탕에 놓고 보면 비었는지 하얀지 구별이 안 된다. */
+.jan-stampdlg { width: min(920px, 96vw); max-width: min(920px, 96vw); }
+.jan-stampdlg-ways { display: flex; gap: 4px; padding: 0 16px; border-bottom: 1px solid var(--jan-border, #d8dce3); }
+.jan-stampdlg-ways button { padding: 7px 14px; font-size: 13px; border: 0; background: none; cursor: pointer; color: var(--jan-dim, #6b7684); border-bottom: 2px solid transparent; }
+.jan-stampdlg-ways button.is-active { color: var(--jan-accent, #5b3cc4); border-bottom-color: var(--jan-accent, #5b3cc4); font-weight: 600; }
+.jan-stampdlg-body { display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: 18px; max-height: 58vh; overflow: auto; }
+.jan-stampdlg-form { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.jan-stampdlg-row { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; }
+.jan-stampdlg-lbl { font-size: 12px; color: var(--jan-dim, #6b7684); min-width: 34px; }
+.jan-stampdlg-row > button,
+.jan-stampdlg-size > button { padding: 4px 10px; font-size: 12px; border: 1px solid var(--jan-border, #d8dce3); border-radius: 6px; background: #fff; cursor: pointer; }
+.jan-stampdlg-row > button.is-active,
+.jan-stampdlg-size > button.is-active { border-color: var(--jan-accent, #5b3cc4); color: var(--jan-accent, #5b3cc4); font-weight: 600; }
+.jan-stampdlg-ink { width: 22px; height: 22px; padding: 0; border-radius: 50%; border: 2px solid transparent; box-shadow: 0 0 0 1px var(--jan-border, #d8dce3); }
+.jan-stampdlg-ink.is-active { border-color: #fff; box-shadow: 0 0 0 2px var(--jan-accent, #5b3cc4); }
+.jan-stampdlg-preview { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
+.jan-stampdlg-preview canvas,
+.jan-stampdlg-preview img {
+  max-width: 200px; max-height: 200px; border-radius: 8px;
+  background-color: #fff;
+  background-image: linear-gradient(45deg, #eceff3 25%, transparent 25%), linear-gradient(-45deg, #eceff3 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #eceff3 75%), linear-gradient(-45deg, transparent 75%, #eceff3 75%);
+  background-size: 12px 12px;
+  background-position: 0 0, 0 6px, 6px -6px, -6px 0;
+}
+.jan-stampdlg-size { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; padding: 10px 16px 0; }
+.jan-stampdlg-size input[type="number"] { width: 62px; padding: 4px 6px; border: 1px solid var(--jan-border, #d8dce3); border-radius: 6px; }
+.jan-stampdlg-overlap { margin-right: auto; }
+.jan-stampdlg-drawer { grid-column: 1 / -1; }
+.jan-stampdlg-drawer ul { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; list-style: none; margin: 0; padding: 0; }
+.jan-stampdlg-drawer li { position: relative; }
+.jan-stampdlg-drawer li > button:first-child {
+  width: 100%; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 6px;
+  border: 1px solid var(--jan-border, #d8dce3); border-radius: 8px; background: #fff; cursor: pointer; font-size: 12px;
+}
+.jan-stampdlg-drawer li > button:first-child:hover { border-color: var(--jan-accent, #5b3cc4); }
+.jan-stampdlg-drawer img { width: 64px; height: 64px; object-fit: contain; }
+.jan-stampdlg-drawer small { color: var(--jan-dim, #6b7684); }
+.jan-stampdlg-del { position: absolute; top: 2px; right: 2px; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: rgba(0, 0, 0, .06); cursor: pointer; line-height: 1; }
+@media (max-width: 720px) {
+  .jan-stampdlg-body { grid-template-columns: minmax(0, 1fr); }
+}
+
 /* 상호 참조 창 */
 .jan-xrefdlg { width: min(640px, 96vw); max-width: min(640px, 96vw); }
 .jan-xrefdlg-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }

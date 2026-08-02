@@ -55,6 +55,7 @@ import { ShapePanel } from './ShapePanel'
 import { ChartPanel } from './ChartPanel'
 import { SmartArtPanel } from './SmartArtPanel'
 import { SignaturePanel } from './SignaturePanel'
+import { StampModal } from './StampModal'
 import { CrossRefPanel } from './CrossRefPanel'
 import { SourcePanel } from './SourcePanel'
 import { SymbolPanel } from './SymbolPanel'
@@ -217,6 +218,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   const [chartPanel, setChartPanel] = useState<'insert' | 'edit' | null>(null)
   const [smartPanel, setSmartPanel] = useState<'insert' | 'edit' | null>(null)
   const [signPanel, setSignPanel] = useState<'insert' | 'sign' | null>(null)
+  const [showStamp, setShowStamp] = useState(false)
   const [xrefPanel, setXrefPanel] = useState(false)
   const [designPanel, setDesignPanel] = useState<'styles' | 'background' | null>(null)
   const [sourcePanel, setSourcePanel] = useState(false)
@@ -669,6 +671,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
     const onChart = (e: Event) => setChartPanel((e as CustomEvent<{ mode?: 'insert' | 'edit' }>).detail?.mode || 'insert')
     const onSmart = (e: Event) => setSmartPanel((e as CustomEvent<{ mode?: 'insert' | 'edit' }>).detail?.mode || 'insert')
     const onSign = (e: Event) => setSignPanel((e as CustomEvent<{ mode?: 'insert' | 'sign' }>).detail?.mode || 'insert')
+    const onStamp = () => setShowStamp(true)
     const onXref = () => setXrefPanel(true)
     const onDesign = (e: Event) => setDesignPanel((e as CustomEvent<{ tab?: 'styles' | 'background' }>).detail?.tab || 'styles')
     const onSources = () => setSourcePanel(true)
@@ -738,6 +741,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
     window.addEventListener('jan-chart-dialog', onChart)
     window.addEventListener('jan-smart-dialog', onSmart)
     window.addEventListener('jan-signature-dialog', onSign)
+    window.addEventListener('jan-stamp-dialog', onStamp)
     window.addEventListener('jan-xref-dialog', onXref)
     window.addEventListener('jan-design-dialog', onDesign)
     window.addEventListener('jan-source-dialog', onSources)
@@ -748,6 +752,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       window.removeEventListener('jan-chart-dialog', onChart)
       window.removeEventListener('jan-smart-dialog', onSmart)
       window.removeEventListener('jan-signature-dialog', onSign)
+      window.removeEventListener('jan-stamp-dialog', onStamp)
       window.removeEventListener('jan-xref-dialog', onXref)
       window.removeEventListener('jan-design-dialog', onDesign)
       window.removeEventListener('jan-source-dialog', onSources)
@@ -1393,6 +1398,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       {chartPanel && <ChartPanel editor={editor} mode={chartPanel} onClose={() => setChartPanel(null)} />}
       {smartPanel && <SmartArtPanel editor={editor} mode={smartPanel} onClose={() => setSmartPanel(null)} />}
       {signPanel && <SignaturePanel editor={editor} mode={signPanel} onClose={() => setSignPanel(null)} />}
+      {showStamp && <StampModal editor={editor} onClose={() => setShowStamp(false)} />}
       {xrefPanel && <CrossRefPanel editor={editor} onClose={() => setXrefPanel(false)} />}
       {designPanel && <DesignPanel tab={designPanel} onClose={() => setDesignPanel(null)} />}
       {sourcePanel && <SourcePanel editor={editor} onClose={() => setSourcePanel(false)} />}

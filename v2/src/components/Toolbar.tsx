@@ -571,6 +571,7 @@ export function Toolbar(p: ToolbarProps) {
   /* === 워드 「삽입」의 개체들 — 차트·스마트 도해·서명란·상호 참조·3D === */
   const openChart = () => window.dispatchEvent(new CustomEvent('jan-chart-dialog', { detail: { mode: editor.isActive('janChart') ? 'edit' : 'insert' } }))
   const openSmartArt = () => window.dispatchEvent(new CustomEvent('jan-smart-dialog', { detail: { mode: editor.isActive('janSmart') ? 'edit' : 'insert' } }))
+  const openStamp = () => window.dispatchEvent(new Event('jan-stamp-dialog'))
   const openSignature = () => window.dispatchEvent(new CustomEvent('jan-signature-dialog', { detail: { mode: editor.isActive('janSignature') ? 'sign' : 'insert' } }))
   const openCrossRef = () => window.dispatchEvent(new Event('jan-xref-dialog'))
   /** 지금 커서가 놓인 표를 그대로 차트로 — 워드에 없는 지름길 */
@@ -1265,6 +1266,7 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowLeft')go(-1);else if(e.
             { short: '아이콘', label: '아이콘 · 그리기마당', icon: 'star', onClick: () => run(() => window.dispatchEvent(new CustomEvent('jan-shape-dialog', { detail: { mode: 'insert' } }))) },
           ],
         },
+        { short: '도장', label: '도장 (이름을 새기거나 찍어 둔 도장을 가져온다)', icon: 'stamp', onClick: () => run(openStamp) },
         { short: '3D 모델', label: '3D 모델 (GLB·STL·OBJ — 끌어서 돌려 본다)', icon: 'cube', onClick: () => run(() => { void insert3dModel() }) },
         { short: '스마트 도해', label: '스마트 도해 (SmartArt — 목록·절차·주기·계층)', icon: 'smart', onClick: () => run(openSmartArt) },
         {
