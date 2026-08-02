@@ -1,5 +1,5 @@
 import { Node, Extension } from '@tiptap/core'
-import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
+import { NodeSelection, Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { canJoin } from '@tiptap/pm/transform'
 import { mergeContinuedTables, rowsThatFit, splitTableAcrossPages } from './tableSplit'
@@ -520,14 +520,29 @@ function pushRestToNextPage(tr: Transaction, pageIndex: number, childIndex: numb
  * 보지 않으므로 커서가 지운 자리에 남는다. 타자 중이라면 그 뒤 글자가 앞 쪽에 쌓인다.
  */
 function takeSelection(tr: Transaction, from: number, to: number) {
-  const pos = tr.selection.from
-  return { inside: pos >= from && pos <= to, offset: pos - from }
+  const sel = tr.selection
+  const pos = sel.from
+  return {
+    inside: pos >= from && pos <= to,
+    offset: pos - from,
+    /* 개체를 고른 상태였는지도 함께 기억한다.
+       옮긴 뒤 늘 글자 고름으로 되돌리면, 그림을 고르고 크기를 바꾸는 순간 고름이 풀린다 —
+       한 번 줄어들고는 손잡이가 사라져 더 끌 수 없었다. 「조금 줄어들다 풀려버린다」 가 이것이다. */
+    node: sel instanceof NodeSelection,
+  }
 }
 
-/** 옮긴 내용을 따라 커서를 새 자리로 되돌린다 */
-function restoreSelection(tr: Transaction, held: { inside: boolean; offset: number }, base: number) {
+/** 옮긴 내용을 따라 커서(또는 고른 개체)를 새 자리로 되돌린다 */
+function restoreSelection(tr: Transaction, held: { inside: boolean; offset: number; node: boolean }, base: number) {
   if (!held.inside) return
   const at = Math.max(0, Math.min(base + held.offset, tr.doc.content.size))
+  if (held.node) {
+    const node = tr.doc.nodeAt(at)
+    if (node && !node.isText && NodeSelection.isSelectable(node)) {
+      tr.setSelection(NodeSelection.create(tr.doc, at))
+      return
+    }
+  }
   tr.setSelection(TextSelection.near(tr.doc.resolve(at)))
 }
 

@@ -43,7 +43,13 @@ export function setImageAttrs(editor: Editor | null, attrs: Record<string, unkno
   const tr = editor.state.tr.setNodeMarkup(hit.pos, undefined, { ...hit.node.attrs, ...attrs })
   tr.setSelection(NodeSelection.create(tr.doc, hit.pos))
   editor.view.dispatch(tr)
-  editor.view.focus()
+  /* 이미 편집기에 있으면 다시 focus 하지 않는다.
+     focus() 는 브라우저의 커서를 다시 읽어 들이는데, 그림처럼 글자가 아닌 것을 고른 상태는
+     브라우저 커서로 나타낼 수 없어 곧바로 글자 고름으로 덮어써진다. 손잡이를 끌면
+     한 걸음마다 이 함수가 불리므로, 첫 걸음에서 고름이 풀리고 그 뒤로는 아무 일도
+     일어나지 않았다 — 「조금 줄어들다 풀려버린다」 가 이것이다.
+     리본이나 메뉴에서 부른 경우에는 초점이 밖에 있으므로 그때만 되돌린다. */
+  if (!editor.view.hasFocus()) editor.view.focus()
   if (note) flash(note)
   return true
 }

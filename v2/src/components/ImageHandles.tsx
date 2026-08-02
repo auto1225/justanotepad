@@ -44,6 +44,12 @@ export function ImageHandles({ editor }: Props) {
     baseCrop: { t: number; r: number; b: number; l: number }
     lock: boolean
     moved: boolean
+    /* 끄는 동안 붙잡고 있는 그림의 자리.
+       크기를 한 번 바꾸면 그림 노드가 새로 그려지고, 브라우저 커서가 그 자리를 잃으면서
+       편집기가 글자 고름으로 되돌린다(문서도 안 바뀌고 이름표도 없는 트랜잭션이 그것이다).
+       그러면 그다음 걸음부터는 「고른 그림」 이 없어 아무 일도 일어나지 않았다 —
+       한 번 줄어들고 풀려 버리던 까닭이다. 그래서 고름에 기대지 않고 자리를 직접 붙든다. */
+    pos: number
   } | null>(null)
 
   const measure = useCallback(() => {
@@ -99,10 +105,28 @@ export function ImageHandles({ editor }: Props) {
 
   useEffect(() => {
     if (!editor) return
+    /* 문서가 바뀌면 붙잡은 자리도 함께 옮긴다 (쪽 나눔이 그림을 다른 쪽으로 보낼 수 있다) */
+    const onTx = ({ transaction }: { transaction: { docChanged: boolean; mapping: { map: (p: number) => number } } }) => {
+      const drag = dragRef.current
+      if (drag && transaction.docChanged) drag.pos = transaction.mapping.map(drag.pos)
+    }
+    editor.on('transaction', onTx)
+
+    /** 붙잡은 그림을 다시 고른 상태로 만든다 — 걸음마다 이것을 먼저 한다 */
+    const hold = (drag: { pos: number }): boolean => {
+      const node = editor.state.doc.nodeAt(drag.pos)
+      if (!node || node.type.name !== 'image') return false
+      const sel = editor.state.selection
+      if (sel instanceof NodeSelection && sel.from === drag.pos) return true
+      editor.view.dispatch(editor.state.tr.setSelection(NodeSelection.create(editor.state.doc, drag.pos)))
+      return true
+    }
+
     const onMove = (e: MouseEvent) => {
       const drag = dragRef.current
       if (!drag) return
       if (e.buttons === 0) { dragRef.current = null; return }
+      if (!hold(drag)) { dragRef.current = null; return }
       drag.moved = true
 
       if (drag.kind === 'rotate') {
@@ -148,10 +172,17 @@ export function ImageHandles({ editor }: Props) {
         setImageAttrs(editor, { width: `${w}px`, height: `${h}px` })
       }
     }
-    const onUp = () => { dragRef.current = null }
+    const onUp = () => {
+      const drag = dragRef.current
+      dragRef.current = null
+      /* 놓고 나서도 그림은 고른 채로 둔다 — 워드·한글과 같다.
+         바로 이어서 더 끌거나 리본으로 값을 다듬는 것이 보통이다. */
+      if (drag && drag.moved) hold(drag)
+    }
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
     return () => {
+      editor.off('transaction', onTx)
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
     }
@@ -173,6 +204,7 @@ export function ImageHandles({ editor }: Props) {
       cx: layout.left + layout.width / 2, cy: layout.top + layout.height / 2,
       baseCrop: currentCrop(editor),
       lock: hit ? hit.node.attrs.lock !== false : true,
+      pos: hit ? hit.pos : -1,
       moved: false,
     }
   }
@@ -188,6 +220,7 @@ export function ImageHandles({ editor }: Props) {
       startW: layout.width, startH: layout.height,
       cx: layout.left + layout.width / 2, cy: layout.top + layout.height / 2,
       baseCrop: currentCrop(editor), lock: true, moved: false,
+      pos: currentImage(editor)?.pos ?? -1,
     }
   }
 
