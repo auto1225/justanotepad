@@ -368,9 +368,14 @@ export const ImageObject = Image.extend({
           /* 원래 크기를 알아야 「원래 크기로」·세로 자르기가 된다 —
              그려진 뒤 한 번 읽어 노드에 적어 둔다. */
           const measure = () => {
+            /* 편집기가 이미 걷혔을 수 있다 — 그림이 늦게 와서 부르는 자리라 흔하다.
+               그대로 두면 「editor view is not available」 로 터진다. */
+            if (!editor || editor.isDestroyed || !editor.view?.dom) return
             const root = editor.view.dom as HTMLElement
             root.querySelectorAll<HTMLImageElement>('img.jan-img-el:not([data-nw])').forEach((img) => {
-              if (!img.naturalWidth) {
+              /* 아직 진짜 그림이 아니다 — 저장소 주소는 1×1 빈 그림을 놓고 나중에 물린다.
+                 그 1×1 을 「원래 크기」 로 적어 두면 비율이 통째로 망가진다. */
+              if (img.naturalWidth <= 1) {
                 img.addEventListener('load', () => measure(), { once: true })
                 return
               }

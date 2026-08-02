@@ -10,6 +10,8 @@ import { test, expect } from '@playwright/test'
  */
 
 const REF = 'jan-blob://no-such-blob-for-test'
+/* 16KB 를 넘어야 저장소(jan-blob://)를 거친다 — 작은 그림은 data: 로 남아 이 자리를 안 지난다 */
+const BIG = 'C:/Users/cotmd/AppData/Local/Temp/claude/C--2026make-justanotepad/e2e57d47-78d4-480d-8933-a42a0e043f84/scratchpad/fig/w1-boat-wake.jpg'
 
 test('없는 그림 주소를 끝없이 다시 부르지 않고, 빈자리를 보여 준다', async ({ page }) => {
   const asked: string[] = []
@@ -45,4 +47,44 @@ test('없는 그림 주소를 끝없이 다시 부르지 않고, 빈자리를 �
   /* 주소는 잃지 않는다 — 저장하면 다시 살릴 수 있어야 한다 */
   const kept = await doc.locator('img').first().getAttribute('data-blob-ref')
   expect(kept).toBe(REF)
+})
+
+test('저장소를 거치는 그림도 제대로 그려지고 원래 크기를 잡는다', async ({ page }) => {
+  /* 16KB 를 넘는 그림은 저장소 주소(jan-blob://)를 거친다 — 화면에는 1×1 빈 그림을 먼저 놓고
+     나중에 진짜를 물린다. 그 길이 온전한지 처음부터 끝까지 본다.
+
+     덧붙임: 이 시험은 「1×1 을 원래 크기로 잘못 적는 일」 과 「늦게 온 그림이 걷힌 편집기를
+     건드려 터지는 일」 을 잡지는 못한다 — 둘 다 시점에 달려 있어 여기서는 재현되지 않았다.
+     그 둘은 막아 두었을 뿐, 이 시험이 지켜 주는 것은 아니다. */
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(String(e).slice(0, 120)))
+  page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text().slice(0, 120)) })
+
+  await page.goto('./')
+  await page.evaluate(() => localStorage.setItem('jan-v2-role-onboarded', '1'))
+  await page.reload()
+  const doc = page.locator('.ProseMirror').first()
+  await doc.waitFor({ state: 'visible' })
+  await doc.click()
+  await page.keyboard.type('저장소 그림 시험')
+
+  /* 16KB 를 넘는 그림이라야 저장소를 거친다 */
+  const chooser = page.waitForEvent('filechooser')
+  await page.locator('.jan-ribbon-tab', { hasText: /^삽입$/ }).first().click()
+  await page.locator('.jan-ribbon-body button[aria-label="그림 넣기 (파일에서)"]').first().click()
+  await (await chooser).setFiles(BIG)
+  await expect(doc.locator('img')).toHaveCount(1)
+  await page.waitForTimeout(2500)
+
+  const img = doc.locator('img').first()
+  /* 원래 크기가 1×1 로 잡히지 않았다 */
+  const nw = await img.getAttribute('data-nw')
+  expect(Number(nw || 0)).toBeGreaterThan(50)
+  /* 그리고 화면에 제대로 그려진다 */
+  expect(await img.evaluate((el: HTMLImageElement) => el.naturalWidth)).toBeGreaterThan(50)
+
+  await page.reload()
+  await doc.waitFor({ state: 'visible' })
+  await page.waitForTimeout(2500)
+  expect(errors.filter((e) => /tiptap error|not available/i.test(e))).toEqual([])
 })
