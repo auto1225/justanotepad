@@ -396,6 +396,30 @@ test.describe('회의 · 강의 노트 — 받아 적은 것으로 문서 세우
     '<tbody><tr><td>고객사 통보</td><td>박과장</td></tr></tbody></table>',
   ].join('')
 
+  test('받아 적은 글의 시각이 AI 에게 함께 간다 — 녹음으로 돌아갈 실마리', async ({ page }) => {
+    /* segments 에는 처음부터 시각이 있었는데 AI 에게 넘길 때 버리고 있었다.
+       그러면 노트에서 「그 대목이 몇 분이었지」 를 되찾을 길이 없다. */
+    await fresh(page)
+    const seen: string[] = []
+    await fakeClaude(page, NOTES, seen)
+    const conn = await connectClaude(page)
+    await conn.getByRole('button', { name: '닫기' }).first().click()
+
+    await page.locator('.jan-ribbon-tab', { hasText: /^도구$/ }).first().click()
+    await page.locator('.jan-ribbon-body button[aria-label^="강의 노트"]').first().click()
+    const dlg = page.locator('.jan-meeting-modal')
+    await expect(dlg).toBeVisible()
+    await dlg.locator('textarea[placeholder^="수동으로"]').fill('군속도는 위상속도의 절반입니다')
+    await dlg.getByRole('button', { name: '발언 추가' }).click()
+    await dlg.getByRole('button', { name: 'AI 로 강의 노트 만들기' }).click()
+    await expect(dlg.locator('.jan-meeting-status')).toContainText('문서로 세워 넣었습니다')
+
+    const prompt = (JSON.parse(seen[0]) as { messages: Array<{ content: string }> }).messages[0].content
+    /* 받아 적은 글에 [0:00] 꼴로 시각이 붙어 나갔고, 그것을 남기라는 말도 함께 갔다 */
+    expect(prompt).toMatch(/\[\d+:\d{2}\]\s*군속도는 위상속도의 절반입니다/)
+    expect(prompt).toContain('그 시각을 [12:34] 그대로 남긴다')
+  })
+
   test('AI 로 회의록 만들기를 누르면 받아 적은 글이 회의록으로 앉는다', async ({ page }) => {
     await fresh(page)
     const seen: string[] = []

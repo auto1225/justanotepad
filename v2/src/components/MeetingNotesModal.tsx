@@ -110,7 +110,12 @@ export function MeetingNotesModal({ editor, initialKind = 'meeting', onClose }: 
   const chunksRef = useRef<Blob[]>([])
 
   const analysis: MeetingAnalysis = useMemo(() => analyzeTranscriptLocal(segments), [segments])
-  const transcriptText = useMemo(() => segments.map((segment) => segment.text).join('\n'), [segments])
+  /* 받아 적은 글에 시각을 함께 싣는다 — 「그 대목이 몇 분이었지」 를 나중에 되찾을 실마리다.
+     지금까지는 글만 넘겨 시각을 버리고 있었다 (segments 에는 처음부터 들어 있었다). */
+  const transcriptText = useMemo(
+    () => segments.map((segment) => `[${formatClock(segment.startMs)}] ${segment.text}`).join('\n'),
+    [segments],
+  )
   const canRecord = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia && typeof MediaRecorder !== 'undefined'
 
   useEffect(() => {
