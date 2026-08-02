@@ -103,6 +103,7 @@ import { downloadLatex } from '../lib/latexExport'
 import { downloadHtmlFile, downloadDocFile } from '../lib/htmlDocExport'
 import { MathStudio } from './MathStudio'
 import { getSavableHtml } from '../extensions/PageDocument'
+import { makeCards } from '../lib/flashcards'
 import { errText } from '../lib/errText'
 import { openAiConnect } from '../lib/aiConnect'
 import { openAiWrite } from '../lib/aiWrite'
@@ -900,17 +901,42 @@ export function Toolbar(p: ToolbarProps) {
   }
   const flashcards = () => {
     const root = document.querySelector('.ProseMirror'); if (!root) return
-    const headings = root.querySelectorAll('h1, h2, h3'); const cards: { q: string, a: string }[] = []
-    headings.forEach(h => {
-      let next = h.nextElementSibling; let body = ''
-      while (next && !/^H[1-3]$/.test(next.tagName)) { body += next.textContent + ' '; next = next.nextElementSibling }
-      cards.push({ q: h.textContent || '', a: body.trim() })
-    })
-    if (!cards.length) { flash('제목(H1~H3)이 없어 플래시카드를 만들 수 없습니다'); return }
-    const w = window.open('', '_blank', 'width=600,height=500'); if (!w) return
-    w.document.write(`<!doctype html><html><head><title>플래시카드</title><style>body{font-family:sans-serif;padding:2em;background:#FFFBE5;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:90vh;} .card{background:#fff;border:1px solid #ccc;border-radius:12px;padding:2em;width:80%;max-width:480px;box-shadow:0 4px 16px rgba(0,0,0,0.1);text-align:center;cursor:pointer;min-height:200px;display:flex;align-items:center;justify-content:center;} button{padding:0.6em 1.4em;margin:0.5em;background:#FAE100;border:0;border-radius:6px;font-weight:600;cursor:pointer;}</style></head><body><div class="card" id="c"></div><div><button id="prev">←</button> <span id="i">1</span>/${cards.length} <button id="next">→</button> <button id="flip">뒤집기</button></div><script>const cards=${JSON.stringify(cards)};let idx=0;let face=0;function show(){const c=cards[idx];document.getElementById('c').innerHTML=face?c.a:c.q;document.getElementById('i').textContent=idx+1;}show();document.getElementById('prev').onclick=()=>{idx=(idx-1+cards.length)%cards.length;face=0;show()};document.getElementById('next').onclick=()=>{idx=(idx+1)%cards.length;face=0;show()};document.getElementById('flip').onclick=()=>{face=1-face;show()};document.getElementById('c').onclick=()=>{face=1-face;show()};</script></body></html>`)
+    /* 외우라고 만든 자리(확인 문제 · 핵심 개념 · 용어표)를 먼저 본다 — 없으면 제목으로 */
+    const cards = makeCards(root)
+    if (!cards.length) { flash('외울 것을 찾지 못했습니다 — 확인 문제나 제목이 있는 문서에서 써 보세요'); return }
+    const kinds = cards.reduce<Record<string, number>>((acc, c) => { acc[c.from] = (acc[c.from] || 0) + 1; return acc }, {})
+    const where = [
+      kinds.quiz ? `확인 문제 ${kinds.quiz}` : '',
+      kinds.concept ? `핵심 개념 ${kinds.concept}` : '',
+      kinds.term ? `용어 ${kinds.term}` : '',
+      kinds.heading ? `제목 ${kinds.heading}` : '',
+    ].filter(Boolean).join(' · ')
+    const w = window.open('', '_blank', 'width=640,height=560'); if (!w) return
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>플래시카드</title><style>
+body{font-family:'Malgun Gothic',sans-serif;padding:2em;background:#FFFBE5;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:90vh;margin:0;}
+.card{background:#fff;border:1px solid #ccc;border-radius:12px;padding:2em;width:82%;max-width:520px;box-shadow:0 4px 16px rgba(0,0,0,.1);text-align:center;cursor:pointer;min-height:220px;display:flex;align-items:center;justify-content:center;white-space:pre-line;line-height:1.7;font-size:16px;}
+.tag{font-size:11px;color:#8a7f5c;margin-bottom:8px;letter-spacing:.02em;}
+button{padding:.6em 1.4em;margin:.5em;background:#FAE100;border:0;border-radius:6px;font-weight:600;cursor:pointer;}
+.bar{margin-top:10px;color:#6b6250;font-size:13px;}
+</style></head><body>
+<div class="tag" id="tag"></div><div class="card" id="c"></div>
+<div class="bar"><button id="prev">←</button> <span id="i">1</span>/${cards.length} <button id="next">→</button> <button id="flip">뒤집기 (space)</button></div>
+<div class="tag">${where}</div>
+<script>
+const cards=${JSON.stringify(cards)};const NAME={quiz:'확인 문제',term:'용어',concept:'핵심 개념',heading:'차례'};
+let idx=0,face=0;
+function show(){const c=cards[idx];document.getElementById('c').textContent=face?c.a:c.q;document.getElementById('i').textContent=idx+1;document.getElementById('tag').textContent=NAME[c.from]+(face?' · 답':' · 물음');}
+function go(d){idx=(idx+d+cards.length)%cards.length;face=0;show()}
+show();
+document.getElementById('prev').onclick=()=>go(-1);
+document.getElementById('next').onclick=()=>go(1);
+document.getElementById('flip').onclick=()=>{face=1-face;show()};
+document.getElementById('c').onclick=()=>{face=1-face;show()};
+document.addEventListener('keydown',e=>{if(e.key==='ArrowLeft')go(-1);else if(e.key==='ArrowRight')go(1);else if(e.key===' '){e.preventDefault();face=1-face;show()}});
+</script></body></html>`)
     w.document.close()
   }
+
   const startPomodoro = async () => {
     const v = await askText('포모도로 시간 (분):', '25', { placeholder: '예: 25' })
     if (v === null) return
