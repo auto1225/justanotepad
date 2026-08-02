@@ -8016,3 +8016,25 @@ body.jan-hide-highlight [data-highlight] { background: none !important; box-shad
   line-height: 1.5;
   color: var(--jan-dim, #6b7684);
 }
+
+/* 헤더의 앱 이름과 판 번호 — 늘 보이되 일감을 가리지 않게 */
+.jan-bar-appname {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-left: 2px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: inherit;
+  white-space: nowrap;
+}
+.jan-bar-appver {
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.72;
+  font-variant-numeric: tabular-nums;
+}
+/* 좁은 화면에서는 판 번호부터 접는다 — 이름이 먼저다 */
+@media (max-width: 900px) { .jan-bar-appver { display: none; } }
+@media (max-width: 640px) { .jan-bar-appname { display: none; } }

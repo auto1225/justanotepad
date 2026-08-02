@@ -39,6 +39,10 @@ test('없는 그림 주소를 끝없이 다시 부르지 않고, 빈자리를 �
   /* 빈자리를 보여 준다 — 조용히 사라지지 않는다 */
   await expect(doc.locator('img[data-jan-blob-missing]')).toHaveCount(1)
 
-  /* 그리고 되풀이해 부르지 않는다 */
-  expect(asked.length).toBeLessThan(12)
+  /* 그리고 아예 부르지 않는다 — 브라우저가 못 읽는 주소는 화면에 붙이지 않는다 */
+  expect(asked.length).toBe(0)
+
+  /* 주소는 잃지 않는다 — 저장하면 다시 살릴 수 있어야 한다 */
+  const kept = await doc.locator('img').first().getAttribute('data-blob-ref')
+  expect(kept).toBe(REF)
 })

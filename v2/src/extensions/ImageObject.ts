@@ -97,6 +97,9 @@ export const IMAGE_STYLES: { key: string; label: string; hint: string }[] = [
 ]
 
 /** 텍스트 배치 — 워드의 「텍스트 줄 바꿈」 */
+/** 아직 물리지 않은 그림 자리에 놓는 1×1 투명 그림 — 브라우저가 부를 것이 없다 */
+const BLANK_PIXEL = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
+
 export const IMAGE_WRAPS: { key: string; label: string; hint: string }[] = [
   { key: 'topbottom', label: '위/아래', hint: '그림이 한 줄을 통째로 차지한다' },
   { key: 'inline', label: '글자처럼 취급', hint: '글자 사이에 끼워 넣는다' },
@@ -216,6 +219,12 @@ export const ImageObject = Image.extend({
     })
     return {
       ...this.parent?.(),
+      /* 화면에는 빈 그림을 놓고 주소는 data-blob-ref 에 두므로, 읽을 때 그것을 먼저 본다 */
+      src: {
+        default: null,
+        parseHTML: (el: HTMLElement) => el.getAttribute('data-blob-ref') || el.getAttribute('src'),
+        renderHTML: () => ({}),
+      },
       width: { default: null, parseHTML: (el: HTMLElement) => el.getAttribute('width') || el.getAttribute('data-width'), renderHTML: () => ({}) },
       height: { default: null, parseHTML: (el: HTMLElement) => el.getAttribute('height') || el.getAttribute('data-height'), renderHTML: () => ({}) },
       align: attr('align'),
@@ -290,11 +299,19 @@ export const ImageObject = Image.extend({
     put('data-cap-pos', a.capPos)
     put('data-still', a.still ? '1' : null)
 
+    /* 저장소 주소(jan-blob://)는 브라우저가 읽지 못한다. 그대로 src 에 넣으면 화면에 붙는
+       순간마다 부르고 실패한다 — 다시 그릴 때마다 되풀이되어 콘솔에 만 건이 쌓였다.
+       그래서 src 에는 빈 그림을 놓고 주소는 data-blob-ref 에 둔다.
+       진짜 그림은 blobRefs 가 찾아 물려 준다. 저장할 때는 이 글자열 안의 jan-blob:// 를
+       그대로 읽으므로(resolveBlobRefsInHtml) 저장 경로는 달라지지 않는다. */
+    const rawSrc = String(a.src ?? '')
+    const isStoreRef = rawSrc.startsWith('jan-blob://')
     const imgAttrs: Record<string, string> = {
       ...data,
-      src: String(a.src ?? ''),
+      src: isStoreRef ? BLANK_PIXEL : rawSrc,
       class: 'jan-img-el',
     }
+    if (isStoreRef) imgAttrs['data-blob-ref'] = rawSrc
     if (a.alt) imgAttrs.alt = String(a.alt)
     if (a.title) imgAttrs.title = String(a.title)
 

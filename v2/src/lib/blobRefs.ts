@@ -164,9 +164,13 @@ const BLANK = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAA
 
 export async function resolveBlobRefsInElement(root: ParentNode | null): Promise<void> {
   if (!root || !('querySelectorAll' in root)) return
-  const elements = Array.from(root.querySelectorAll<HTMLImageElement | HTMLAudioElement | HTMLVideoElement>(`img[src^="${REF_PREFIX}"], audio[src^="${REF_PREFIX}"], video[src^="${REF_PREFIX}"]`))
+  /* 그림은 src 에 빈 그림을 놓고 주소를 data-blob-ref 에 둔다 (브라우저가 못 읽는 주소를
+     화면에 붙이면 붙을 때마다 부르고 실패한다). 옛 문서에는 src 에 그대로 있을 수 있으므로 둘 다 본다. */
+  const elements = Array.from(root.querySelectorAll<HTMLImageElement | HTMLAudioElement | HTMLVideoElement>(
+    `img[data-blob-ref], img[src^="${REF_PREFIX}"], audio[src^="${REF_PREFIX}"], video[src^="${REF_PREFIX}"]`,
+  ))
   for (const element of elements) {
-    const src = element.getAttribute('src') || ''
+    const src = element.getAttribute('data-blob-ref') || element.getAttribute('src') || ''
     if (!isBlobRef(src)) continue
     const id = blobRefId(src)
 
@@ -281,7 +285,7 @@ export function watchBlobRefs(root: HTMLElement): () => void {
       }
     }
   })
-  mo.observe(root, { subtree: true, childList: true, attributes: true, attributeFilter: ['src'] })
+  mo.observe(root, { subtree: true, childList: true, attributes: true, attributeFilter: ['src', 'data-blob-ref'] })
   void run()
   return () => {
     mo.disconnect()

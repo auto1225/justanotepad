@@ -8,6 +8,17 @@ import { test, expect } from '@playwright/test'
  * 예전에는 앱 정보에만 2.0.0 이 박혀 있고 화면에는 아무 데도 없었다.
  */
 
+test('머리에 앱 이름과 판 번호가 보인다', async ({ page }) => {
+  await page.goto('./')
+  await page.evaluate(() => localStorage.setItem('jan-v2-role-onboarded', '1'))
+  await page.reload()
+  await page.locator('.ProseMirror').first().waitFor({ state: 'visible' })
+  const name = page.locator('.jan-bar-appname')
+  await expect(name).toBeVisible()
+  await expect(name).toContainText('JustANotepad')
+  await expect(name.locator('.jan-bar-appver')).toHaveText(/^V\d+\.\d{3}$/)
+})
+
 test('상태줄에 판 번호가 보이고, 앱 정보와 같은 번호를 말한다', async ({ page }) => {
   await page.goto('./')
   await page.evaluate(() => localStorage.setItem('jan-v2-role-onboarded', '1'))

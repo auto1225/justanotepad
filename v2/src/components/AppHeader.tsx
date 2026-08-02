@@ -5,6 +5,7 @@ import { useMemosStore } from '../store/memosStore'
 import { useRoleToolsStore } from '../store/roleToolsStore'
 import { flash } from '../lib/flash'
 import { askText } from '../lib/promptModal'
+import { APP_VERSION } from '../lib/version'
 
 interface AppHeaderProps {
   /** 문서(메모) 탭 — 헤더와 같은 줄에 놓아 줄 수를 하나 줄인다 (한글·워드처럼) */
@@ -59,9 +60,15 @@ export function HeaderLeading() {
       <button className="jan-header-btn" onClick={toggleSidebarFromHeader} title={sidebarCollapsed ? '사이드바 열기' : '사이드바 접기'} aria-label="메뉴">
         <Icon name="menu" size={17} />
       </button>
-      <div className="jan-bar-logo" title="JustANotepad" aria-label="JustANotepad">
+      <div className="jan-bar-logo" title={`JustANotepad ${APP_VERSION}`} aria-label="JustANotepad">
         <Icon name="file-text" size={15} />
       </div>
+      {/* 이름과 판 번호 — 무엇이 도는 중인지 묻지 않고 알 수 있어야 한다.
+          좁은 화면에서는 자리를 다투므로 이름만 남기고 판 번호는 접는다 (CSS). */}
+      <span className="jan-bar-appname">
+        JustANotepad
+        <span className="jan-bar-appver">{APP_VERSION}</span>
+      </span>
     </div>
   )
 }
