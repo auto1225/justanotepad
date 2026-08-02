@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Editor } from '@tiptap/react'
 import { NodeSelection } from '@tiptap/pm/state'
 import { CellSelection } from 'prosemirror-tables'
+import { isAnimated } from '../lib/stillImage'
 import { applyBorders, applyShading } from '../lib/tableBorders'
 import { cellSelectionSize } from '../lib/tableSelect'
 import { distributeColumns, distributeRows } from '../lib/tableWord'
@@ -157,6 +158,14 @@ function barTop(box: DOMRect, lift: number): number {
           <button onClick={() => fitImageToBody(editor)} title="본문 너비에 맞춤 (Alt+F)">폭 맞춤</button>
           <button onClick={() => rotateImage(editor, 90)} title="오른쪽으로 90° 회전 (Alt+R)">⟳</button>
           <button onClick={() => fire('jan-image-crop-mode')} title="자르기">자르기</button>
+          {isAnimated(String(editor.getAttributes('image').src || '')) && (
+            <button
+              onClick={() => editor.chain().focus().updateAttributes('image', { still: !editor.getAttributes('image').still }).run()}
+              title={editor.getAttributes('image').still ? '다시 움직이게 (지금은 멈춤)' : '움직임 멈추기 — 첫 장면만 보여 준다'}
+            >
+              {editor.getAttributes('image').still ? '▶ 움직임' : '⏸ 멈춤'}
+            </button>
+          )}
           <button onClick={() => fire('jan-image-dialog', { tab: 'layout' })} title="텍스트 배치 (Alt+W)">배치...</button>
           <button onClick={() => fire('jan-image-dialog', { tab: 'adjust' })} title="색 보정 (Alt+T)">보정...</button>
           <button onClick={() => fire('jan-image-dialog', { tab: 'caption' })} title="캡션 (Alt+C)">캡션...</button>

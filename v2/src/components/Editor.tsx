@@ -25,6 +25,7 @@ import { DeleteMark, InsertMark, TrackChanges } from '../extensions/TrackChanges
 import { EditGuard } from '../extensions/EditGuard'
 import { applyDesign, watermarkSvgOf, type DocDesign } from '../lib/docDesign'
 import { watchPaperNumbers } from '../lib/paperRefs'
+import { watchStill } from '../lib/stillImage'
 import { DesignPanel } from './DesignPanel'
 import { Model3D } from '../extensions/Model3D'
 import { CharOverlap, DropCapAttr, EmphasisDot, RubyText } from '../extensions/TextObjects'
@@ -607,6 +608,12 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   useEffect(() => {
     if (!editor) return
     return watchPaperNumbers(editor)
+  }, [editor])
+
+  /* 「멈춤」 으로 표시된 움직이는 그림은 첫 장면만 보여 준다 */
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return
+    return watchStill(editor.view.dom as HTMLElement)
   }, [editor])
 
   /* 세로 눈금자를 쪽마다 하나씩 놓기 위해 현재 쪽 수를 따라간다 (독립 페이지 모델) */

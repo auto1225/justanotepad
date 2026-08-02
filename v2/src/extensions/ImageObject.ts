@@ -243,6 +243,10 @@ export const ImageObject = Image.extend({
       /* 캡션 — 그림과 한 몸으로 움직인다 (한글의 캡션) */
       caption: attr('caption'),
       capPos: attr('capPos', 'data-cap-pos'),
+      /* 움직이는 그림(GIF·APNG)을 멈춰 둘까 — 문서를 읽는 동안 옆에서 계속 도는 그림은
+         눈을 끌어 글을 못 읽게 한다. 그렇다고 늘 멈춰 두면 움직임으로 설명하는 그림
+         (파면이 퍼져 쐐기가 서는 그림 같은 것)은 뜻을 잃는다. 그래서 사람이 고른다. */
+      still: { default: false, parseHTML: (el: HTMLElement) => el.getAttribute('data-still') === '1', renderHTML: () => ({}) },
     }
   },
 
@@ -284,6 +288,7 @@ export const ImageObject = Image.extend({
     put('data-locked', a.locked ? '1' : null)
     put('data-caption', a.caption)
     put('data-cap-pos', a.capPos)
+    put('data-still', a.still ? '1' : null)
 
     const imgAttrs: Record<string, string> = {
       ...data,
