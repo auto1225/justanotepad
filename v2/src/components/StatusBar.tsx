@@ -12,6 +12,7 @@ import { Icon } from './Icons'
 import { fitPageZoom, setPageZoom } from '../lib/pageZoom'
 import { readByocSyncHealth, readLocalSyncLabel, type ByocSyncHealth } from '../lib/byocSync'
 import { countPages, pageAtViewportY, scrollToPage } from '../lib/pageInfo'
+import { APP_VERSION } from '../lib/version'
 
 interface StatusBarProps {
   editor: Editor | null
@@ -220,6 +221,9 @@ export function StatusBar({ editor, onPageSettings, onSettings }: StatusBarProps
       )}
       <PomodoroWidget />
       <span className="flex-spacer" />
+      {/* 판 번호 — 늘 보이는 자리에 둔다. 무엇이 도는 중인지 묻지 않고 알 수 있어야 한다 */}
+      <span className="hint" title={`JustANotepad ${APP_VERSION}`}>{APP_VERSION}</span>
+      <span className="divider" />
       <span className="hint">Ctrl+S · Ctrl+K 링크 · Ctrl+Shift+P · F1</span>
     </div>
   )

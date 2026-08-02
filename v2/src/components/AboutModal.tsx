@@ -1,10 +1,12 @@
 import { getStats } from '../lib/analytics'
+import { APP_VERSION } from '../lib/version'
 
 interface AboutModalProps {
   onClose: () => void
 }
 
-const VERSION = '2.0.0'
+/* 판 번호는 lib/version.ts 한 곳에서만 정한다 */
+const VERSION = APP_VERSION
 
 const CHANGELOG: Array<{ ver: string; date: string; items: string[] }> = [
   {
@@ -32,14 +34,14 @@ export function AboutModal({ onClose }: AboutModalProps) {
     <div className="jan-modal-overlay" onClick={onClose}>
       <div className="jan-modal jan-about-modal" onClick={(e) => e.stopPropagation()}>
         <div className="jan-modal-head">
-          <h3>JustANotepad v{VERSION}</h3>
+          <h3>JustANotepad {VERSION}</h3>
           <button className="jan-modal-close" onClick={onClose}>닫기</button>
         </div>
         <div className="jan-modal-body">
           <section className="jan-settings-section">
             <h4>버전 정보</h4>
             <div className="jan-settings-info">
-              JustANotepad v{VERSION} (Beta) — TipTap v3 기반<br />
+              JustANotepad {VERSION} (Beta) — TipTap v3 기반<br />
               <a href="https://justanotepad.com" target="_blank" rel="noopener noreferrer">justanotepad.com</a>
             </div>
           </section>
