@@ -4147,12 +4147,23 @@ html, body, #root {
   font-family: var(--jan-editor-font) !important;
 }
 
+/* 줄노트 — 줄 간격을 글의 줄 간격에서 끌어온다.
+   28px 로 못 박아 두었더니 문서 서식(글자 크기 · 줄 간격)을 바꾸는 순간
+   종이의 줄과 글의 줄이 어긋났다. 글이 줄 위에 앉지 않으면 줄노트가 아니라 방해다. */
 .jan-editor-pages[data-paper="lined"] .ProseMirror,
 .jan-editor-pages:not([data-paper]) .ProseMirror {
+  --jan-note-pitch: calc(var(--jan-doc-body-size, 13.5px) * var(--jan-doc-line, 1.7));
   background-image:
     linear-gradient(to right, transparent 34px, var(--jan-note-margin-line) 34px, var(--jan-note-margin-line) 35px, transparent 35px),
-    repeating-linear-gradient(to bottom, transparent 0, transparent 27px, var(--jan-note-line) 27px, var(--jan-note-line) 28px) !important;
-  background-position: 0 0, 0 8px !important;
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent calc(var(--jan-note-pitch) - 1px),
+      var(--jan-note-line) calc(var(--jan-note-pitch) - 1px),
+      var(--jan-note-line) var(--jan-note-pitch)
+    ) !important;
+  /* 첫 줄이 글의 밑선에 닿게 — 글 상자 위 여백만큼 내려서 시작한다 */
+  background-position: 0 0, 0 calc(var(--jan-note-pitch) * 0.28) !important;
 }
 
 .jan-editor-pages[data-paper="grid"] .ProseMirror {

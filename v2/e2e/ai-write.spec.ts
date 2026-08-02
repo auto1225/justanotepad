@@ -235,6 +235,58 @@ test.describe('문서 자동 작성', () => {
     expect(web.messages[0].content).toContain('〔그림 n')
   })
 
+  test('강의 노트는 기본 사항 표부터 부탁하고, 자료에는 눌러 갈 주소를 단다', async ({ page }) => {
+    /* 강의 노트인데 과목 · 교수 · 일시 · 차시가 없으면 그냥 글이다.
+       「더 볼 것」 의 자료도 눌러서 갈 수 있어야 값이 있다. */
+    await fresh(page)
+    const seen: string[] = []
+    await fakeClaude(page, FAKE_DOC, seen)
+    const conn = await connectClaude(page)
+    await conn.getByRole('button', { name: '닫기' }).first().click()
+
+    await page.keyboard.press('Alt+j')
+    const dlg = page.locator('.jan-aiwrite')
+    await dlg.getByLabel('무엇을 만들까').fill('켈빈 항적 강의 노트')
+    await dlg.getByLabel('문서 갈래').selectOption({ label: '강의 노트 · 강의 계획' })
+    await dlg.getByLabel(/^웹 자료까지/).check()
+    await dlg.getByRole('button', { name: '바로 만들기' }).click()
+    await expect(dlg.locator('.jan-aiwrite-preview')).toBeVisible()
+
+    const prompt = (JSON.parse(seen[0]) as { messages: Array<{ content: string }> }).messages[0].content
+    expect(prompt).toContain('강의 기본 사항을 표 하나로')
+    expect(prompt).toContain('담당 교수')
+    expect(prompt).toContain('차시 (n주차 m차시)')
+    expect(prompt).toContain('doi.org')
+    expect(prompt).toContain('<a href=')
+  })
+
+  test('자료의 주소는 살리고 엉뚱한 주소는 지운다', async ({ page }) => {
+    /* 링크를 통째로 지우면 「더 볼 것」 이 종이 위의 글자에 그친다.
+       그렇다고 아무 주소나 들이면 안 된다 — http(s) 만 남긴다. */
+    await fresh(page)
+    const withLinks = [
+      '<h1>더 볼 것 시험</h1>',
+      '<ul>',
+      '<li><a href="https://doi.org/10.1103/PhysRevLett.110.214503">Rabaud &amp; Moisy (2013)</a></li>',
+      '<li><a href="javascript:alert(1)">누르면 안 되는 것</a></li>',
+      '</ul>',
+    ].join('')
+    await fakeClaude(page, withLinks)
+    const conn = await connectClaude(page)
+    await conn.getByRole('button', { name: '닫기' }).first().click()
+
+    await page.keyboard.press('Alt+j')
+    const dlg = page.locator('.jan-aiwrite')
+    await dlg.getByLabel('무엇을 만들까').fill('링크 시험')
+    await dlg.getByRole('button', { name: '바로 만들기' }).click()
+
+    const preview = dlg.locator('.jan-aiwrite-preview')
+    await expect(preview.locator('a')).toHaveCount(1)
+    await expect(preview.locator('a')).toHaveAttribute('href', /^https:\/\/doi\.org\//)
+    /* 지워진 링크도 글자는 남는다 — 내용을 잃지 않는다 */
+    await expect(preview).toContainText('누르면 안 되는 것')
+  })
+
   test('목차를 먼저 받아 고쳐 넣으면 그 목차로 본문을 쓴다', async ({ page }) => {
     await fresh(page)
     const seen: string[] = []

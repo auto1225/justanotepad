@@ -98,13 +98,17 @@ export const DOC_KINDS: DocKind[] = [
     hint: '가르칠 것을 차례와 예시로',
     sample: '비전공자를 위한 데이터베이스 기초 4주 강의',
     frame: [
+      '맨 앞에 강의 기본 사항을 표 하나로 — 두 칸짜리 표에 아래를 담는다.',
+      '  과목명 / 담당 교수 / 소속 · 연락처 / 일시 (날짜와 교시) / 장소 / 차시 (n주차 m차시) / 이수 구분 · 학점 / 준비물 · 교재',
+      '  모르는 것은 지어내지 말고 【확인: 담당 교수】 처럼 남긴다. 이 표가 없으면 강의 노트가 아니라 그냥 글이다.',
       '1. 이 강의를 들으면 무엇을 할 수 있게 되나 — 할 수 있는 일로 적는다 (「이해한다」 대신 「직접 만든다」)',
       '2. 미리 알아야 할 것',
       '3. 차시 구성 — 표 (차시 / 주제 / 다룰 것 / 과제)',
       '4. 핵심 개념 — 개념마다 한 줄 정의 + 왜 필요한가 + 흔한 오해',
       '5. 예시와 실습 — 손으로 따라 할 것',
       '6. 확인 문제 — 다섯 문제와 답',
-      '7. 더 볼 것',
+      '7. 더 볼 것 — 자료마다 눌러서 갈 수 있는 주소를 <a href="…"> 로 단다',
+      '맨 뒤에 「다음 시간에 할 것」 과 「과제 · 제출 기한」 을 짧게',
     ].join('\n'),
   },
   {
@@ -254,6 +258,8 @@ export const SOURCE_MODES: Array<{ key: DocSources; label: string; hint: string;
       '  〔그림 n — 무엇을 보여 주는 그림인가 · 어떤 자료를 찾으면 되나〕 라고 적는다.',
       '  (앱이 그 자리에 그림을 앉힌다 — 직접 그림을 그리거나 주소를 지어내지 않는다)',
       '- 마지막에 「더 볼 것」 절을 두고, 실제로 있는 책 · 논문 · 문서를 지은이 · 해와 함께 적는다.',
+      '- 자료마다 눌러서 갈 수 있는 주소를 <a href="https://…"> 로 단다. 확실한 것만 — 논문은 DOI(https://doi.org/…)',
+      '  나 arXiv(https://arxiv.org/abs/…), 그 밖에는 공식 문서나 위키백과 항목. 지어낸 주소는 없느니만 못하다.',
       '- 확실하지 않은 것은 적지 않는다. 그럴듯한 가짜 출처보다 빈자리가 낫다.',
     ].join('\n'),
   },
@@ -267,7 +273,8 @@ export function sourceRule(s: DocSpec): string {
 const HTML_RULE = [
   '결과는 문서 본문만 낸다. 인사말 · 설명 · 「알겠습니다」 같은 말을 앞뒤에 붙이지 않는다.',
   'HTML 로만 적는다. 마크다운(#, **, - )을 쓰지 않고, 코드 울타리(```)로 감싸지 않는다.',
-  '쓸 수 있는 것: <h1> <h2> <h3> <p> <ul> <ol> <li> <strong> <em> <blockquote> <table> <thead> <tbody> <tr> <th> <td> <hr>',
+  '쓸 수 있는 것: <h1> <h2> <h3> <p> <ul> <ol> <li> <strong> <em> <blockquote> <table> <thead> <tbody> <tr> <th> <td> <hr> <a href="…">',
+  '<a> 는 http(s) 주소만. 그 밖의 주소는 지워진다.',
   '<h1> 은 문서 제목 하나만. 큰 절은 <h2>, 그 아래는 <h3>.',
   '표는 <table><thead><tr><th>…</th></tr></thead><tbody>…</tbody></table> 꼴로 온전히 적는다.',
   '<style> <script> class= style= 같은 것은 넣지 않는다.',
@@ -367,8 +374,10 @@ export function directPrompt(s: DocSpec): string {
 
 /* ── 받아 온 답을 문서에 넣을 수 있는 꼴로 ───────────────────────────── */
 
-const TAGS = /^(H1|H2|H3|H4|P|UL|OL|LI|STRONG|EM|B|I|U|S|BLOCKQUOTE|TABLE|THEAD|TBODY|TFOOT|TR|TH|TD|BR|HR)$/
-const KEEP_ATTR = /^(colspan|rowspan)$/
+/* <A> 를 살려 둔다 — 「더 볼 것」 의 자료는 눌러서 바로 갈 수 있어야 값이 있다.
+   여는 주소는 http(s) 만 남긴다 (javascript: 같은 것이 섞여 들어오지 않게). */
+const TAGS = /^(H1|H2|H3|H4|P|UL|OL|LI|STRONG|EM|B|I|U|S|BLOCKQUOTE|TABLE|THEAD|TBODY|TFOOT|TR|TH|TD|BR|HR|A)$/
+const KEEP_ATTR = /^(colspan|rowspan|href)$/
 
 /** 코드 울타리를 벗긴다 — 시키지 않아도 ```html 로 감싸 오는 모델이 있다 */
 function unfence(text: string): string {
@@ -466,6 +475,11 @@ export function cleanDocHtml(html: string): string {
       }
       for (const attr of [...child.attributes]) {
         if (!KEEP_ATTR.test(attr.name)) child.removeAttribute(attr.name)
+      }
+      /* 여는 주소는 http(s) 만 남긴다 — javascript: 나 data: 가 섞여 오면 링크를 지운다 */
+      if (child.tagName === 'A') {
+        const href = child.getAttribute('href') || ''
+        if (!/^https?:\/\//i.test(href)) child.replaceWith(...[...child.childNodes])
       }
     }
   }

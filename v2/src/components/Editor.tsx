@@ -566,6 +566,27 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       content: collab.ydoc ? '' : initialContent,
       editorProps: {
         attributes: { class: 'ProseMirror', spellcheck: spellCheck ? 'true' : 'false' },
+        /**
+         * 목차 줄을 누르면 그 제목으로 간다.
+         * 목차는 <a href="#h-…"> 로 걸리는데 제목에는 그 이름표가 붙은 적이 없어
+         * 눌러도 아무 데도 가지 않았다 — 목차가 그림에 지나지 않았다.
+         * 이름표를 문서에 심는 대신, 누른 글자로 제목을 찾아 그리로 옮긴다
+         * (문서에 남는 것이 늘지 않고, 제목을 고쳐도 따라간다).
+         */
+        handleClickOn(view, _pos, _node, _nodePos, event) {
+          const link = (event.target as HTMLElement | null)?.closest?.('a[href^="#h-"]')
+          const row = (event.target as HTMLElement | null)?.closest?.('[data-jan-field="toc"]')
+          if (!link && !row) return false
+          const want = (link || row)!.textContent?.replace(/\s*\d+\s*$/, '').trim() || ''
+          if (!want) return false
+          const heads = [...view.dom.querySelectorAll('h1, h2, h3, h4')]
+          const hit = heads.find((h) => (h.textContent || '').trim().replace(/^\d+(\.\d+)*\.?\s*/, '') === want.replace(/^\d+(\.\d+)*\.?\s*/, ''))
+            || heads.find((h) => (h.textContent || '').includes(want))
+          if (!hit) return false
+          hit.scrollIntoView({ block: 'start', behavior: 'smooth' })
+          event.preventDefault()
+          return true
+        },
       },
       onUpdate: ({ editor, transaction }) => {
         scheduleEditorContentCommit(editor)
