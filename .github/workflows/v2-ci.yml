@@ -53,7 +53,10 @@ jobs:
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         working-directory: .
         run: |
-          if git diff --quiet -- dist-v2; then
+          # 소스맵(.map)은 빼고 견준다 — 리눅스에서 지은 것과 윈도우에서 지은 것이
+          # 경로 적는 방식만 달라서, 그것까지 세면 밀 때마다 「어긋났다」 가 되어
+          # 고칠 것이 없는데도 커밋이 쌓인다 (실제로 한 번 그렇게 났다).
+          if git diff --quiet -- dist-v2 ':(exclude)dist-v2/**/*.map'; then
             echo "배포본이 소스와 같다 — 할 일 없음"
             exit 0
           fi
