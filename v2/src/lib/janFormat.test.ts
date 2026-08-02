@@ -11,6 +11,22 @@ describe('우리 문서 형식 (.jan)', () => {
     pageSettings: { pageColumnCount: 2, paperStyle: 'blank', runningHeader: '머리글' },
   }
 
+  it('문서 서식도 함께 담긴다 — 남이 열어도 내가 보던 모습이다', async () => {
+    /* 이것이 빠져 있어 파일로 주고받으면 논문 서식이 풀리고 기본 고딕으로 열렸다.
+       글꼴과 줄 간격이 달라지면 쪽 수까지 바뀐다 — 같은 문서라고 하기 어렵다. */
+    const design = { styleSet: 'thesis', fontPair: 'serif', paraSpacing: 'wide' }
+    const packed = await packJan({ ...doc, design })
+    const back = await unpackJan(await packed.arrayBuffer())
+    expect(back.design).toEqual(design)
+  })
+
+  it('서식이 없는 예전 파일도 그냥 열린다', async () => {
+    const packed = await packJan(doc)
+    const back = await unpackJan(await packed.arrayBuffer())
+    expect(back.design).toBeUndefined()
+    expect(back.html).toContain('<h1>제목</h1>')
+  })
+
   it('싸고 풀면 본문·제목·쪽 설정이 그대로 돌아온다', async () => {
     const packed = await packJan(doc)
     const back = await unpackJan(await packed.arrayBuffer())

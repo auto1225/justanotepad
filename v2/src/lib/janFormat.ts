@@ -13,7 +13,7 @@ import { resolveBlobRefsInHtml } from './blobRefs'
  *
  *   보고서.jan
  *   ├─ mimetype          application/x-justanotepad+zip   (무압축 — 파일 첫머리로 형식을 알아본다)
- *   ├─ jan.json          { version, title, pageSettings, savedAt }
+ *   ├─ jan.json          { version, title, pageSettings, design, savedAt }
  *   ├─ content.html      본문 (그림은 media/… 로 가리킨다)
  *   └─ media/            그림·소리·영상 원본
  *
@@ -28,6 +28,9 @@ export interface JanDocument {
   title: string
   html: string
   pageSettings?: unknown
+  /** 문서 서식 — 글꼴 · 줄 간격 · 제목 꼴을 한 벌로 정한 것.
+      이것이 빠지면 남에게 보낸 파일이 기본 서식으로 열려 「내가 보던 문서」 가 아니게 된다. */
+  design?: unknown
   savedAt?: number
 }
 
@@ -106,6 +109,7 @@ export async function packJan(doc: JanDocument): Promise<Blob> {
     app: 'JustANotepad',
     title: doc.title,
     pageSettings: doc.pageSettings ?? null,
+    design: doc.design ?? null,
     savedAt: doc.savedAt ?? null,
     mediaCount: n,
   }, null, 2))
@@ -123,12 +127,14 @@ export async function unpackJan(data: Blob | ArrayBuffer | Uint8Array): Promise<
   const metaFile = zip.file('jan.json')
   let title = ''
   let pageSettings: unknown
+  let design: unknown
   let savedAt: number | undefined
   if (metaFile) {
     try {
       const meta = JSON.parse(await metaFile.async('string'))
       if (typeof meta.title === 'string') title = meta.title
       if (meta.pageSettings && typeof meta.pageSettings === 'object') pageSettings = meta.pageSettings
+      if (meta.design && typeof meta.design === 'object') design = meta.design
       if (typeof meta.savedAt === 'number') savedAt = meta.savedAt
     } catch { /* 정보가 깨졌어도 본문은 살린다 */ }
   }
@@ -143,7 +149,7 @@ export async function unpackJan(data: Blob | ArrayBuffer | Uint8Array): Promise<
     html = html.split(`media/${name}`).join(`data:${mimeOf(ext)};base64,${base64}`)
   }
 
-  return { title, html, pageSettings, savedAt }
+  return { title, html, pageSettings, design, savedAt }
 }
 
 function mimeOf(ext: string): string {

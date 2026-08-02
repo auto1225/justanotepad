@@ -23,7 +23,7 @@ import { FieldBlocks } from '../extensions/FieldBlocks'
 import { AuthorityMark, IndexMark } from '../extensions/RefMarks'
 import { DeleteMark, InsertMark, TrackChanges } from '../extensions/TrackChanges'
 import { EditGuard } from '../extensions/EditGuard'
-import { applyDesign, watermarkSvgOf } from '../lib/docDesign'
+import { applyDesign, watermarkSvgOf, type DocDesign } from '../lib/docDesign'
 import { DesignPanel } from './DesignPanel'
 import { Model3D } from '../extensions/Model3D'
 import { CharOverlap, DropCapAttr, EmphasisDot, RubyText } from '../extensions/TextObjects'
@@ -1063,6 +1063,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
     const result = await saveToFile({
       title, content: html, handle: ownHandle,
       pageSettings: pageSettingsFromUi(useUIStore.getState()), // 이 문서의 판형을 파일에 함께 넣는다
+      design: useUIStore.getState().design,                    // 서식도 함께 — 없으면 남이 열 때 기본 서식이 된다
       pick: saveAs, // 자리를 고르는 창은 「다른 이름」에서만 — 그냥 「저장」은 묻지 않고 저장한다
     })
     if (result.ok) {
@@ -1092,6 +1093,11 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
     applyingMemoPageSettingsRef.current = true
     useUIStore.getState().applyPageSettings(pageSettings)
     applyingMemoPageSettingsRef.current = false
+    /* 파일에 서식이 적혀 있으면 그대로 입힌다 — 보낸 사람이 보던 모습으로 열린다.
+       없으면(예전 파일 · HTML) 지금 서식을 그대로 둔다. */
+    if (result.design && typeof result.design === 'object') {
+      useUIStore.getState().setDesign(result.design as Partial<DocDesign>)
+    }
     setFileHandle(result.handle ?? null, id)
     editor.chain().setMeta('janTrackSkip', true).setContent(result.content).run()
     trackEvent('open_file')

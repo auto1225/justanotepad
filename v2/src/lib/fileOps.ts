@@ -118,6 +118,8 @@ export interface SaveOptions {
   handle?: FileSystemFileHandle | null
   /** 이 문서의 쪽 설정 — 파일 안에 함께 넣어 두면 다시 열 때 그대로 살아난다 */
   pageSettings?: unknown
+  /** 문서 서식 — 파일에 함께 담아, 남이 열어도 내가 보던 모습으로 열리게 한다 */
+  design?: unknown
   /** 자동 저장처럼 사람이 누르지 않은 저장 — 창을 띄우거나 내려받기로 새지 않는다 */
   silent?: boolean
   /** 「다른 이름」처럼 사용자가 저장 자리를 고르겠다고 분명히 시킨 저장 */
@@ -143,10 +145,12 @@ export interface OpenFileResult {
   title: string
   /** 파일에 적혀 있던 쪽 설정 (없으면 undefined — 기본 판형으로 연다) */
   pageSettings?: unknown
+  /** 파일에 적혀 있던 문서 서식 (없으면 undefined — 지금 서식을 그대로 둔다) */
+  design?: unknown
 }
 
 export async function saveToFile(opts: SaveOptions): Promise<SaveResult> {
-  const { title = '새 메모', content, handle, pageSettings, silent = false, pick = false } = opts
+  const { title = '새 메모', content, handle, pageSettings, design, silent = false, pick = false } = opts
   // 이미 어떤 파일에 매여 있으면 그 파일의 형식을 따른다 (.html 로 저장해 둔 문서를 .jan 으로 바꿔치지 않는다)
   let format: DocFormat = opts.format ?? (handle?.name && !isJanName(handle.name) ? 'html' : 'jan')
 
@@ -179,7 +183,7 @@ export async function saveToFile(opts: SaveOptions): Promise<SaveResult> {
   /* 우리 형식은 그림을 따로 담은 묶음(zip), HTML 은 그림을 본문에 넣은 한 장.
      어느 쪽이든 그림이 살아 있어야 한다 — janref: 를 실제 자료로 되돌린다. */
   const file: Blob | string = format === 'jan'
-    ? await packJan({ title, html: content, pageSettings, savedAt: Date.now() })
+    ? await packJan({ title, html: content, pageSettings, design, savedAt: Date.now() })
     : wrapHtml(title, await resolveBlobRefsInHtml(content), pageSettings)
 
   if (targetHandle) {
@@ -301,7 +305,7 @@ export async function readAnyDocumentFile(file: File, handle?: FileSystemFileHan
   // 우리 형식은 묶음(zip)이다 — 이름이나 파일 첫머리(PK)로 알아본다
   if (isJanName(file.name) || await looksLikeZip(file)) {
     const doc = await unpackJan(await file.arrayBuffer())
-    return { content: doc.html, handle, title: doc.title || nameTitle, pageSettings: doc.pageSettings }
+    return { content: doc.html, handle, title: doc.title || nameTitle, pageSettings: doc.pageSettings, design: doc.design }
   }
   const text = await file.text()
   return { content: extractBody(text), handle, title: nameTitle, pageSettings: readPageSettings(text) }
