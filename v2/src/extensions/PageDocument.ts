@@ -34,6 +34,17 @@ const reflowKey = new PluginKey('janPageReflow')
 /** 늘어나도 되는 쪽(쪼갤 수 없는 큰 블록이 든 쪽)의 위치 목록 */
 const growKey = new PluginKey<number[]>('janPageGrow')
 
+/**
+ * 문서의 「모양」 — 쪽마다 블록이 몇이고 문서가 얼마나 큰가.
+ *
+ * 쪽 나눔이 이 모양으로 되돌아왔다면 맴돌고 있는 것이다.
+ */
+function pageShape(doc: PMNode): string {
+  const counts: number[] = []
+  doc.forEach((page) => { if (page.type.name === PAGE_NODE_NAME) counts.push(page.childCount) })
+  return `${counts.join(',')}|${doc.content.size}`
+}
+
 /** 페이지 노드 — 한 장의 용지 */
 export const PageNode = Node.create({
   name: PAGE_NODE_NAME,
@@ -847,6 +858,11 @@ function markGrowPages(view: EditorView, contentHeight: number) {
  * 크기를 모르는 그림은 높이가 0 이라, 그 상태로 쪽을 짜면 뒤따르는 글이 아래 여백을 뚫는다.
  * (주소가 없는 자리표는 영영 오지 않으므로 기다리지 않는다)
  */
+/** 그림 하나를 가리키는 열쇠 — 주소가 같아도 크기가 달라지면 다시 재야 한다 */
+function imageKey(img: HTMLImageElement): string {
+  return `${img.currentSrc || img.getAttribute('src') || ''}|${img.naturalWidth || 0}x${img.naturalHeight || 0}`
+}
+
 function hasPendingImages(view: EditorView): boolean {
   const imgs = view.dom.querySelectorAll('img')
   for (let i = 0; i < imgs.length; i += 1) {
@@ -941,6 +957,22 @@ export const PageReflow = Extension.create<ReflowOptions>({
              맴돌기(수렴 실패)는 changed 가 false 가 되어 스스로 멈추므로, 이어달리기 횟수만 묶어 둔다. */
           let relays = 0
           const MAX_RELAYS = 40
+          /* 이번 판에서 이미 만들어 본 모양들 — 되돌아오면 맴돌고 있는 것이다.
+             밀기와 당기기가 서로 다른 잣대로 재면 두 모양을 끝없이 오간다. 실제로 한 문서가
+             블록 둘을 3쪽↔4쪽으로 옮기기를 초당 쉰 번씩 되풀이했다 (6초에 문서 고쳐쓰기 295번,
+             그림 요소 새로 만들기 1,486번). 겉보기 쪽 수는 그대로라 눈에 띄지 않지만, 그동안
+             그림 노드가 매 프레임 갈아치워져 그림을 붙잡을 수도 손잡이를 끌 수도 없었다.
+             「같은 모양이 다시 나오면 멈춤」 은 너무 거칠다 — 줄 간격을 줄여 내용을 여러 쪽에
+             걸쳐 끌어올리는 정상 과정도 걸려서 쪽이 안 줄어든다. 실제로 관측된 것은 두 모양을
+             오가는 왕복이므로, 마지막 넷이 A·B·A·B 일 때만 맴돌기로 본다.
+             (곧바로 이어지는 되풀이가 아니면 아직 나아가는 중이다.) */
+          let shapes: string[] = []
+          /* 크기를 셈에 넣고 쪽을 다 짠 그림들. 쪽을 다시 짜면 그림 요소가 통째로 새로
+             만들어지고, 새 요소는 「다 왔다」 는 소식(load)을 또 낸다. 그 소식이 schedule 을
+             불러 passes·relays·shapes 를 모두 0 으로 되돌리므로, 맴돌기를 알아채고 멈춰도
+             곧바로 처음부터 다시 돌았다. 그래서 이미 셈에 넣은 그림의 소식은 흘려보낸다.
+             다 짠 그때 담으므로, 아직 안 온 그림이 나중에 오면 제대로 다시 짠다. */
+          const settled = new Set<string>()
 
           const run = (view: EditorView) => {
             raf = 0
@@ -961,11 +993,18 @@ export const PageReflow = Extension.create<ReflowOptions>({
               }
               passes++
               const changed = reflowOnce(view, contentHeight)
-              if (changed) {
+              if (changed) shapes = [...shapes.slice(-3), pageShape(view.state.doc)]
+              const 왕복 = shapes.length === 4 && shapes[3] === shapes[1] && shapes[2] === shapes[0]
+              if (changed && !왕복) {
                 raf = window.requestAnimationFrame(() => run(view))
               } else {
+                /* 다 짰거나(changed 가 false), 맴돌기를 알아채고 멈춘 것이다.
+                   어느 쪽이든 지금 모양으로 마무리한다 — 오가는 두 모양은 한 블록 차이라
+                   어느 쪽을 골라도 글이 잘리거나 여백을 뚫지 않는다. */
                 passes = 0
                 relays = 0
+                shapes = []
+                view.dom.querySelectorAll('img').forEach((i) => settled.add(imageKey(i as HTMLImageElement)))
                 markGrowPages(view, contentHeight)
               }
             } finally {
@@ -979,6 +1018,7 @@ export const PageReflow = Extension.create<ReflowOptions>({
             if (raf || running) return // 이미 잡혀 있거나, 그 판 안에서 온 요청이다
             passes = 0
             relays = 0
+            shapes = []
             raf = window.requestAnimationFrame(() => run(view))
           }
 
@@ -994,7 +1034,9 @@ export const PageReflow = Extension.create<ReflowOptions>({
            */
           const onImageSettled = (e: Event) => {
             const t = e.target as HTMLElement | null
-            if (t && (t.tagName === 'IMG' || t.tagName === 'VIDEO')) schedule(editorView)
+            if (!t || (t.tagName !== 'IMG' && t.tagName !== 'VIDEO')) return
+            if (settled.has(imageKey(t as HTMLImageElement))) return
+            schedule(editorView)
           }
           editorView.dom.addEventListener('load', onImageSettled, true)
           editorView.dom.addEventListener('error', onImageSettled, true)   // 못 불러온 그림도 자리는 정해진다
