@@ -7995,3 +7995,24 @@ body.jan-hide-highlight [data-highlight] { background: none !important; box-shad
   color: #fff; font-weight: 600;
 }
 .jan-aiwrite-donerow button:disabled, .jan-aiconn-keyrow button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* 자료를 찾지 못한 그림 — 조용히 사라지게 두지 않는다.
+   무엇이 비었는지 보이고, 어떻게 되살리는지 그 자리에서 알려 준다. */
+.ProseMirror img[data-jan-blob-missing] {
+  display: inline-block;
+  min-width: 220px;
+  min-height: 84px;
+  border: 1px dashed var(--jan-border, #c9ced6);
+  border-radius: 8px;
+  background:
+    linear-gradient(0deg, rgba(217, 119, 87, .05), rgba(217, 119, 87, .05)),
+    repeating-linear-gradient(45deg, transparent 0 10px, rgba(0, 0, 0, .03) 10px 20px);
+}
+.ProseMirror [data-jan-blob-missing]::after {
+  content: '그림 자료를 찾지 못했습니다 — 원본 .jan 파일에서 다시 열면 되돌아옵니다';
+  display: block;
+  padding: 10px 14px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--jan-dim, #6b7684);
+}

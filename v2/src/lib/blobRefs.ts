@@ -154,15 +154,46 @@ export async function resolveBlobRefsInHtml(html: string): Promise<string> {
   return next
 }
 
+/* 저장소에 알맹이가 없는 주소 — 다시 찾지 않는다.
+   찾지 못한 주소를 그대로 두면 브라우저가 계속 그 주소를 부르고(ERR_UNKNOWN_URL_SCHEME),
+   그때마다 다시 그려져 화면이 떨린다. 실제로 콘솔에 같은 요청이 7,000건 넘게 쌓였다. */
+const missingRefs = new Set<string>()
+
+/** 브라우저가 더는 부르지 않도록 놓아 두는 빈 그림 (1×1 투명) */
+const BLANK = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
+
 export async function resolveBlobRefsInElement(root: ParentNode | null): Promise<void> {
   if (!root || !('querySelectorAll' in root)) return
   const elements = Array.from(root.querySelectorAll<HTMLImageElement | HTMLAudioElement | HTMLVideoElement>(`img[src^="${REF_PREFIX}"], audio[src^="${REF_PREFIX}"], video[src^="${REF_PREFIX}"]`))
   for (const element of elements) {
     const src = element.getAttribute('src') || ''
     if (!isBlobRef(src)) continue
+    const id = blobRefId(src)
+
+    /* 없는 것으로 이미 판명된 주소는 다시 찾지 않는다 — 되풀이를 여기서 끊는다 */
+    if (missingRefs.has(id)) { markMissing(element, id); continue }
+
     const url = await resolveBlobRefToObjectUrl(src)
-    if (url) element.src = url
+    if (url) { element.src = url; continue }
+
+    /* 못 찾았다. 조용히 사라지게 두지 않는다 —
+       무엇이 비었는지 보이게 하고, 브라우저가 그 주소를 다시 부르지 않게 한다. */
+    missingRefs.add(id)
+    markMissing(element, id)
   }
+}
+
+function markMissing(element: HTMLImageElement | HTMLAudioElement | HTMLVideoElement, id: string): void {
+  if (element.getAttribute('data-jan-blob-missing') === id) return
+  element.setAttribute('data-jan-blob-missing', id)
+  element.setAttribute('title', '이 그림의 자료를 찾지 못했습니다 — 원본 파일(.jan)에서 다시 열면 되돌아옵니다')
+  if (element.tagName === 'IMG') (element as HTMLImageElement).src = BLANK
+  else element.removeAttribute('src')
+}
+
+/** 그림이 저장소에 다시 들어오면 잊는다 (다시 찾아볼 수 있게) */
+export function forgetMissingBlobRef(ref: string): void {
+  missingRefs.delete(blobRefId(ref))
 }
 
 export async function importV1BlobRefsInHtml(html: string): Promise<string> {
