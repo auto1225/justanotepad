@@ -842,6 +842,21 @@ function markGrowPages(view: EditorView, contentHeight: number) {
   view.dispatch(tr)
 }
 
+/**
+ * 아직 오지 않은 그림이 있나 — 있으면 이번 판은 재지 않는다.
+ * 크기를 모르는 그림은 높이가 0 이라, 그 상태로 쪽을 짜면 뒤따르는 글이 아래 여백을 뚫는다.
+ * (주소가 없는 자리표는 영영 오지 않으므로 기다리지 않는다)
+ */
+function hasPendingImages(view: EditorView): boolean {
+  const imgs = view.dom.querySelectorAll('img')
+  for (let i = 0; i < imgs.length; i += 1) {
+    const img = imgs[i] as HTMLImageElement
+    if (!img.getAttribute('src')) continue
+    if (!img.complete || img.naturalHeight === 0) return true
+  }
+  return false
+}
+
 /** 리플로우 엔진 — DOM 갱신 후 측정해 한 프레임에 한 번씩 정리한다 */
 export const PageReflow = Extension.create<ReflowOptions>({
   name: 'janPageReflow',
@@ -927,6 +942,9 @@ export const PageReflow = Extension.create<ReflowOptions>({
             try {
               const contentHeight = options.getContentHeight()
               if (!contentHeight || contentHeight < 40) return
+              /* 아직 오지 않은 그림이 있으면 재지 않는다 — 0 으로 재고 짜면 뒤 글이 여백을 뚫는다.
+                 다 오면 위의 load 듣기가 다시 부른다. */
+              if (hasPendingImages(view)) return
               if (passes >= (options.maxPasses ?? 40)) {
                 passes = 0
                 if (relays < MAX_RELAYS) {
@@ -958,6 +976,23 @@ export const PageReflow = Extension.create<ReflowOptions>({
             raf = window.requestAnimationFrame(() => run(view))
           }
 
+          /**
+           * 그림은 나중에 온다 — 그때 다시 나눈다.
+           *
+           * 지금까지 쪽 나눔은 「문서가 바뀔 때」 만 돌았다. 그런데 그림은 문서가 바뀌지 않은 채로
+           * 나중에 불러와지며 높이가 0 에서 제 크기로 커진다. 그 순간 이미 나눠 둔 쪽은
+           * 그림을 0 으로 재고 짜였으므로, 뒤따르는 글이 아래 여백을 뚫는다.
+           * 크기를 바꿀 때도 같다 — 새 크기로 다시 그려지는 동안 잠깐 재면 엉뚱한 값이 나온다.
+           *
+           * load 는 거품이 일지 않으므로 잡는 단계(capture)에서 듣는다.
+           */
+          const onImageSettled = (e: Event) => {
+            const t = e.target as HTMLElement | null
+            if (t && (t.tagName === 'IMG' || t.tagName === 'VIDEO')) schedule(editorView)
+          }
+          editorView.dom.addEventListener('load', onImageSettled, true)
+          editorView.dom.addEventListener('error', onImageSettled, true)   // 못 불러온 그림도 자리는 정해진다
+
           // 문서를 처음 열었을 때도 용지 규격대로 나눠야 한다 (로드 직후 1회)
           schedule(editorView)
 
@@ -968,6 +1003,8 @@ export const PageReflow = Extension.create<ReflowOptions>({
             },
             destroy() {
               window.cancelAnimationFrame(raf)
+              editorView.dom.removeEventListener('load', onImageSettled, true)
+              editorView.dom.removeEventListener('error', onImageSettled, true)
             },
           }
         },
