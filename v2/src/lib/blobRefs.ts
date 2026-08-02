@@ -1,5 +1,4 @@
 const DB_NAME = 'jan-v2-content-blobs'
-const DB_VERSION = 1
 const STORE = 'blobs'
 const REF_PREFIX = 'jan-blob://'
 const V1_REF_PREFIX = 'idb://'
@@ -13,12 +12,9 @@ function hasIndexedDb() {
   return typeof indexedDB !== 'undefined'
 }
 
-function openDb(): Promise<IDBDatabase> {
-  if (!hasIndexedDb()) return Promise.reject(new Error('IndexedDB is not available'))
-  if (dbPromise) return dbPromise
-
-  dbPromise = new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION)
+function openAt(version?: number): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = version === undefined ? indexedDB.open(DB_NAME) : indexedDB.open(DB_NAME, version)
     request.onupgradeneeded = () => {
       const db = request.result
       if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE)
@@ -27,6 +23,38 @@ function openDb(): Promise<IDBDatabase> {
     request.onerror = () => reject(request.error || new Error('IndexedDB open failed'))
     request.onblocked = () => reject(new Error('IndexedDB open blocked'))
   })
+}
+
+/**
+ * 그림 알맹이를 담는 저장소를 연다. 선반이 없으면 새로 짓는다.
+ *
+ * 선반은 onupgradeneeded 안에서만 지을 수 있는데, 그 자리는 판 번호가 오를 때만 불린다.
+ * 그래서 판 1짜리 저장소가 선반 없이 만들어져 버리면 — 판 번호를 주지 않고 연 적이 한 번만
+ * 있어도(콘솔에서든 다른 스크립트에서든) 그렇게 된다 — 그 뒤로는 판 1로 열어도
+ * onupgradeneeded 가 다시는 불리지 않는다. 선반을 짓는 코드가 있어도 영영 닿지 못하고,
+ * 읽기도 쓰기도 NotFoundError 로 끝난다. 실제로 그 꼴이 되어 문서 속 그림이 통째로 사라졌다.
+ *
+ * 그래서 판 번호를 못박지 않는다. 못박으면 고쳐 놓은 것을 스스로 되부순다 —
+ * 선반이 없어 판 2로 올려 지어 놓고는, 다음 실행에서 판 1로 열려다 VersionError 로 죽는다.
+ * 지금 판이 무엇이든 그대로 열고(없으면 판 1로 새로 만들고), 그때 선반이 있는지
+ * 눈으로 확인해서 없을 때만 판을 올려 짓는다.
+ */
+function openDb(): Promise<IDBDatabase> {
+  if (!hasIndexedDb()) return Promise.reject(new Error('IndexedDB is not available'))
+  if (dbPromise) return dbPromise
+
+  dbPromise = openAt()
+    .then((db) => {
+      if (db.objectStoreNames.contains(STORE)) return db
+      const next = db.version + 1
+      db.close()
+      return openAt(next)
+    })
+    .catch((e) => {
+      /* 다음에 다시 해 볼 수 있게 놓아 준다 — 붙잡아 두면 이번 판 내내 죽은 채로 남는다 */
+      dbPromise = null
+      throw e
+    })
 
   return dbPromise
 }
@@ -75,9 +103,11 @@ function dataUrlToBlob(dataUrl: string): Blob | null {
 }
 
 async function putDataUrl(id: string, dataUrl: string): Promise<void> {
-  memoryCache.set(id, dataUrl)
-  if (!hasIndexedDb()) return
+  if (!hasIndexedDb()) { memoryCache.set(id, dataUrl); return }
+  /* 저장소에 들어간 것을 보고 나서 기억한다 — 담기지도 않았는데 기억해 두면
+     이번 판에서는 보이다가 껐다 켜면 사라진다 */
   await withStore<IDBValidKey>('readwrite', (store) => store.put(dataUrl, id))
+  memoryCache.set(id, dataUrl)
 }
 
 export function isBlobRef(value: string): boolean {
@@ -88,9 +118,22 @@ export function blobRefId(ref: string): string {
   return ref.startsWith(REF_PREFIX) ? ref.slice(REF_PREFIX.length) : ref
 }
 
+/**
+ * 그림 알맹이를 저장소에 넣고 그 주소를 돌려준다.
+ *
+ * 넣지 못하면 원래 자료를 그대로 돌려준다. 주소를 돌려주면 그것은 아무것도 가리키지 않는
+ * 죽은 주소가 되고, 그림은 문서에서 영영 사라진다. 부르는 쪽마다 예외를 받아 그림을
+ * 통째로 버리기도 했다 — 끌어다 놓은 그림이 아무 말 없이 안 들어가던 것이 이것이다.
+ * 문서가 무거워지는 편이 그림을 잃는 것보다 낫다.
+ */
 export async function saveDataUrlAsBlobRef(dataUrl: string): Promise<string> {
   const id = await hashText(dataUrl)
-  await putDataUrl(id, dataUrl)
+  try {
+    await putDataUrl(id, dataUrl)
+  } catch (e) {
+    console.warn('[jan] 그림을 저장소에 담지 못해 문서 안에 그대로 둔다', e)
+    return dataUrl
+  }
   return REF_PREFIX + id
 }
 
