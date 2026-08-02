@@ -1,6 +1,6 @@
 {
   "name": "justanotepad",
-  "version": "1.0.33",
+  "version": "1.0.34",
   "description": "JustANotepad — 14가지 역할별 도구, 16개 AI, 그림판, 명함 OCR, 클라우드 동기화까지 담은 무료 메모장.",
   "private": true,
   "scripts": {
