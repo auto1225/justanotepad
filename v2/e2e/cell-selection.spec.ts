@@ -123,6 +123,46 @@ test.describe('표 칸 선택', () => {
     await expect(page.locator('.ProseMirror table td').nth(2)).toHaveText('C')
   })
 
+  /**
+   * 표 **전체**를 고르고 Delete — 워드는 칸을 남기고 내용만 비운다.
+   *
+   * 실측(고치기 전): Alt+A 로 아홉 칸을 모두 고르고 Delete 를 누르면
+   * table 1→0 · td 9→0 · 「A|B|C|D|E|F|G|H|I」→「」 — 표가 통째로 사라졌다.
+   * (tiptap 표 확장이 「모든 칸이 골라졌으면 표를 지운다」 를 Delete 에 걸어 둔 탓)
+   * 일부 칸만 골랐을 때는 그때도 내용만 비웠다 — 그러니 이 시험은 전체 고름만 본다.
+   */
+  test('표 전체를 골라 Delete 해도 표는 남고 내용만 빈다', async ({ page }) => {
+    await tableEditor(page)
+    await clickCell(page, 4)
+    await page.keyboard.press('Alt+a')
+    await expect(picked(page)).toHaveCount(9)
+
+    await page.keyboard.press('Delete')
+    await expect(page.locator('.ProseMirror table')).toHaveCount(1)
+    await expect(page.locator('.ProseMirror table td')).toHaveCount(9)
+    await expect(page.locator('.ProseMirror table td')).toHaveText(['', '', '', '', '', '', '', '', ''])
+    // 비운 뒤에도 고른 네모는 그대로다 — 이어서 서식을 줄 수 있다
+    await expect(picked(page)).toHaveCount(9)
+
+    // 되돌리기 **한 번**으로 아홉 칸이 모두 돌아온다
+    await page.keyboard.press('Control+z')
+    await expect(page.locator('.ProseMirror table td')).toHaveText(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'])
+  })
+
+  /* 표를 지우는 길은 남아 있어야 한다 — 워드도 Delete 는 비우고 Backspace 는 지운다 */
+  test('표 전체를 골라 Backspace 하면 표가 지워진다 (되돌리기 한 번으로 복구)', async ({ page }) => {
+    await tableEditor(page)
+    await clickCell(page, 4)
+    await page.keyboard.press('Alt+a')
+    await expect(picked(page)).toHaveCount(9)
+
+    await page.keyboard.press('Backspace')
+    await expect(page.locator('.ProseMirror table')).toHaveCount(0)
+
+    await page.keyboard.press('Control+z')
+    await expect(page.locator('.ProseMirror table td')).toHaveText(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'])
+  })
+
   test('표 밖에서는 Alt+S 가 도형을 고르는 데로 돌아간다', async ({ page }) => {
     await tableEditor(page)
     // 표 뒤 문단으로 나간 뒤 도형을 하나 넣는다

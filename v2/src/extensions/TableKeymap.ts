@@ -39,6 +39,7 @@ function 고른칸비우기(state: EditorState): { tr: Transaction; 첫칸안: n
   // 뒤에서부터 비운다 — 앞을 먼저 건드리면 뒤 칸의 자리가 어긋난다
   for (let i = 칸.length - 1; i >= 0; i--) {
     const { pos, node } = 칸[i]
+    if (이미빈칸(node)) continue // 빈 칸을 또 비우면 되돌리기에 빈 걸음만 쌓인다
     const 새속 = 빈문단?.createAndFill()
     if (!새속) continue
     tr.replaceWith(pos + 1, pos + node.nodeSize - 1, 새속)
@@ -47,6 +48,28 @@ function 고른칸비우기(state: EditorState): { tr: Transaction; 첫칸안: n
   const 첫칸안 = tr.mapping.map(칸[0].pos + 2)
   tr.setSelection(TextSelection.create(tr.doc, 첫칸안))
   return { tr, 첫칸안 }
+}
+
+/** 빈 문단 하나만 든 칸 — 비워 봐야 달라질 것이 없다 */
+function 이미빈칸(node: PMNode): boolean {
+  const 속 = node.firstChild
+  return node.childCount === 1 && !!속 && 속.type.name === 'paragraph' && 속.content.size === 0
+}
+
+/**
+ * 고른 칸을 비운 뒤에도 고른 네모를 그대로 둔다.
+ *
+ * 일부 칸만 고르고 Delete 를 눌렀을 때는 이미 그렇게 돌고 있었다 (실측: 지운 뒤에도
+ * .selectedCell 이 4개 그대로). 표 전체를 골랐을 때만 다르게 굴면 그것이 더 놀랍다.
+ */
+function 고른네모되살리기(tr: Transaction, sel: CellSelection) {
+  try {
+    const 닻 = tr.doc.resolve(tr.mapping.map(sel.$anchorCell.pos))
+    const 머리 = tr.doc.resolve(tr.mapping.map(sel.$headCell.pos))
+    tr.setSelection(new CellSelection(닻, 머리))
+  } catch {
+    /* 못 되살리면 첫 칸에 놓인 커서를 그대로 둔다 — 글을 이어 칠 수는 있다 */
+  }
 }
 
 export const TableKeymap = Extension.create({
@@ -124,6 +147,18 @@ export const TableKeymap = Extension.create({
 
     const guard = (fn: () => boolean) => () => (inTable() ? fn() : false)
 
+    /** 고른 칸의 내용만 비운다 (칸도 표도 남는다) */
+    const 고른칸지우기 = () => {
+      const sel = this.editor.state.selection
+      if (!(sel instanceof CellSelection)) return false
+      const 비움 = 고른칸비우기(this.editor.state)
+      // 이미 다 비어 있어도 「지웠다」 로 친다 — 여기서 물러나면 표가 통째로 지워진다
+      if (!비움 || !비움.tr.docChanged) return true
+      고른네모되살리기(비움.tr, sel)
+      this.editor.view.dispatch(비움.tr)
+      return true
+    }
+
     return {
       /* ── 크기: Alt + 방향키 (수식어 하나) ── */
       'Alt-ArrowRight': guard(() => keepCellSelection(this.editor, () => resizeColumns(this.editor, 8))),
@@ -146,6 +181,16 @@ export const TableKeymap = Extension.create({
         this.editor.view.dispatch(비움.tr)
         return true
       },
+
+      /* 고른 칸에서 Delete — 워드는 **칸은 남기고 내용만** 비운다.
+         우리는 표 전체를 골랐을 때(Alt+A)만 표가 통째로 사라졌다
+         (실측: table 1→0 · td 9→0 · 「A|B|C|D|E|F|G|H|I」 → 「」).
+         tiptap 의 표 확장이 「모든 칸이 골라졌으면 표를 지운다」 를 Delete 에 걸어 둔 탓이다.
+         일부 칸만 골랐을 때는 이미 내용만 비우고 있었다 (실측: → 「||C|||F|G|H|I」, 표 그대로).
+         이제 두 자리를 하나로 맞춘다 — 표를 지우는 길은 워드와 같이 **Backspace** 와
+         리본의 「표 삭제」 로 남는다 (워드도 Delete 는 비우고 Backspace 는 지운다). */
+      Delete: () => 고른칸지우기(),
+      'Mod-Delete': () => 고른칸지우기(),
 
       /* ── 칸 사이 건너뛰기 — 워드와 같은 자리 ── */
       'Alt-Home': toEdgeCell('rowStart'),

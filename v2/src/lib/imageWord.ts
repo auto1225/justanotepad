@@ -65,7 +65,12 @@ export function setImageAttrs(editor: Editor | null, attrs: Record<string, unkno
     flash('개체 보호가 걸려 있다 — 「개체 보호 풀기」 를 먼저 하라 (Alt+L)')
     return false
   }
-  const tr = editor.state.tr.setNodeMarkup(hit.pos, undefined, { ...hit.node.attrs, ...attrs })
+  /* 알맹이를 갈아 끼우면 적어 둔 원본 치수는 남의 것이다 — 지워서 다시 재게 한다.
+     사람이 손으로 정한 width·height 는 건드리지 않는다 (워드도 그림만 바꾸고 크기는 지킨다).
+     부르는 쪽이 nw 를 손수 준 경우에는 그 뜻을 따른다. */
+  const 알맹이가바뀐다 = 'src' in attrs && attrs.src !== hit.node.attrs.src && !('nw' in attrs)
+  const patch = 알맹이가바뀐다 ? { ...attrs, nw: null, nh: null } : attrs
+  const tr = editor.state.tr.setNodeMarkup(hit.pos, undefined, { ...hit.node.attrs, ...patch })
   tr.setSelection(NodeSelection.create(tr.doc, hit.pos))
   editor.view.dispatch(tr)
   /* 이미 편집기에 있으면 다시 focus 하지 않는다.

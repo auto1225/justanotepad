@@ -124,6 +124,13 @@ export function TableContextMenu({ editor }: Props) {
       },
     },
     { label: '표를 텍스트로', run: () => { tableToText(editor, '\t') } },
+    { label: '', divider: true },
+    /* 워드도 오른쪽 단추 차림표 맨 아래에 「표 속성」 이 있다 */
+    {
+      label: '표 속성...',
+      hint: '표·행·열·셀',
+      run: () => window.dispatchEvent(new CustomEvent('jan-table-props', { detail: { tab: 'table' } })),
+    },
   ]
 
   // 화면 밖으로 나가지 않게 끌어당긴다

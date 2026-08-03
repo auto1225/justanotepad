@@ -582,6 +582,82 @@ export function resizeColumns(editor: Editor, delta: number): boolean {
   })
 }
 
+/**
+ * 고른 열(없으면 커서가 든 열)의 너비를 px 로 못 박는다 — 워드 「표 속성 › 열 › 너비 지정」.
+ * null 이면 지정을 지워 내용에 맞게 되돌린다.
+ */
+export function setColumnWidth(editor: Editor, px: number | null): boolean {
+  const table = currentTable(editor)
+  if (!table) { flash('표 안에 커서를 두고 실행하세요'); return false }
+  const cells = pickCells(table.node, table.pos)
+  const target = targetCols(editor, cells)
+  if (!target.length) return false
+
+  const colCount = cells.reduce((n, c) => Math.max(n, c.col + (Number(c.node.attrs.colspan) || 1)), 0)
+  const width = measuredWidths(editor, table.pos, colCount)
+
+  return keepCellSelection(editor, () => {
+    let tr = editor.state.tr
+    for (const cell of cells) {
+      const span = Number(cell.node.attrs.colspan) || 1
+      const covered = Array.from({ length: span }, (_, i) => cell.col + i)
+      if (!covered.some((c) => target.includes(c))) continue
+      if (px == null) {
+        tr = tr.setNodeMarkup(cell.pos, undefined, { ...cell.node.attrs, colwidth: null })
+        continue
+      }
+
+      /* 고르지 않은 열은 지금 폭을 그대로 지킨다 — 여기에 px 를 적으면 남의 열까지 끌려간다 */
+      const now = (cell.node.attrs.colwidth as number[] | null)
+      const next = covered.map((c, i) =>
+        (target.includes(c) ? Math.max(24, Math.round(px)) : (now?.[i] ?? Math.round(width[c] || 80))))
+      tr = tr.setNodeMarkup(cell.pos, undefined, { ...cell.node.attrs, colwidth: next })
+    }
+    if (!tr.docChanged) return false
+    editor.view.dispatch(tr)
+    if (px == null) 남은열너비지우기(editor, table.pos, target)
+    flash(px == null ? '열 너비 지정을 지웠습니다' : `${target.length}개 열 너비 ${Math.round(px)}px`)
+    return true
+  })
+}
+
+/**
+ * 문서에서 colwidth 를 지워도 화면의 `<col>` 에 붙은 width 는 남는다 — 직접 걷어 낸다.
+ *
+ * tiptap 의 updateColumns 는 너비가 있으면 `width`, 없으면 `min-width` 를 **setProperty 로만**
+ * 얹는다. 지울 때 앞서 얹은 width 를 지우지 않아, 지정을 없앤 뒤에도 열이 그 폭 그대로였다
+ * (실측: 260px 로 정했다가 「지정 지우기」 를 눌러도 colwidth 는 null 인데 col.style.width 는
+ * 260px, 그려진 열 폭도 260px 그대로. 손대기 전 213px 로 돌아오지 않았다).
+ * 다음 그림에서 updateColumns 가 다시 얹지도 않는다 — 원하는 값('')과 이미 같기 때문이다.
+ */
+function 남은열너비지우기(editor: Editor, tablePos: number, target: number[]) {
+  const { cols } = ownDom(editor, tablePos)
+  for (const col of target) cols[col]?.style.removeProperty('width')
+}
+
+/**
+ * 표의 **모든** 열에서 너비 지정을 걷어 낸다 — 워드의 「열 너비 지정 지우기(내용에 맞게)」.
+ *
+ * 리본에도 같은 이름의 명령이 있었지만 문서의 colwidth 만 null 로 만들고 화면은 그대로였다
+ * (실측: Alt+→ 로 253px 로 넓힌 뒤 눌러도 col.style.width 253px · 그려진 폭 253/193/193 —
+ * 손대기 전 213/213/213 로 돌아오지 않았다). 위와 같은 뿌리라 같은 자리에서 함께 고친다.
+ */
+export function clearColumnWidths(editor: Editor): boolean {
+  const table = currentTable(editor)
+  if (!table) { flash('표 안에 커서를 두고 실행하세요'); return false }
+  const cells = pickCells(table.node, table.pos)
+  const colCount = cells.reduce((n, c) => Math.max(n, c.col + (Number(c.node.attrs.colspan) || 1)), 0)
+  let tr = editor.state.tr
+  for (const cell of cells) {
+    if (cell.node.attrs.colwidth == null) continue
+    tr = tr.setNodeMarkup(cell.pos, undefined, { ...cell.node.attrs, colwidth: null })
+  }
+  if (tr.docChanged) editor.view.dispatch(tr)
+  남은열너비지우기(editor, table.pos, Array.from({ length: colCount }, (_, i) => i))
+  flash('열 너비를 같게 맞췄습니다')
+  return true
+}
+
 /** 고른 행의 높이를 delta 픽셀만큼 (음수면 줄인다) */
 export function resizeRows(editor: Editor, delta: number): boolean {
   const table = currentTable(editor)

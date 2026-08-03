@@ -12,7 +12,7 @@ import { TTSButton } from './TTSButton'
 import { VoiceButton } from './VoiceButton'
 import { Ribbon } from './Ribbon'
 import { aggregateColumn } from '../lib/tableUtils'
-import { TABLE_STYLES, blockCalc, copyTable, distributeColumns, distributeRows, moveRow, resizeColumns, resizeRows, setCellPadding, setRowHeight, setTableStyle, setTableWrap, splitTable, tableToText, toggleTableOption } from '../lib/tableWord'
+import { TABLE_STYLES, blockCalc, clearColumnWidths, copyTable, distributeColumns, distributeRows, moveRow, resizeColumns, resizeRows, setTableStyle, setTableWrap, splitTable, tableToText, toggleTableOption } from '../lib/tableWord'
 import {
   cellSelectionSize, collapseCellSelection, extendCellSelection, moveTable, selectCurrentCell,
   selectTableColumn, selectTableRow, selectWholeTable,
@@ -2278,32 +2278,11 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowLeft')go(-1);else if(e.
     editor.chain().focus().updateAttributes('table', attrs).run()
     flash(note)
   }
-  const askTableWidth = async () => {
+  /* 표 속성 창 — 너비·행 높이·셀 여백을 따로따로 묻던 프롬프트 셋을 갈피 하나로 모았다.
+     (워드의 「표 속성」 대화상자와 같은 갈래: 표 · 행 · 열 · 셀) */
+  const openTableProps = (tab: string) => {
     if (!editor.isActive('table')) { flash('표 안에 커서를 두고 실행하세요'); return }
-    const cur = (editor.getAttributes('table')['data-width'] as string) || '100%'
-    const v = await askText('표 너비 — 백분율(예: 60%) 또는 길이(예: 80mm)', cur)
-    if (v === null) return
-    const value = v.trim()
-    if (value && !/^\d+(\.\d+)?(%|mm|cm|px|em)$/.test(value)) { flash('60% · 80mm 처럼 단위를 붙여 적으세요'); return }
-    setTableAttr({ 'data-width': value || null, 'data-fit': value ? 'fixed' : null }, value ? `표 너비 ${value}` : '표 너비 자동')
-  }
-  const askRowHeight = async () => {
-    if (!editor.isActive('table')) { flash('표 안에 커서를 두고 실행하세요'); return }
-    const v = await askText('행 높이 — 길이(예: 12mm) 또는 비우면 자동', '')
-    if (v === null) return
-    const value = v.trim()
-    if (value && !/^\d+(\.\d+)?(mm|cm|px|em)$/.test(value)) { flash('12mm · 40px 처럼 단위를 붙여 적으세요'); return }
-    setRowHeight(editor, value || null)
-    flash(value ? '행 높이 ' + value : '행 높이 자동')
-  }
-  const askCellPadding = async () => {
-    if (!editor.isActive('table')) { flash('표 안에 커서를 두고 실행하세요'); return }
-    const v = await askText('셀 여백 (px) — 표 전체에 적용', '5')
-    if (v === null) return
-    const n = Number(v)
-    if (!Number.isFinite(n) || n < 0 || n > 40) { flash('0 ~ 40 사이 숫자를 적으세요'); return }
-    setCellPadding(editor, n)
-    flash('셀 여백 ' + n + 'px')
+    window.dispatchEvent(new CustomEvent('jan-table-props', { detail: { tab } }))
   }
   const askTableToText = async () => {
     if (!editor.isActive('table')) { flash('표 안에 커서를 두고 실행하세요'); return }
@@ -2338,27 +2317,11 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowLeft')go(-1);else if(e.
     flash('수식 적용 — 값이 바뀌면 다시 계산됩니다')
   }
 
-  /* 끌어서 바꾼 열 너비를 지우고 고르게 되돌린다 (워드의 「열 너비를 같게」) */
-  const evenColumnWidths = () => {
-    const { state, view } = editor
-    const { $from } = state.selection
-    for (let d = $from.depth; d > 0; d--) {
-      const table = $from.node(d)
-      if (table.type.name !== 'table') continue
-      const tablePos = $from.before(d)
-      let tr = state.tr
-      table.descendants((cell, offset) => {
-        if (!/^table(Cell|Header)$/.test(cell.type.name)) return true
-        if (cell.attrs.colwidth == null) return false
-        tr = tr.setNodeMarkup(tablePos + 1 + offset, undefined, { ...cell.attrs, colwidth: null })
-        return false
-      })
-      if (tr.docChanged) view.dispatch(tr)
-      flash('열 너비를 같게 맞췄습니다')
-      return
-    }
-    flash('표 안에 커서를 두고 실행하세요')
-  }
+  /* 끌어서 바꾼 열 너비를 지우고 고르게 되돌린다 (워드의 「열 너비를 같게」).
+     문서의 colwidth 만 지우면 화면의 <col> 에 붙은 width 가 남아 열이 그대로였다 —
+     tableWord 의 clearColumnWidths 가 둘 다 걷어 낸다. */
+  const evenColumnWidths = () => { clearColumnWidths(editor) }
+
   /* ── 표: 워드의 「레이아웃」 탭 ── */
   /* 표 레이아웃 — 워드 「표 레이아웃」 탭 그대로의 묶음:
      표 · 그리기 · 행 및 열 · 병합 · 셀 크기 · 맞춤 · 데이터 */
@@ -2414,7 +2377,7 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowLeft')go(-1);else if(e.
       ],
     },
     { label: '눈금선 보기', short: '눈금선', icon: 'table', onClick: () => run(() => window.dispatchEvent(new Event('jan-table-gridlines'))) },
-    { label: '표 너비·자리 (속성)', short: '속성', icon: 'settings', onClick: () => run(askTableWidth) },
+    { label: '표 속성 창 (표·행·열·셀)', short: '속성', icon: 'settings', onClick: () => run(() => openTableProps('table')) },
     { label: '표 서식 창 (테두리·채우기·맞춤)', short: '표 서식', icon: 'palette', onClick: () => run(() => window.dispatchEvent(new CustomEvent('jan-table-format', { detail: { tab: 'border' } }))) },
     {
       label: '텍스트 배치 · 표 자리', short: '배치', icon: 'align-justify',
@@ -2478,9 +2441,10 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowLeft')go(-1);else if(e.
         { label: '고정 열 너비', icon: 'columns', onClick: () => run(() => setTableAttr({ 'data-fit': 'fixed' }, '열 너비를 고정했습니다')) },
       ],
     },
-    { label: '행 높이 지정 (창)', short: '행 높이', icon: 'table', onClick: () => run(askRowHeight) },
-    { label: '표 너비 지정 (창)', short: '표 너비', icon: 'columns', onClick: () => run(askTableWidth) },
-    { label: '셀 여백 — 표 전체 (창)', short: '표 여백', icon: 'box', onClick: () => run(askCellPadding) },
+    { label: '행 높이 지정 (표 속성 창)', short: '행 높이', icon: 'table', onClick: () => run(() => openTableProps('row')) },
+    { label: '표 너비 지정 (표 속성 창)', short: '표 너비', icon: 'columns', onClick: () => run(() => openTableProps('table')) },
+    { label: '열 너비 지정 (표 속성 창)', short: '열 너비', icon: 'columns', onClick: () => run(() => openTableProps('column')) },
+    { label: '셀 여백 지정 (표 속성 창)', short: '셀 여백', icon: 'box', onClick: () => run(() => openTableProps('cell')) },
     { label: '셀 여백 — 고른 칸 (창)', short: '셀 여백', icon: 'box', onClick: () => run(() => window.dispatchEvent(new CustomEvent('jan-table-format', { detail: { tab: 'align' } }))) },
     { label: '행 높이를 같게 (고른 행만)', short: '행 같게', icon: 'table', hint: 'Alt+Shift+E', onClick: () => run(() => { distributeRows(editor) }) },
     { label: '열 너비를 같게 (고른 열만)', short: '열 같게', icon: 'columns', hint: 'Alt+E', onClick: () => run(() => { distributeColumns(editor) }) },

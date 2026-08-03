@@ -4,6 +4,7 @@ import {
   IMAGE_FORMATS, dataUrlBytes, downloadDataUrl, fileNameFor, loadImageFile, prettyBytes, renderImage,
 } from '../lib/imageConvert'
 import type { ImageFormat, LoadedImage } from '../lib/imageConvert'
+import { decodeBeforeInsert } from '../lib/imageWord'
 import { flash } from '../lib/flash'
 
 interface Props {
@@ -102,8 +103,14 @@ export function ImageConvertPanel({ editor, onClose }: Props) {
     if (!img || !preview) return
     downloadDataUrl(preview, fileNameFor(img, width, format))
   }
-  const insert = () => {
+  /* 넣기 전에 브라우저가 그림을 풀어 두게 한다 — 디코딩을 조판 트랜잭션에서 떼어 놓는 것.
+     재어 보니 4000×3000 WebP 를 곧바로 setImage 로 넣으면 가장 오래 붙들린 프레임이
+     220·239ms 였고, 미리 풀어 두고 넣으면 144·117ms 였다 (바닥값 18ms).
+     끌어놓기·붙여넣기에는 이미 걸려 있었는데 이 창만 빠져 있었다. */
+  const insert = async () => {
     if (!img || !preview || !editor) return
+    await decodeBeforeInsert(preview)
+    if (editor.isDestroyed) return
     editor.chain().focus().setImage({ src: preview, alt: img.name }).run()
     flash(`문서에 넣었다 — ${width}×${height}`)
     onClose()

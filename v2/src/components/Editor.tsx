@@ -67,6 +67,7 @@ import { SymbolPanel } from './SymbolPanel'
 import { ObjectPane } from './ObjectPane'
 import { ObjectBar } from './ObjectBar'
 import { TableFormatPanel } from './TableFormatPanel'
+import { TablePropsDialog } from './TablePropsDialog'
 import { CommentPane } from './CommentPane'
 import { ReviewPane } from './ReviewPane'
 import { AccessibilityPanel } from './AccessibilityPanel'
@@ -252,6 +253,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   const [aiWriteKind, setAiWriteKind] = useState<string | null>(null)
   /* 표 서식 창 — 테두리·채우기·맞춤 */
   const [tableFormat, setTableFormat] = useState<string | null>(null)
+  const [tableProps, setTableProps] = useState<string | null>(null)
   const [showHelp, setShowHelp] = useState(false)
   const [showOutline, setShowOutline] = useState(false)
   const [showAbout, setShowAbout] = useState(false)
@@ -738,6 +740,8 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
     const onCount = () => setShowCount(true)
     const onImgConv = () => setShowImgConv(true)
     const onTableFormat = (e: Event) => setTableFormat((e as CustomEvent<{ tab?: string }>).detail?.tab || 'border')
+    /* 표 속성 — 워드의 「표 속성」 대화상자 (표·행·열·셀 갈피 하나로) */
+    const onTableProps = (e: Event) => setTableProps((e as CustomEvent<{ tab?: string }>).detail?.tab || 'table')
     /* 눈금선 보기 — 테두리가 없는 표에도 흐린 안내선을 보여 준다 (워드와 같다) */
     const onGridlines = () => {
       const on = document.body.classList.toggle('jan-table-gridlines')
@@ -745,6 +749,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
     }
     window.addEventListener('jan-table-gridlines', onGridlines)
     window.addEventListener('jan-table-format', onTableFormat)
+    window.addEventListener('jan-table-props', onTableProps)
     /* 누름틀을 누르면 그 자리에 바로 쓴다 (한글과 같은 느낌).
        편집기 DOM 이 아직 없을 수도 있어 문서에 붙이고 안에서 살핀다 —
        editor.view 를 붙일 때 건드리면 아직 안 붙은 순간에 터진다. */
@@ -807,6 +812,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       window.removeEventListener('jan-count-panel', onCount)
       window.removeEventListener('jan-image-convert', onImgConv)
       window.removeEventListener('jan-table-format', onTableFormat)
+      window.removeEventListener('jan-table-props', onTableProps)
       window.removeEventListener('jan-table-gridlines', onGridlines)
       document.removeEventListener('click', onFieldClick, true)
       document.removeEventListener('keydown', onKey, true)
@@ -1487,6 +1493,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       {/* 껐다 켰을 때 지난번 포스트잇을 그 자리에 되살린다 (브라우저가 저절로 창을 못 띄우게 막으므로 한 번 물어본다) */}
       <PostitReopen />
       {tableFormat && <TableFormatPanel editor={editor} tab={tableFormat} onClose={() => setTableFormat(null)} />}
+      {tableProps && <TablePropsDialog editor={editor} tab={tableProps} onClose={() => setTableProps(null)} />}
       <Suspense fallback={<ModalSkeleton />}>
         {showAi && <AiHelper editor={editor} onClose={() => setShowAi(false)} />}
         {showSettings && <SettingsModal onClose={() => setShowSettings(false)} focusSection={settingsFocus} />}

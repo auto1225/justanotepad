@@ -333,6 +333,39 @@ export function applyDiagonal(editor: Editor, kind: 'down' | 'up' | 'both' | nul
   return true
 }
 
+/**
+ * 칸 안 글자 방향을 **바로 정한다** — 창에서 고를 때 쓴다.
+ * (리본의 단추는 돌려 가며 바꾸는 cycleCellTextDirection 을 그대로 쓴다)
+ */
+export function setCellTextDirection(editor: Editor, dir: string | null): boolean {
+  const rect = cellRect(editor)
+  if (!rect) return false
+  const cells = cellsInRect(editor, rect)
+  if (!cells.length) return false
+  let tr = editor.state.tr
+  for (const cell of cells) {
+    tr = tr.setNodeMarkup(cell.pos, undefined, { ...cell.node.attrs, 'data-text-dir': dir })
+  }
+  if (!tr.docChanged) return false
+  editor.view.dispatch(tr)
+  return true
+}
+
+/** 세로 맞춤만 — 가로 맞춤(문단의 textAlign)은 건드리지 않는다 */
+export function setCellValign(editor: Editor, vertical: 'top' | 'middle' | 'bottom' | null): boolean {
+  const rect = cellRect(editor)
+  if (!rect) return false
+  const cells = cellsInRect(editor, rect)
+  if (!cells.length) return false
+  let tr = editor.state.tr
+  for (const cell of cells) {
+    tr = tr.setNodeMarkup(cell.pos, undefined, { ...cell.node.attrs, valign: vertical })
+  }
+  if (!tr.docChanged) return false
+  editor.view.dispatch(tr)
+  return true
+}
+
 /** 칸 안 글자 방향 — 워드의 「텍스트 방향 변경」 (가로 → 세로 → 반대 세로) */
 export function cycleCellTextDirection(editor: Editor): boolean {
   const rect = cellRect(editor)

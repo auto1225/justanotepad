@@ -883,37 +883,59 @@ export const ImageObject = Image.extend({
       new Plugin({
         key: new PluginKey('janImageNatural'),
         view() {
-          /* 원래 크기를 알아야 「원래 크기로」·세로 자르기가 된다 —
-             그려진 뒤 한 번 읽어 노드에 적어 둔다. */
+          /**
+           * 원래 크기를 알아야 「원래 크기로」·세로 자르기·예약 상자가 된다 —
+           * 그려진 뒤 읽어 노드에 적어 둔다.
+           *
+           * 한 번 적고 마는 것이 아니라 「지금 물린 그림과 같은가」 를 본다.
+           * 예전에는 :not([data-nw]) 만 훑고 node.attrs.nw 가 있으면 건너뛰었다. 그러면
+           * 같은 노드의 src 를 다른 그림으로 갈아 끼울 때(그림 편집·형식 바꾸기·paint) 옛
+           * 치수가 그대로 남는다 — 재어 보니 200×200 자리에 500×800 을 넣어도 data-nw 는
+           * 200/200, aspect-ratio 도 200/200 이라 상자가 200×200 인 채 그림만 찌그러졌고,
+           * 700×2600 으로 바꿔도 쪽 수가 1쪽에서 꿈쩍하지 않았다.
+           */
           const measure = () => {
             /* 편집기가 이미 걷혔을 수 있다 — 그림이 늦게 와서 부르는 자리라 흔하다.
                그대로 두면 「editor view is not available」 로 터진다. */
             if (!editor || editor.isDestroyed || !editor.view?.dom) return
             const root = editor.view.dom as HTMLElement
-            root.querySelectorAll<HTMLImageElement>('img.jan-img-el:not([data-nw])').forEach((img) => {
+            root.querySelectorAll<HTMLImageElement>('img.jan-img-el').forEach((img) => {
+              /* 먼저 화면만 보고 거른다 — 적어 둔 값이 지금 물린 그림과 같으면 더 볼 것이 없다.
+                 update 는 트랜잭션마다 오고 그림이 스무 장이면 스무 번이라, 문서에서 자리를
+                 찾는 일(posAtDOM)까지 가기 전에 끊어야 한다. */
+              const had = Number(img.getAttribute('data-nw')) || 0
+              const hadH = Number(img.getAttribute('data-nh')) || 0
+              if (had && had === img.naturalWidth && hadH === img.naturalHeight) return
+              /* 아직 진짜 그림이 아니다 — 저장소 주소는 1×1 빈 그림을 놓고 나중에 물리고,
+                 갈아 끼운 새 그림도 물리기 전에는 0 이다. 물리면 그때 다시 본다. */
+              if (had && img.naturalWidth <= 1) {
+                img.addEventListener('load', () => measure(), { once: true })
+                return
+              }
               let pos: number
               try { pos = editor.view.posAtDOM(img, 0) } catch { return }
               if (pos == null || pos < 0) return
               const node = editor.state.doc.nodeAt(pos)
-              if (!node || node.type.name !== 'image' || node.attrs.nw) return
+              if (!node || node.type.name !== 'image') return
 
               /* SVG 는 그림이 스스로 밝힌 치수가 먼저다 — 물리기를 기다릴 것도 없다.
                  브라우저가 주는 naturalWidth 는 viewBox 만 있는 SVG 에서 300×150 을 맞춰
                  넣은 엉뚱한 값이고, 비율이 극단이면 아예 0 이 되어 아래 빗장에 영영 걸린다. */
               const svgSize = svgIntrinsicSize(node.attrs.src)
-              /* 아직 진짜 그림이 아니다 — 저장소 주소는 1×1 빈 그림을 놓고 나중에 물린다.
-                 그 1×1 을 「원래 크기」 로 적어 두면 비율이 통째로 망가진다. */
+              /* 아직 진짜 그림이 아니다 — 1×1 을 「원래 크기」 로 적으면 비율이 통째로 망가진다 */
               if (!svgSize && img.naturalWidth <= 1) {
                 img.addEventListener('load', () => measure(), { once: true })
                 return
               }
+              const nw = svgSize ? svgSize.nw : img.naturalWidth
+              const nh = svgSize ? svgSize.nh : img.naturalHeight
+              /* 노드에 이미 같은 값이 적혀 있으면 트랜잭션을 내지 않는다 — 여기서 멎는다.
+                 (viewBox 만 있는 SVG 는 data-nw 와 naturalWidth 가 늘 어긋나 위 거름망을
+                 지나온다. 그때 이 빗장이 없으면 매 update 마다 문서를 고쳐 맴돈다.) */
+              if (node.attrs.nw === nw && node.attrs.nh === nh) return
               editor.view.dispatch(
                 editor.view.state.tr
-                  .setNodeMarkup(pos, undefined, {
-                    ...node.attrs,
-                    nw: svgSize ? svgSize.nw : img.naturalWidth,
-                    nh: svgSize ? svgSize.nh : img.naturalHeight,
-                  })
+                  .setNodeMarkup(pos, undefined, { ...node.attrs, nw, nh })
                   .setMeta('addToHistory', false)
               )
             })

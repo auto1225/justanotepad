@@ -282,6 +282,41 @@ test.describe('표 — 쪽 넘김과 여러 칸 다루기', () => {
     expect((await 고른칸(page)).종류).toBe('CellSelection')
   })
 
+  /**
+   * ② 「열 너비 지정 지우기」 가 화면에 닿는가.
+   *
+   * 실측(고치기 전): Alt+→ 로 첫 열을 253px 로 넓힌 뒤 이 명령을 눌러도
+   * 문서의 colwidth 는 null 이 되는데 col.style.width 는 253px 그대로 —
+   * 그려진 폭도 253/193/193 로, 손대기 전 213/213/213 로 돌아오지 않았다.
+   * (tiptap 의 updateColumns 가 setProperty 로 min-width 만 얹고 앞서 얹은 width 를 안 지운다)
+   */
+  test('② 「열 너비 지정 지우기」 는 그려진 열까지 되돌린다', async ({ page }) => {
+    await 문서를(page, 표3x4)
+    await page.waitForTimeout(400)
+    await page.locator('.ProseMirror table td').first().click()
+    await page.waitForTimeout(200)
+    const 처음 = await 열너비(page)
+
+    for (let i = 0; i < 5; i++) await page.keyboard.press('Alt+ArrowRight')
+    await page.waitForTimeout(300)
+    const 넓힌 = await 열너비(page)
+    expect(넓힌[0]).toBeGreaterThan(처음[0] + 20)
+
+    await page.getByRole('tab', { name: '표 레이아웃' }).first().click()
+    await page.waitForTimeout(300)
+    await page.getByRole('button', { name: /셀 크기.*더보기/ }).first().click()
+    await page.waitForTimeout(250)
+    await page.locator('.jan-ribbon-dropdown button', { hasText: '열 너비 지정 지우기' }).first().click()
+    await page.waitForTimeout(500)
+
+    const 지운 = await 열너비(page)
+    expect(Math.abs(지운[0] - 처음[0])).toBeLessThanOrEqual(2)
+    // 화면의 <col> 에도 너비가 남아 있지 않다
+    expect(await page.evaluate(() =>
+      [...document.querySelectorAll('.ProseMirror table col')].map((c) => (c as HTMLElement).style.width)))
+      .toEqual(['', '', '', ''])
+  })
+
   test('② 「행 높이 지정」 창은 고른 행 전부에 걸린다', async ({ page }) => {
     await 문서를(page, 표3x4)
     await page.waitForTimeout(400)
@@ -293,11 +328,14 @@ test.describe('표 — 쪽 넘김과 여러 칸 다루기', () => {
 
     await page.getByRole('tab', { name: '표 레이아웃' }).first().click()
     await page.waitForTimeout(300)
-    await page.getByRole('button', { name: '행 높이 지정 (창)' }).first().click()
+    /* 프롬프트 셋이던 것이 「표 속성」 창의 「행」 갈피로 모였다 — 부르는 자리만 달라지고
+       「고른 행 전부에 걸린다」 는 그대로여야 한다 */
+    await page.getByRole('button', { name: '행 높이 지정 (표 속성 창)' }).first().click()
+    await expect(page.locator('[role="dialog"][aria-label="표 속성"]')).toBeVisible()
+    await page.locator('#jan-tblprops-h').fill('60')
     await page.waitForTimeout(400)
-    await page.locator('.jan-modal input').first().fill('60px')
-    await page.locator('.jan-modal button', { hasText: '확인' }).first().click()
-    await page.waitForTimeout(400)
+    await page.keyboard.press('Escape')
+    await page.waitForTimeout(300)
 
     const 높이 = await page.evaluate(() =>
       [...document.querySelectorAll('.ProseMirror tr')].map((r) => (r as HTMLElement).getAttribute('data-height')))

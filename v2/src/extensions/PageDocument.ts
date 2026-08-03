@@ -1196,6 +1196,24 @@ export const PageReflow = Extension.create<ReflowOptions>({
                 raf = window.requestAnimationFrame(() => run(view))
                 return
               }
+              /* 한글을 조합하는 중에도 손대지 않는다 — 조합은 **아직 문서에 앉지 않은 글자**다.
+                 「값」 을 치면 ㄱ·가·갑·값 넉 단계가 한 글자 자리 위에서 갈아 끼워지는데,
+                 그 사이 쪽을 다시 짜면 ProseMirror 가 DOM 을 고쳐 쓰면서 조합이 끊긴다.
+                 끊긴 자리에서는 그때까지의 조각이 **진짜 글자로 굳어** 문서에 남는다.
+
+                 실측(A4 두 쪽, 첫 쪽 끝에서 값·곬·없 을 예순 자 침):
+                 쉰째 글자에서 쪽 경계가 움직였고(쪽별 블록 [17,9] → [17,10]) 바로 그 자리에
+                 「곬」 의 첫 조각 ㄱ 이 한 글자로 굳어 남았다 — 저장본이 예순 자가 아니라
+                 **예순한 자**로 늘었다(…값곬없값**ㄱ**곬없값…). 두 번 재어 두 번 다 같았다.
+
+                 미루기만 하고 끝내면 조합으로만 채운 쪽이 영영 안 나뉜다. 그래서 끌어놓기와
+                 같이 **프레임마다 다시 물어** 조합이 끝나는 그 프레임에 반드시 한 판을 돈다.
+                 (조합이 끝날 때 오는 트랜잭션은 view.composing 이 아직 참일 때 와서, 그것에
+                  기대면 놓친다.) */
+              if (view.composing) {
+                raf = window.requestAnimationFrame(() => run(view))
+                return
+              }
               const contentHeight = options.getContentHeight()
               if (!contentHeight || contentHeight < 40) return
               /* 아직 오지 않은 그림이 있으면 재지 않는다 — 0 으로 재고 짜면 뒤 글이 여백을 뚫는다.
@@ -1236,7 +1254,9 @@ export const PageReflow = Extension.create<ReflowOptions>({
 
           /* 다음 프레임에 바로 정리한다. 예전처럼 60ms 모아서 처리하면 타이핑이
              이어지는 동안 넘친 줄이 계속 쌓여, 용지가 늘어나거나(예전) 잘려 보인다. */
+          let 접힘 = false // 편집기가 닫혔다 — 늦게 오는 소식(글꼴)이 죽은 뷰를 건드리지 않게
           const schedule = (view: EditorView) => {
+            if (접힘) return
             if (raf || running) return // 이미 잡혀 있거나, 그 판 안에서 온 요청이다
             passes = 0
             relays = 0
@@ -1292,6 +1312,45 @@ export const PageReflow = Extension.create<ReflowOptions>({
           if (document.body) styleWatcher.observe(document.body, { attributes: true })
           if (document.head) styleWatcher.observe(document.head, { childList: true, subtree: true, characterData: true })
 
+          /**
+           * 글꼴은 나중에 안착한다 — 그때 다시 짠다. 그림과 같은 갈래이되 더 나쁘다.
+           *
+           * 글꼴 파일이 아직 안 왔으면 브라우저는 **대체 글꼴**로 높이를 잰다. 파일이 닿는
+           * 순간 글자 폭과 줄 높이가 함께 바뀌어 온 문서의 문단 높이가 일제히 출렁이는데,
+           * 이때 **DOM 은 한 글자도 바뀌지 않는다** — 그래서 update() 도, 바로 위의
+           * MutationObserver 도 이것을 못 본다. 조판은 이미 멎어 있으므로 늘어난 글은
+           * 종이 밖으로 밀려나고 쪽은 overflow:clip 이라 **그냥 보이지 않게 된다.**
+           *
+           * 실측(라틴 90문단, 글꼴을 4초 늦춤): 대체 글꼴로 여섯 쪽에 앉았다가(문단 48px)
+           * 글꼴이 닿자 문단이 71px 이 되어 쪽 다섯이 아래 여백을 371px 뚫고 블록 15개가
+           * 종이 밖으로 사라졌다. 그 뒤 4초를 기다려도 조판 트랜잭션은 0 회.
+           * 늦추지 않고 같은 글을 실으면 여덟 쪽에 넘침 0 이다.
+           *
+           * `ready` 는 한 번만 풀리므로(그것도 글꼴을 쓰는 글이 화면에 놓이기 **전에** 풀릴
+           * 수 있다) `loadingdone` 도 함께 듣는다 — 사람이 나중에 글꼴을 바꿔 새로 실을 때가
+           * 그 자리다.
+           *
+           * 울타리는 「무엇이 실렸는가」 의 지문이다. 이 앱은 지금 웹 글꼴을 하나도 싣지
+           * 않으므로 `ready` 는 문서를 열 때마다 곧바로 풀린다 — 지문을 안 보면 그때마다
+           * 공연히 한 판을 더 돈다. 지문이 그대로면 꿈쩍하지 않는다.
+           */
+          const 글꼴집 = (document as Document & { fonts?: FontFaceSet }).fonts
+          const 글꼴지문 = () => {
+            if (!글꼴집) return ''
+            const out: string[] = []
+            글꼴집.forEach((f) => { if (f.status === 'loaded') out.push(`${f.family}/${f.weight}/${f.style}/${f.stretch}`) })
+            return out.sort().join(',')
+          }
+          let 글꼴 = 글꼴지문()
+          const onFontsSettled = () => {
+            const 지금 = 글꼴지문()
+            if (지금 === 글꼴) return
+            글꼴 = 지금
+            schedule(editorView)
+          }
+          글꼴집?.ready?.then(onFontsSettled).catch(() => {})
+          글꼴집?.addEventListener?.('loadingdone', onFontsSettled)
+
           // 문서를 처음 열었을 때도 용지 규격대로 나눠야 한다 (로드 직후 1회)
           schedule(editorView)
 
@@ -1301,8 +1360,10 @@ export const PageReflow = Extension.create<ReflowOptions>({
               schedule(view)
             },
             destroy() {
+              접힘 = true
               window.cancelAnimationFrame(raf)
               styleWatcher.disconnect()
+              글꼴집?.removeEventListener?.('loadingdone', onFontsSettled)
               editorView.dom.removeEventListener('load', onImageSettled, true)
               editorView.dom.removeEventListener('error', onImageSettled, true)
             },

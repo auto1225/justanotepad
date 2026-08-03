@@ -267,10 +267,25 @@ export function pageOfPos(editor: Editor | null, pos: number): number | undefine
 }
 
 
-/** 이름표로 대상을 다시 찾는다 — 없으면 예전 방식(몇 번째)으로 물러선다 */
+/**
+ * 이름표로 대상을 다시 찾는다.
+ *
+ * 이름표가 붙은 참조는 이름표로만 찾는다. 못 찾으면 대상이 사라진 것이고, 그때는
+ * 아무것도 돌려주지 않아 「[참조 없음]」 이 뜬다 — 워드가 「오류! 참조 원본을 찾을 수
+ * 없습니다」 를 띄우는 자리와 같다.
+ *
+ * 예전에는 못 찾으면 「몇 번째」 로 물러섰다. 그러면 참조가 조용히 남의 것을 가리킨다.
+ * 재어 보니 그림 다섯에 참조 다섯을 달고 셋째 그림을 지웠을 때
+ *   전: 그림 1 · 그림 2 · 그림 3 · 그림 4 · 그림 5
+ *   후: 그림 1 · 그림 2 · 그림 3 · 그림 3 · 그림 4
+ * 셋째 참조가 지워진 그림 대신 「그림 3」(예전의 넷째)을 가리켰다. 두 참조가 같은 번호를
+ * 달고 서로 다른 것을 뜻하는데, 화면에는 아무 표도 나지 않는다 — 글이 조용히 틀린다.
+ *
+ * 이름표가 없는 참조(이름표를 붙이기 전에 만든 옛 문서)만 예전 길로 둔다.
+ */
 export function findTarget(targets: RefTarget[], refId?: string, fallbackId?: string): RefTarget | undefined {
   /* 이름표는 두 갈래다 — 개체에 붙인 janRef 와 캡션이 지닌 refKey.
      그림에 캡션을 나중에 달아도 예전 참조가 길을 잃지 않도록 둘 다 살핀다. */
-  return (refId ? targets.find((t) => t.refId === refId || t.capKey === refId) : undefined)
-    || targets.find((t) => t.id === fallbackId)
+  if (refId) return targets.find((t) => t.refId === refId || t.capKey === refId)
+  return targets.find((t) => t.id === fallbackId)
 }
