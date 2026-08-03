@@ -1,6 +1,7 @@
 import { Extension } from '@tiptap/core'
 import { applyFormulas } from '../lib/tableCompute'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
+import { DOMSerializer, type Node as PMNode } from '@tiptap/pm/model'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { TableCell } from '@tiptap/extension-table-cell'
 import { TableHeader } from '@tiptap/extension-table-header'
@@ -106,7 +107,7 @@ export const JanTableHeader = TableHeader.extend({
  *  place  다단 문서에서의 자리: 'column' 단 안 | 'page' 단 걸치기(지면 전체 폭) | null 자동
  *         (워드에는 없는 항목이지만 2단 논문 조판에는 반드시 필요하다)
  */
-const TABLE_PROP_KEYS = ['data-fit', 'data-align', 'data-place', 'data-width', 'data-style', 'data-header-row', 'data-first-col', 'data-last-col', 'data-last-row', 'data-banded-rows', 'data-banded-cols', 'data-cell-pad', 'data-cont', 'data-repeat-header', 'data-wrap', 'data-keep'] as const
+const TABLE_PROP_KEYS = ['data-fit', 'data-align', 'data-place', 'data-width', 'data-style', 'data-header-row', 'data-first-col', 'data-last-col', 'data-last-row', 'data-banded-rows', 'data-banded-cols', 'data-cell-pad', 'data-cont', 'data-cont-next', 'data-repeat-header', 'data-wrap', 'data-keep'] as const
 
 /**
  * 칸 수식 자동 계산 — 표가 바뀔 때마다 결과를 다시 써넣는다.
@@ -148,6 +149,46 @@ export const TablePlacement = Extension.create({
         props: {
           decorations(state) {
             const decos: Decoration[] = []
+            /* 「뒤 쪽으로 이어진다」 는 조각 스스로 알 수 없다 — 조각들은 서로 다른 쪽(page node)에
+               들어앉아 CSS 로 이웃을 볼 수 없기 때문이다. 그래서 문서 차례로 훑어 「바로 다음 표가
+               이어짐 조각인가」 를 여기서 셈해 얹는다.
+               나누는 쪽에서 표시를 달게 하면 나누는 길이 바뀔 때마다 표시가 사라진다 —
+               실제로 조판이 제 나름의 나누기로 갈아타자 앞 조각의 표시가 통째로 없어졌다. */
+            const 바깥표: { pos: number; node: PMNode }[] = []
+            state.doc.descendants((node, pos) => {
+              if (node.type.name !== 'table') return true
+              바깥표.push({ pos, node })
+              return false // 칸 속 표는 바깥 표의 몫이 아니다
+            })
+            const 뒤로이어짐 = new Set<number>()
+            for (let i = 0; i < 바깥표.length - 1; i++) {
+              if (바깥표[i + 1].node.attrs['data-cont']) 뒤로이어짐.add(바깥표[i].pos)
+            }
+
+            /* 제목 행 반복 — 이어짐 조각 맨 위에 첫 조각의 머리글을 **그려만** 준다.
+               문서에 진짜 행으로 넣으면 같은 글이 조각 수만큼 들어앉아 상태줄의 글자·낱말·
+               문단 수가 부풀고, 찾기·바꾸기가 화면에 없는 것까지 집어 온다(실측: 머리글이
+               doc.textContent 에 3회). 위젯은 문서 밖이라 세지도 찾지도 않으면서 화면과
+               인쇄에는 그대로 나온다. 자리도 그만큼 차지하므로 조판 셈은 달라지지 않는다. */
+            const 머리글 = new Map<number, PMNode>()
+            for (let i = 1; i < 바깥표.length; i++) {
+              if (!바깥표[i].node.attrs['data-cont']) continue
+              // 이 이어짐 사슬의 첫 조각을 거슬러 찾는다 (셋 넷으로 나뉠 수 있다)
+              let j = i - 1
+              while (j > 0 && 바깥표[j].node.attrs['data-cont']) j--
+              const 첫조각 = 바깥표[j].node
+              const head = 첫조각.firstChild
+              if (첫조각.attrs['data-repeat-header'] && head) 머리글.set(바깥표[i].pos, head)
+            }
+            머리글.forEach((row, pos) => {
+              decos.push(Decoration.widget(pos + 1, (view) => {
+                const dom = DOMSerializer.fromSchema(view.state.schema).serializeNode(row) as HTMLElement
+                dom.setAttribute('data-repeated', '1')
+                dom.contentEditable = 'false'
+                return dom
+              }, { side: -1, key: `jan-rep-${pos}` }))
+            })
+
             state.doc.descendants((node, pos) => {
               if (node.type.name === 'tableRow' && node.attrs['data-height']) {
                 decos.push(Decoration.node(pos, pos + node.nodeSize, {
@@ -162,6 +203,8 @@ export const TablePlacement = Extension.create({
                 const value = node.attrs[key]
                 if (value) attrs[key] = String(value)
               }
+              if (뒤로이어짐.has(pos)) attrs['data-cont-next'] = '1'
+              else delete attrs['data-cont-next']
               // 너비는 CSS 변수로 넘긴다 — 껍데기가 아니라 안쪽 표에 물려야 하기 때문이다
               const styles: string[] = []
               if (attrs['data-width']) styles.push(`--jan-table-w:${attrs['data-width']}`)
@@ -203,6 +246,9 @@ export const TablePlacement = Extension.create({
           'data-cell-pad': attr('data-cell-pad'),
           /* 쪽을 넘어 이어진 조각인가 (저장할 때 앞 표에 도로 붙는다) */
           'data-cont': attr('data-cont'),
+          /* 뒤 쪽으로 이어지는 조각인가 — 조각들은 서로 다른 쪽에 앉아 CSS 로 이웃을 볼 수 없다.
+             앞 조각이 스스로 알아야 아래 여백·아래 둥근 모서리·그림자를 접을 수 있다. */
+          'data-cont-next': attr('data-cont-next'),
           /* 제목 행 반복 — 쪽을 넘을 때 첫 행을 복제해 얹는다 */
           'data-repeat-header': attr('data-repeat-header'),
           /* 텍스트 배치(워드) · 글자처럼 취급(한글) */

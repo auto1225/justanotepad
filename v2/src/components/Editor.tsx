@@ -84,6 +84,8 @@ import { useDocStore } from '../store/docStore'
 import { useMemosStore } from '../store/memosStore'
 import { useThemeStore } from '../store/themeStore'
 import { saveToFile, openFile } from '../lib/fileOps'
+import { clearUndoHistory } from '../lib/undoHistory'
+import { UndoRedoKeymap } from '../extensions/UndoRedoKeymap'
 import type { OpenFileResult } from '../lib/fileOps'
 import { onLaunchWithFile } from '../lib/launchFiles'
 import { installWordKeymap } from '../lib/keymap'
@@ -201,6 +203,9 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   // 메모별 저장 시퀀스 — 전역 카운터면 다른 메모의 타이핑이 이 메모의 비동기 저장(이미지 외부화)을 무효화해버린다
   const contentSaveSeqByMemo = useRef<Record<string, number>>({})
   const activeMemoIdRef = useRef<string | null>(currentId)
+  /* 편집기에 마지막으로 「실어 준」 메모 — 되돌리기 목록을 비울지 가리는 데 쓴다.
+     (같은 문서를 다시 맞추는 것과 다른 문서를 새로 싣는 것은 다르다) */
+  const loadedMemoIdRef = useRef<string | null>(null)
   const pendingContentTimerRef = useRef<number | null>(null)
   const pendingContentEditorRef = useRef<TiptapEditor | null>(null)
   const pendingContentMemoIdRef = useRef<string | null>(null)
@@ -519,6 +524,8 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       /* 이름 있는 스타일의 표 — 스키마에 등록해야 저장·재파싱에서 살아남는다 */
       DocStyleAttr,
       CharStyleMark,
+      /* Ctrl+Shift+Z 가 다시 할 것이 없을 때 되돌리기로 둔갑하던 것을 막는다 */
+      UndoRedoKeymap,
     ]
     // 독립 페이지 모델 — 용지마다 실제 page 노드 + 자동 리플로우 (PaginationPlus 대체)
     if (usePageNodes) {
@@ -1008,8 +1015,18 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
     // 비교하면 항상 불일치 → setContent 무한 반복이 된다. 래퍼를 벗겨 비교한다.
     const cur = getSavableHtml(editor)
     if (cur !== memoContent) {
-      /* 메모를 바꿔 실은 글 — 새 문서를 온통 「넣음」 으로 물들이면 안 된다 */
-      editor.chain().setMeta('janTrackSkip', true).setContent(memoContent, { emitUpdate: false }).run()
+      /* 메모를 바꿔 실은 글 — 새 문서를 온통 「넣음」 으로 물들이면 안 된다.
+         **다른 문서**를 실을 때만 되돌리기 목록을 비운다 (clearUndoHistory 참조).
+         이 맞춤은 같은 문서를 다시 앉힐 때도 돈다 — 저장본과 화면이 빈칸 하나만큼 어긋나도
+         돌아온다. 거기서 목록을 비웠더니 창 나누기를 켜는 순간 사람이 쓰던 되돌리기가
+         통째로 날아갔다 (실측: 되돌림 3 → 0). 그래서 문서가 바뀐 때로만 좁힌다. */
+      const 다른문서 = loadedMemoIdRef.current !== currentId
+      editor.chain()
+        .setMeta('janTrackSkip', true)
+        .setContent(memoContent, { emitUpdate: false })
+        .command(({ tr, state }) => (다른문서 ? clearUndoHistory(tr, state) : false) || true)
+        .run()
+      loadedMemoIdRef.current = currentId
       resolveBlobRefsInElement(editor.view.dom).catch(() => {})
     }
   }, [currentId, editor, collab.ydoc, memoContent])
@@ -1158,7 +1175,12 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       useUIStore.getState().setDesign(result.design as Partial<DocDesign>)
     }
     setFileHandle(result.handle ?? null, id)
-    editor.chain().setMeta('janTrackSkip', true).setContent(result.content).run()
+    /* 여는 것은 고침이 아니다 — 되돌리기로 「열기 전」 문서가 돌아오면 안 된다 */
+    editor.chain()
+      .setMeta('janTrackSkip', true)
+      .setContent(result.content)
+      .command(({ tr, state }) => clearUndoHistory(tr, state) || true)
+      .run()
     trackEvent('open_file')
   }, [editor, newMemo, setFileHandle, updateMemo])
 

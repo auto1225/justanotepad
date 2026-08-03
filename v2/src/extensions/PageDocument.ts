@@ -1,8 +1,9 @@
 import { Node, Extension } from '@tiptap/core'
-import { NodeSelection, Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
+import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
-import { canJoin } from '@tiptap/pm/transform'
-import { innerSplitPlan, keepsWhole, mergeContinuedTables, rowsThatFit, splitTableAcrossPages, splitTableDeepAcrossPages } from './tableSplit'
+import { canJoin, canSplit, ReplaceStep } from '@tiptap/pm/transform'
+import { Fragment, Slice } from '@tiptap/pm/model'
+import { innerSplitPlan, keepsWhole, mergeContinuedTables, rowsThatFit, splitTableDeepAcrossPages } from './tableSplit'
 import type { EditorState, Transaction } from '@tiptap/pm/state'
 import type { EditorView } from '@tiptap/pm/view'
 import type { Node as PMNode, NodeType } from '@tiptap/pm/model'
@@ -495,82 +496,106 @@ function findSplitPos(view: EditorView, childPos: number, child: PMNode, room: n
 }
 
 /**
- * 한 쪽의 childIndex 이후 블록 전부를 다음 쪽으로 옮긴다 (마지막 쪽이면 새 쪽을 만든다).
- * 이미 진행 중인 트랜잭션의 문서를 기준으로 계산하므로 쪼개기와 같은 트랜잭션에서 쓸 수 있다.
+ * 쪽 경계를 옮긴다 — 앞 쪽(pageIndex)에 블록을 keep 개만 남기고 나머지는 다음 쪽으로,
+ * 모자라면 다음 쪽에서 끌어온다. 밀기와 당기기가 같은 한 걸음이다.
+ *
+ * ── 왜 「잘라 옮기기」 가 아니라 「잇고 다시 가르기」 인가 ──
+ *
+ * 예전에는 넘치는 블록을 **지우고 다음 쪽에 다시 넣어서** 옮겼다. 그것이 되돌리기를
+ * 무너뜨렸다. ProseMirror 의 이력은 이력에 담지 않는 트랜잭션(addToHistory:false)이라도
+ * **그 매핑은 담아 두었다가** 저장해 둔 되돌리기 걸음을 그 위에 다시 앉힌다. 그런데
+ * 「지우고 다시 넣기」 는 매핑에서 옮김이 아니다 — 지운 범위 안을 가리키던 자리는 지운
+ * 지점으로 접혀 어디로 갔는지 잃는다. 뒤집힌 걸음의 두 끝 중 한쪽만 접히면 「지울 곳」 을
+ * 잃은 채 「넣을 것」 만 남아, 되돌릴수록 문서가 불어난다.
+ * 실측(붙박이 강의 노트, Ctrl+Z 를 잇달아): 4,288자 → 8,004 → 15,436 → 30,300 → 60,028,
+ * 쪽 9 → 17 → 23 → 84. 이력에 남아 있던 매핑은 열여덟 개였고 모두 「크게 지우고 크게 넣기」
+ * 짝이었다 (MAP [938,5463,0] · MAP [939,0,5465] …).
+ *
+ * 그래서 글을 옮기지 않는다. **쪽 경계를 어디에 둘지만 바꾼다** —
+ * 두 쪽을 하나로 잇고(join) 원하는 자리에서 다시 가른다(split). 이 둘은 쪽 표시 두 글자만
+ * 넣고 빼므로 글의 자리가 ±2 만큼만 밀리고 매핑이 살아남는다. 결과 문서는 예전과 똑같다.
+ *
+ * 덤으로 커서를 손으로 되돌릴 일이 없어졌다 — 옮기지 않으니 커서가 저절로 따라간다.
+ * (예전에는 지운 자리에 커서가 남아, 타자 중이면 그다음 글자가 앞 쪽에 쌓였다.)
  */
-function pushRestToNextPage(tr: Transaction, pageIndex: number, childIndex: number, pageType: NodeType): boolean {
+function setPageBoundary(tr: Transaction, pageIndex: number, keep: number, pageType: NodeType): boolean {
+  const base = tr.steps.length
   const pages = collectPages(tr.doc)
   const cur = pages[pageIndex]
-  if (!cur || childIndex < 1 || childIndex >= cur.node.childCount) return false
-  const { pos, node } = cur
-
-  let offset = 0
-  for (let c = 0; c < childIndex; c++) offset += node.child(c).nodeSize
-  const cutFrom = pos + 1 + offset
-  const cutTo = pos + 1 + node.content.size
-  const moved = node.content.cut(offset)
-  const held = takeSelection(tr, cutFrom, cutTo)
-
-  tr.delete(cutFrom, cutTo)
-  // 잘라낸 만큼 이 쪽이 짧아졌다 → 쪽이 끝나는 위치를 다시 계산한다
-  const pageEnd = pos + node.nodeSize - (cutTo - cutFrom)
-  if (pageIndex === pages.length - 1) {
-    tr.insert(pageEnd, pageType.create(null, moved))
-  } else {
-    tr.insert(pageEnd + 1, moved) // 다음 쪽 안쪽(첫 블록 앞)
-    // 다음 쪽이 이미 같은 문단의 조각으로 시작했다면 방금 넘긴 조각과 하나로 붙인다
-    joinContinuedAt(tr, pageEnd + 1 + moved.size)
+  if (!cur || keep < 1) return false
+  const next = pages[pageIndex + 1]
+  const curCount = cur.node.childCount
+  const total = curCount + (next ? next.node.childCount : 0)
+  if (keep >= total) {
+    // 다음 쪽을 통째로 데려온다 — 이을 뿐 가르지 않는다 (앞 쪽이 없으면 할 일이 없다)
+    if (!next) return false
+  } else if (keep === curCount && next) {
+    return false // 경계가 이미 그 자리다 — 이었다 그대로 가르면 헛도는 트랜잭션만 남는다
   }
-  // 넘긴 내용 안에 커서가 있었다면 같이 따라간다 (타자 중 글자가 앞 쪽에 남지 않게)
-  restoreSelection(tr, held, pageEnd + 1)
+
+  /* 경계가 놓일 자리를 **고치기 전 좌표로** 먼저 잡아 둔다.
+     인덱스로 세면 아래에서 이어짐 조각을 도로 붙일 때 아이 수가 달라져 어긋난다. */
+  let target = -1
+  if (keep < total) {
+    let off = 0
+    if (keep <= curCount) {
+      for (let c = 0; c < keep; c++) off += cur.node.child(c).nodeSize
+      target = cur.pos + 1 + off
+    } else {
+      for (let c = 0; c < keep - curCount; c++) off += next!.node.child(c).nodeSize
+      target = next!.pos + 1 + off
+    }
+  }
+
+  if (next) {
+    const seam = cur.pos + cur.node.nodeSize // 두 쪽 사이
+    if (!canJoin(tr.doc, seam)) return false
+    tr.join(seam, 1)
+    /* 벽이 사라져 이웃이 된 이어짐 조각은 도로 한 문단으로 —
+       원래 한 문단이던 것이 쪽 경계에서 갈렸을 뿐이다 */
+    joinContinuedAt(tr, seam - 1)
+  }
+  if (target < 0) return true // 이어 붙이기만 하는 걸음
+
+  const at = tr.mapping.slice(base).map(target)
+  if (!canSplit(tr.doc, at, 1, [{ type: pageType }])) return false
+  tr.split(at, 1, [{ type: pageType }])
   return true
 }
 
 /**
- * 옮길 내용 안에 커서가 있었는지 기억해 두는 도우미.
- * 리플로우는 "지우고 다시 넣기"로 내용을 옮기는데, ProseMirror 는 그것을 이동으로
- * 보지 않으므로 커서가 지운 자리에 남는다. 타자 중이라면 그 뒤 글자가 앞 쪽에 쌓인다.
+ * 쪽 경계에서 표를 행 사이에서 가른다 — **쪼개기**로. (매핑을 지키는 몫이 우리 쪽이다)
+ *
+ * tableSplit.ts 의 splitTableAcrossPages 는 표를 통째로 지우고 앞·뒤 두 표를 새로 넣는다.
+ * 결과 문서는 똑같지만 매핑에서 **표 안의 모든 자리가 사라진다.** 그래서 칸에 글을 치고
+ * 그 표가 쪽을 넘어가면, 그 타자를 되돌리는 걸음이 앉을 자리를 잃어 **되돌리기가 먹히지
+ * 않았다** — 실측: 칸에 48자를 치고 Ctrl+Z 를 두 번 눌러도 25자가 그대로 남았다
+ * (1,206자 → 1,254 → 1,229 → 1,229, 그다음 눌림에서 붙여넣기까지 통째로 날아갔다).
+ *
+ * 여기서는 행과 행 사이를 쪼개기만 한다. 표 표시 두 글자만 끼어들 뿐이라 칸 속 자리가
+ * 모두 살아남는다. 나뉜 꼴(뒤 조각에 data-cont, 제목 행 반복 복제)은 splitTableAt 과 같다.
+ *
+ * 다만 tr.split 을 그대로 쓸 수는 없다 — 표 노드에는 isolating 이 걸려 있어 canSplit 이
+ * 언제나 「안 된다」 고 답한다(그 빗장은 사람이 표 밖으로 선택을 끌고 나가지 못하게 하는
+ * 몫이다). 그 말을 그대로 믿었더니 표가 아예 안 나뉘어 한 쪽에 통째로 쌓였다.
+ * 그래서 쪼개기 걸음을 손으로 짜서 넣어 보고, 스키마가 마다하면 그때 물러난다.
  */
-function takeSelection(tr: Transaction, from: number, to: number) {
-  const sel = tr.selection
-  const pos = sel.from
-  return {
-    inside: pos >= from && pos <= to,
-    offset: pos - from,
-    /* 개체를 고른 상태였는지도 함께 기억한다.
-       옮긴 뒤 늘 글자 고름으로 되돌리면, 그림을 고르고 크기를 바꾸는 순간 고름이 풀린다 —
-       한 번 줄어들고는 손잡이가 사라져 더 끌 수 없었다. 「조금 줄어들다 풀려버린다」 가 이것이다. */
-    node: sel instanceof NodeSelection,
-  }
-}
-
-/** 옮긴 내용을 따라 커서(또는 고른 개체)를 새 자리로 되돌린다 */
-function restoreSelection(tr: Transaction, held: { inside: boolean; offset: number; node: boolean }, base: number) {
-  if (!held.inside) return
-  const at = Math.max(0, Math.min(base + held.offset, tr.doc.content.size))
-  if (held.node) {
-    const node = tr.doc.nodeAt(at)
-    if (node && !node.isText && NodeSelection.isSelectable(node)) {
-      tr.setSelection(NodeSelection.create(tr.doc, at))
-      return
-    }
-  }
-  tr.setSelection(TextSelection.near(tr.doc.resolve(at)))
-}
-
-/**
- * 다음 쪽 앞에서 블록 count 개를 잘라내 돌려준다.
- * 그 쪽의 내용을 전부 가져가면 쪽 노드째 지운다 — 내용만 지우면 ProseMirror 가
- * block+ 를 맞추려고 빈 문단을 채워 넣어 빈 용지가 유령처럼 남는다.
- */
-function takeFromPageStart(tr: Transaction, page: { pos: number; node: PMNode }, count: number) {
-  let size = 0
-  for (let c = 0; c < count; c++) size += page.node.child(c).nodeSize
-  const moved = page.node.content.cut(0, size)
-  const held = takeSelection(tr, page.pos + 1, page.pos + 1 + size)
-  if (count >= page.node.childCount) tr.delete(page.pos, page.pos + page.node.nodeSize)
-  else tr.delete(page.pos + 1, page.pos + 1 + size)
-  return { moved, held }
+function splitTableKeepingMap(tr: Transaction, tablePos: number, table: PMNode, rowIndex: number): boolean {
+  if (table.type.name !== 'table' || rowIndex < 1 || rowIndex >= table.childCount) return false
+  let offset = 0
+  for (let c = 0; c < rowIndex; c++) offset += table.child(c).nodeSize
+  const at = tablePos + 1 + offset
+  // tr.split(at, 1, [뒤조각]) 이 만드는 것과 똑같은 걸음: 「앞 표 닫기 · 뒤 표 열기」
+  const 조각 = Fragment.from(table.type.create(table.attrs))
+    .append(Fragment.from(table.type.create({ ...table.attrs, 'data-cont': '1' })))
+  if (tr.maybeStep(new ReplaceStep(at, at, new Slice(조각, 1, 1), true)).failed) return false
+  /* 제목 행 반복은 여기서 넣지 않는다 — TableCellExt 가 화면에만 그려 준다.
+     예전에는 뒤 조각 맨 위에 첫 행을 복제해 **문서에** 얹었다. 화면은 맞았지만 같은 글이
+     조각 수만큼 문서에 들어앉아, 세는 것과 찾는 것이 모두 부풀었다: 머리글 한 줄짜리 표가
+     세 조각으로 나뉘면 상태줄이 그 줄을 세 번 셌고(doc.textContent 에 3회), 찾기·바꾸기는
+     화면에 없는 것까지 집어 왔다. 저장할 때 mergeContinuedTables 가 지워 줘서 저장본은
+     멀쩡했으므로 오래 눈에 띄지 않았다. 위젯은 문서에 없으니 세지도 찾지도 않는다. */
+  return true
 }
 
 /** 요소의 첫 줄 높이(화면 px) — 앞 쪽에 한 줄이라도 더 올릴 수 있는지 판단에 쓴다 */
@@ -609,6 +634,11 @@ function joinContinuedAt(tr: Transaction, pos: number) {
  *  - 이어짐 조각(janCont)이면 원래 한 문단이므로, 워드처럼 **앞 글자 하나를 지운다**.
  *  - 서로 다른 문단이면 워드처럼 **앞 문단에 합친다**.
  * 어느 쪽이든 한 트랜잭션으로 끝내므로 되돌리기도 한 번에 걸린다.
+ *
+ * 잇는 방법은 「쪽 벽을 없애고 두 문단을 잇기」 다 — 조각을 잘라다 앞에 붙이지 않는다.
+ * 잘라 붙이면 이력의 매핑이 「옮김」 을 못 보아, 그 뒤 쪽이 다시 짜이고 나서 다시하기를
+ * 누르면 지울 자리를 잃고 **엉뚱한 곳의 글자를 하나 더 지웠다** (실측: 이은 자리가 두 곳이
+ * 되어 저장본이 한 글자 짧아졌다). 잇기는 구조 글자 두 개만 빼므로 매핑이 살아남는다.
  */
 function joinBackwardAcrossPages(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
   const sel = state.selection
@@ -620,7 +650,6 @@ function joinBackwardAcrossPages(state: EditorState, dispatch?: (tr: Transaction
   if ($from.depth !== 2 || $from.node(1).type.name !== PAGE_NODE_NAME) return false
   if ($from.index(1) !== 0) return false // 쪽의 첫 블록이 아니면 기본 동작으로 충분하다
 
-  const page = $from.node(1)
   const pagePos = $from.before(1)
   if (pagePos <= 0) return false // 첫 쪽 — 앞 쪽이 없다
   const prevPage = state.doc.resolve(pagePos).nodeBefore
@@ -631,21 +660,20 @@ function joinBackwardAcrossPages(state: EditorState, dispatch?: (tr: Transaction
   /* 손으로 넣은 쪽 나눔은 지킨다 — 워드·한글도 이때는 합치지 않는다 */
   if (prev.type.name === 'pageBreak') return false
 
+  if (!canJoin(state.doc, pagePos)) return false // 두 쪽을 이을 수 없다 → 기본 동작에 맡긴다
   if (!dispatch) return true
 
-  /* 자리 값은 모두 「고치기 전 문서」 기준이다. 문서 뒤쪽부터 손대면 앞쪽 값이 흔들리지 않는다.
-     prevEnd(앞 조각 내용 끝) < curStart(이 블록 시작) 이므로 지우기 → 붙이기 → 이음매 순서로 간다. */
-  const prevEnd = pagePos - 2   // 앞 쪽 마지막 블록의 내용 끝
-  const curStart = pagePos + 1  // 이 블록의 시작
   const 이어짐 = !!cur.attrs?.janCont
   const tr = state.tr
-  // 이 블록이 쪽의 유일한 내용이면 쪽째 지운다 (빈 용지가 유령으로 남지 않게)
-  if (page.childCount === 1) tr.delete(pagePos, pagePos + page.nodeSize)
-  else tr.delete(curStart, curStart + cur.nodeSize)
-  if (cur.content.size > 0) tr.insert(prevEnd, cur.content)
+  tr.join(pagePos, 1) // ① 두 쪽 사이의 벽을 없앤다 (이 쪽에 이 블록뿐이었다면 쪽째 사라진다)
+  /* ② 이제 한 쪽 안에서 이웃이 된 두 문단을 잇는다.
+     쪽을 이으며 구조 글자 둘이 빠졌으므로 앞 블록의 끝은 pagePos - 1 에 와 있다. */
+  if (!canJoin(tr.doc, pagePos - 1)) return false
+  tr.join(pagePos - 1, 1)
+  const seam = pagePos - 2 // 이은 자리 — 이 블록의 글이 시작하던 곳
   // 원래 한 문단이었다면 백스페이스는 「글자 하나 지우기」 여야 한다
-  if (이어짐 && prev.content.size > 0) tr.delete(prevEnd - 1, prevEnd)
-  const caret = 이어짐 && prev.content.size > 0 ? prevEnd - 1 : prevEnd
+  if (이어짐 && prev.content.size > 0) tr.delete(seam - 1, seam)
+  const caret = 이어짐 && prev.content.size > 0 ? seam - 1 : seam
   tr.setSelection(TextSelection.near(tr.doc.resolve(Math.max(1, Math.min(caret, tr.doc.content.size)))))
   dispatch(tr.scrollIntoView())
   return true
@@ -688,11 +716,7 @@ function reflowOnce(view: EditorView, contentHeight: number): boolean {
     const next = pages[i + 1]
     if (!next.node.firstChild) continue
     const tr = state.tr
-    const { moved, held } = takeFromPageStart(tr, next, 1)
-    const at = tr.mapping.map(pos + node.nodeSize - 1)
-    tr.insert(at, moved)
-    restoreSelection(tr, held, at) // 커서는 join 단계에서 자동으로 다시 매핑된다
-    joinContinuedAt(tr, at)
+    if (!setPageBoundary(tr, i, node.childCount + 1, pageType)) continue
     tr.setMeta(reflowKey, true)
     tr.setMeta('addToHistory', false)
     view.dispatch(tr)
@@ -711,7 +735,7 @@ function reflowOnce(view: EditorView, contentHeight: number): boolean {
     })
     if (cutAt < 0) continue
     const tr = state.tr
-    if (!pushRestToNextPage(tr, i, cutAt + 1, pageType)) continue
+    if (!setPageBoundary(tr, i, cutAt + 1, pageType)) continue
     tr.setMeta(reflowKey, true)
     tr.setMeta('addToHistory', false)
     view.dispatch(tr)
@@ -752,7 +776,7 @@ function reflowOnce(view: EditorView, contentHeight: number): boolean {
         const tr = state.tr
         // 쪼갠 뒷조각에 "이어짐" 표시를 처음부터 붙인다 (저장 시 원래 한 문단으로 합침)
         tr.split(splitAt, 1, [{ type: child.type, attrs: { ...child.attrs, janCont: '1' } }])
-        if (pushRestToNextPage(tr, i, cutIndex + 1, pageType)) {
+        if (setPageBoundary(tr, i, cutIndex + 1, pageType)) {
           tr.setMeta(reflowKey, true)
           tr.setMeta('addToHistory', false)
           view.dispatch(tr)
@@ -777,8 +801,8 @@ function reflowOnce(view: EditorView, contentHeight: number): boolean {
         // 제목 행만 남기고 나누면 보기 흉하다 — 두 줄 이상 남을 때만 나눈다
         if (fit >= 2 && fit < child.childCount) {
           const tr = state.tr
-          if (splitTableAcrossPages(tr, tablePos, child, fit)
-            && pushRestToNextPage(tr, i, cutIndex + 1, pageType)) {
+          if (splitTableKeepingMap(tr, tablePos, child, fit)
+            && setPageBoundary(tr, i, cutIndex + 1, pageType)) {
             tr.setMeta(reflowKey, true)
             tr.setMeta('addToHistory', false)
             view.dispatch(tr)
@@ -791,7 +815,7 @@ function reflowOnce(view: EditorView, contentHeight: number): boolean {
         if (plan) {
           const tr = state.tr
           if (splitTableDeepAcrossPages(tr, tablePos, child, plan)
-            && pushRestToNextPage(tr, i, cutIndex + 1, pageType)) {
+            && setPageBoundary(tr, i, cutIndex + 1, pageType)) {
             tr.setMeta(reflowKey, true)
             tr.setMeta('addToHistory', false)
             view.dispatch(tr)
@@ -820,20 +844,9 @@ function reflowOnce(view: EditorView, contentHeight: number): boolean {
     // 넘길 첫 블록이 그림 캡션이면 위의 그림도 함께 넘긴다 (캡션만 다음 쪽으로 가지 않게)
     if (cutIndex >= 2 && keepsWithPrev(node.child(cutIndex))) cutIndex -= 1
 
-    // cutIndex 이후 전부를 잘라 옮긴다
-    let offset = 0
-    for (let c = 0; c < cutIndex; c++) offset += node.child(c).nodeSize
-    const cutFrom = pos + 1 + offset
-    const cutTo = pos + 1 + node.content.size
-    const moved = node.content.cut(offset)
+    // cutIndex 이후 전부를 다음 쪽으로 — 경계만 옮긴다
     const tr = state.tr
-    tr.delete(cutFrom, cutTo)
-    const isLastPage = i === pages.length - 1
-    if (isLastPage) {
-      tr.insert(tr.mapping.map(pos + node.nodeSize), pageType.create(null, moved))
-    } else {
-      tr.insert(tr.mapping.map(pos + node.nodeSize) + 1, moved)
-    }
+    if (!setPageBoundary(tr, i, cutIndex, pageType)) continue
     tr.setMeta(reflowKey, true)
     tr.setMeta('addToHistory', false)
     view.dispatch(tr)
@@ -872,13 +885,8 @@ function reflowOnce(view: EditorView, contentHeight: number): boolean {
     const tr = state.tr
     // 뒤에 남는 조각에 "이어짐" 표시 — 저장할 때 원래 한 문단으로 합쳐진다
     tr.split(splitAt, 1, [{ type: first.type, attrs: { ...first.attrs, janCont: '1' } }])
-    const fresh = collectPages(tr.doc)[i + 1]
-    if (!fresh) continue
-    const { moved, held } = takeFromPageStart(tr, fresh, 1)
-    const at = pos + node.nodeSize - 1 // 앞 쪽 마지막 블록 뒤 (앞 쪽 좌표는 쪼개기의 영향을 받지 않는다)
-    tr.insert(at, moved)
-    restoreSelection(tr, held, at)
-    joinContinuedAt(tr, at) // 올라온 조각이 앞 문단의 뒷부분이면 도로 한 문단으로
+    // 앞조각 하나만큼 경계를 뒤로 민다 (올라온 조각이 앞 문단의 뒷부분이면 도로 한 문단으로 붙는다)
+    if (!setPageBoundary(tr, i, node.childCount + 1, pageType)) continue
     tr.setMeta(reflowKey, true)
     tr.setMeta('addToHistory', false)
     view.dispatch(tr)
@@ -934,15 +942,11 @@ function reflowOnce(view: EditorView, contentHeight: number): boolean {
     for (let guard = 0; guard < 4 && take > 0 && take < next.node.childCount && keepsWithNext(next.node.child(take - 1)); guard++) take -= 1
     // 그림만 올리고 캡션을 두고 오는 것도 같은 잘못이다 — 그림도 두고 온다
     if (take > 0 && take < next.node.childCount && keepsWithPrev(next.node.child(take))) take -= 1
-    // 다음 쪽을 완전히 비우게 되면 그 쪽 자체가 사라진다 (takeFromPageStart 가 처리)
+    // 다음 쪽을 완전히 비우게 되면 그 쪽 자체가 사라진다 (경계를 없애 두 쪽을 잇는 셈이다)
     if (take === 0) continue
 
     const tr = state.tr
-    const { moved, held } = takeFromPageStart(tr, next, take)
-    const at = tr.mapping.map(pos + node.nodeSize - 1)
-    tr.insert(at, moved)
-    restoreSelection(tr, held, at)
-    joinContinuedAt(tr, at)
+    if (!setPageBoundary(tr, i, node.childCount + take, pageType)) continue
     tr.setMeta(reflowKey, true)
     tr.setMeta('addToHistory', false)
 

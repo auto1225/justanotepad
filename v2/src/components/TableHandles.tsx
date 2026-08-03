@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Editor } from '@tiptap/react'
+import { TextSelection } from '@tiptap/pm/state'
 import {
   findTable,
   moveTable,
@@ -47,6 +48,15 @@ export function TableHandles({ editor }: TableHandlesProps) {
     startWidth: number
     hostWidth: number
     moved: boolean
+    /**
+     * 끄는 동안 붙들고 있는 표의 자리.
+     *
+     * 크기를 끄는 사이에 표가 쪽 경계를 넘으면 조판이 노드를 지우고 다시 넣는다.
+     * 그러면 고름이 표 밖으로 밀려나 findTable() 이 아무것도 못 찾고, 그다음 걸음부터
+     * 끌기가 통째로 죽는다 — 그림에서 똑같이 겪고 고친 자리다(ImageHandles).
+     * 고름에 기대지 않고 자리를 붙들고, 문서가 바뀌면 그 자리도 함께 옮긴다.
+     */
+    pos: number
     /* 행 높이 끌기용 */
     rowIndex?: number
     startHeight?: number
@@ -56,13 +66,22 @@ export function TableHandles({ editor }: TableHandlesProps) {
   } | null>(null)
 
   const measure = useCallback(() => {
-    if (!editor || editor.isDestroyed || !editor.isActive('table')) { setLayout(null); return }
-    // 커서가 든 표를 DOM 에서 찾는다
-    let table: HTMLTableElement | null
-    try {
-      const at = editor.view.domAtPos(editor.state.selection.from).node as HTMLElement
-      table = (at.nodeType === 1 ? at : at.parentElement)?.closest('table') || null
-    } catch { table = null }
+    if (!editor || editor.isDestroyed) { setLayout(null); return }
+    const drag = dragRef.current
+    let table: HTMLTableElement | null = null
+    /* 끄는 동안에는 붙잡아 둔 자리로 표를 찾는다 — 고름이 잠깐 밖으로 나가도 손잡이가 사라지지 않는다 */
+    if (drag && drag.pos >= 0 && editor.state.doc.nodeAt(drag.pos)?.type.name === 'table') {
+      const dom = editor.view.nodeDOM(drag.pos)
+      table = dom instanceof HTMLElement ? (dom.querySelector('table') || (dom.tagName === 'TABLE' ? dom as HTMLTableElement : null)) : null
+    }
+    if (!table) {
+      if (!editor.isActive('table')) { setLayout(null); return }
+      // 커서가 든 표를 DOM 에서 찾는다
+      try {
+        const at = editor.view.domAtPos(editor.state.selection.from).node as HTMLElement
+        table = (at.nodeType === 1 ? at : at.parentElement)?.closest('table') || null
+      } catch { table = null }
+    }
     if (!table) { setLayout(null); return }
     const box = table.getBoundingClientRect()
     const host = (table.closest('.tableWrapper') || table.parentElement) as HTMLElement | null
@@ -74,10 +93,14 @@ export function TableHandles({ editor }: TableHandlesProps) {
           return { left: r.left, width: r.width }
         })
       : []
-    const rows = [...table.querySelectorAll('tr')].map((tr) => {
-      const r = tr.getBoundingClientRect()
-      return { top: r.top, height: r.height }
-    })
+    /* 반복 제목 행은 화면에만 있는 위젯이라 문서에 짝이 없다 — 손잡이를 붙이면
+       그 아래 행들의 번호가 하나씩 밀려 엉뚱한 행의 높이를 고친다 */
+    const rows = [...table.querySelectorAll('tr')]
+      .filter((tr) => !tr.hasAttribute('data-repeated'))
+      .map((tr) => {
+        const r = tr.getBoundingClientRect()
+        return { top: r.top, height: r.height }
+      })
     setLayout({
       table: { left: box.left, top: box.top, width: box.width, height: box.height },
       hostWidth,
@@ -110,11 +133,40 @@ export function TableHandles({ editor }: TableHandlesProps) {
   /* 끌기 — 크기 조절과 자리 옮기기 */
   useEffect(() => {
     if (!editor) return
+
+    /* 문서가 바뀌면 붙잡은 자리도 함께 옮긴다 (쪽 나눔이 표를 다른 쪽으로 보낼 수 있다) */
+    const onTx = ({ transaction }: { transaction: { docChanged: boolean; mapping: { map: (p: number) => number } } }) => {
+      const drag = dragRef.current
+      if (drag && drag.pos >= 0 && transaction.docChanged) drag.pos = transaction.mapping.map(drag.pos)
+    }
+    editor.on('transaction', onTx)
+
+    /**
+     * 붙잡은 표 안에 커서를 되돌려 놓는다 — 걸음마다 이것을 먼저 한다.
+     * 크기 명령들(setRowHeightAt·setTableWidthPercent·scaleRowHeights)은 모두
+     * findTable(editor) 로 「커서가 든 표」 를 찾으므로, 고름이 밖으로 나가면 아무 일도 못 한다.
+     */
+    const hold = (drag: { pos: number }): boolean => {
+      if (drag.pos < 0) return true
+      const node = editor.state.doc.nodeAt(drag.pos)
+      if (!node || node.type.name !== 'table') return false
+      const { $from } = editor.state.selection
+      for (let d = $from.depth; d > 0; d--) {
+        if ($from.node(d).type.name === 'table' && $from.before(d) === drag.pos) return true
+      }
+      try {
+        const at = TextSelection.near(editor.state.doc.resolve(drag.pos + 1))
+        editor.view.dispatch(editor.state.tr.setSelection(at))
+      } catch { return false }
+      return true
+    }
+
     const onMove = (e: MouseEvent) => {
       const drag = dragRef.current
       if (!drag) return
       // 단추에서 손을 뗀 뒤의 움직임은 끌기가 아니다 (누름이 어딘가에서 끊긴 경우)
       if (e.buttons === 0) { dragRef.current = null; return }
+      if (!hold(drag)) { dragRef.current = null; return }
       drag.moved = true
       if (drag.kind === 'rowsize') {
         // 행 경계를 끌어 그 행만 높인다/낮춘다 (워드와 같다)
@@ -156,6 +208,7 @@ export function TableHandles({ editor }: TableHandlesProps) {
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
     return () => {
+      editor.off('transaction', onTx)
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
     }
@@ -164,6 +217,8 @@ export function TableHandles({ editor }: TableHandlesProps) {
   if (!editor || !layout) return null
   const { table, cols, rows, hostWidth } = layout
   const stop = (e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation() }
+  /** 지금 끄는 표의 자리 — 쪽 나눔이 노드를 갈아 끼워도 이것으로 다시 찾는다 */
+  const 표자리 = () => findTable(editor)?.pos ?? -1
 
   /* 열·행 명령은 "커서가 있는 행·열" 을 대상으로 하므로, 먼저 그 행·열을 고른다 */
   const withColumn = (index: number, fn: () => void) => { selectTableColumn(editor, index); fn() }
@@ -184,7 +239,7 @@ export function TableHandles({ editor }: TableHandlesProps) {
         style={{ left: table.left - HANDLE - 3, top: table.top - HANDLE - 3, width: HANDLE, height: HANDLE }}
         onMouseDown={(e) => {
           stop(e)
-          dragRef.current = { kind: 'move', startX: e.clientX, startY: e.clientY, startWidth: table.width, hostWidth, moved: false }
+          dragRef.current = { kind: 'move', startX: e.clientX, startY: e.clientY, startWidth: table.width, hostWidth, moved: false, pos: 표자리() }
           selectWholeTable(editor)
         }}
       >
@@ -208,6 +263,7 @@ export function TableHandles({ editor }: TableHandlesProps) {
             startWidth: table.width,
             hostWidth,
             moved: false,
+            pos: 표자리(),
             baseHeights: rows.map((r) => r.height),
             startTableHeight: table.height,
           }
@@ -293,6 +349,7 @@ export function TableHandles({ editor }: TableHandlesProps) {
               startWidth: table.width,
               hostWidth,
               moved: false,
+              pos: 표자리(),
               rowIndex: i,
               startHeight: r.height,
             }

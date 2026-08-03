@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { mergeContinuedTables, ownRows } from './tableSplit'
+import { Schema, type Node as PMNode } from '@tiptap/pm/model'
+import { keepsWhole, mergeContinuedTables, ownRows, splitTableAt } from './tableSplit'
 
 describe('쪽을 넘어 나뉜 표 합치기', () => {
   it('이어짐 표시가 붙은 표를 앞 표에 도로 붙인다', () => {
@@ -163,5 +164,108 @@ describe('중첩된 표', () => {
     expect(inner).not.toBeNull()
     expect(ownRows(inner)).toHaveLength(1)
     expect(inner.textContent).toContain('안쪽 제목')
+  })
+})
+
+/* ── 나눈 조각이 「한 표」 로 보이게 하는 표시 ───────────────────────────
+   조각들은 서로 다른 쪽(page node)에 들어앉아 CSS 로 이웃을 볼 수 없다.
+   앞 조각이 「뒤에 이어진다」 를 스스로 알지 못하면 아래 여백·둥근 모서리·그림자를
+   그대로 그려, 쪽마다 표가 따로 끝난 것처럼 보인다. */
+
+const schema = new Schema({
+  nodes: {
+    doc: { content: 'block+' },
+    paragraph: { content: 'inline*', group: 'block', toDOM: () => ['p', 0] },
+    text: { group: 'inline' },
+    table: {
+      content: 'tableRow+',
+      group: 'block',
+      tableRole: 'table',
+      attrs: {
+        'data-cont': { default: null },
+        'data-cont-next': { default: null },
+        'data-repeat-header': { default: null },
+        'data-wrap': { default: null },
+        'data-keep': { default: null },
+      },
+      toDOM: () => ['table', ['tbody', 0]],
+    },
+    tableRow: {
+      content: 'tableCell+',
+      tableRole: 'row',
+      attrs: { 'data-repeated': { default: null }, 'data-keep': { default: null } },
+      toDOM: () => ['tr', 0],
+    },
+    tableCell: { content: 'block+', tableRole: 'cell', toDOM: () => ['td', 0] },
+  },
+})
+
+/** 글 하나가 든 n행짜리 표 */
+function 표만들기(rows: number, attrs: Record<string, string | null> = {}): PMNode {
+  const 행 = Array.from({ length: rows }, (_, i) =>
+    schema.nodes.tableRow.create(null, [
+      schema.nodes.tableCell.create(null, schema.nodes.paragraph.create(null, schema.text(`행 ${i + 1}`))),
+    ]))
+  return schema.nodes.table.create(attrs, 행)
+}
+
+describe('조각이 한 표로 보이게 하는 표시', () => {
+  it('앞 조각에도 「뒤에 이어진다」 를 적어 둔다', () => {
+    const parts = splitTableAt(표만들기(6), 3)
+    expect(parts).not.toBeNull()
+    expect(parts!.head.attrs['data-cont-next']).toBe('1')
+    expect(parts!.head.attrs['data-cont']).toBeFalsy()
+    expect(parts!.tail.attrs['data-cont']).toBe('1')
+  })
+
+  it('가운데 조각은 앞뒤 표시를 함께 지닌다 (위아래 마감을 모두 접어야 한다)', () => {
+    const 첫판 = splitTableAt(표만들기(9), 3)!
+    const 두판 = splitTableAt(첫판.tail, 3)!
+    expect(두판.head.attrs['data-cont']).toBe('1')
+    expect(두판.head.attrs['data-cont-next']).toBe('1')
+  })
+
+  it('저장할 때는 「뒤에 이어진다」 표시가 남지 않는다', () => {
+    const html =
+      '<table data-cont-next="1"><tbody><tr><td>1</td></tr></tbody></table>' +
+      '<table data-cont="1"><tbody><tr><td>2</td></tr></tbody></table>'
+    const merged = mergeContinuedTables(html)
+    expect(merged.match(/<table/g)).toHaveLength(1)
+    expect(merged).not.toContain('data-cont-next')
+    expect(merged).not.toContain('data-cont=')
+  })
+
+  it('앞에 붙일 표가 없어도 표시만 지운다', () => {
+    const merged = mergeContinuedTables('<table data-cont-next="1"><tbody><tr><td>1</td></tr></tbody></table>')
+    expect(merged).toContain('<td>1</td>')
+    expect(merged).not.toContain('data-cont-next')
+  })
+})
+
+/**
+ * 배치에 따라 나뉘는가 — 한글의 거동을 기준으로 삼는다.
+ *  · 「글자처럼 취급」 인 표는 한 글자와 같아 나누지 않고 통째로 다음 쪽으로 간다.
+ *  · 그렇지 않은 표는 여백 자리만 건너뛰고 다음 쪽에 이어져 보인다 (그래서 나눈다).
+ * 배치를 보지 않던 시절에는 글자처럼 둔 표도 행 단위로 쪼개졌다 (실측: 60행 표가 26·27·7 로).
+ */
+describe('배치에 따라 나눌지 정한다', () => {
+  it('글자처럼 취급한 표는 통째로 넘긴다', () => {
+    expect(keepsWhole(표만들기(4, { 'data-wrap': 'inline' }))).toBe(true)
+  })
+
+  it('감싸기·문단 사이인 표는 나눈다', () => {
+    expect(keepsWhole(표만들기(4))).toBe(false)
+    expect(keepsWhole(표만들기(4, { 'data-wrap': 'left' }))).toBe(false)
+    expect(keepsWhole(표만들기(4, { 'data-wrap': 'right' }))).toBe(false)
+  })
+
+  it('「쪼개지 말라」 가 붙은 표는 배치와 상관없이 통째로 넘긴다', () => {
+    expect(keepsWhole(표만들기(4, { 'data-keep': '1' }))).toBe(true)
+  })
+
+  it('행에는 배치가 없다 — data-keep 만 본다', () => {
+    const 행 = 표만들기(2).child(0)
+    expect(keepsWhole(행)).toBe(false)
+    expect(keepsWhole(schema.nodes.tableRow.create({ 'data-keep': '1' }, 행.content))).toBe(true)
   })
 })

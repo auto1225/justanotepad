@@ -6856,10 +6856,25 @@ body:has(.jan-ribbon-dropdown) .jan-help-tip { display: none; }
 }
 .jan-th-rowsize:hover { background: color-mix(in srgb, var(--accent, #6b5bd6) 35%, transparent) !important; }
 
-/* 쪽을 넘어 이어진 표 — 위쪽 테두리를 옅게 해 "여기서 이어진다" 를 알린다 */
-.jan-editor-pages .ProseMirror .tableWrapper[data-cont] table tr:first-child :is(th, td) {
-  border-top-style: dashed;
+/* ── 쪽을 넘어 이어진 표 — 워드·한글처럼 「한 표」 로 보이게 ──────────────
+   조각들은 서로 다른 쪽(page node)에 들어앉는다. 그래서 조각마다 표의 마감이
+   되풀이되면 — 위아래 10px 여백, 둥근 모서리, 그림자, 점선 테두리 —
+   이어진 한 표가 아니라 행마다 따로 떨어진 상자처럼 보였다 (실측: 조각마다 margin 10px/10px,
+   이어짐 조각 첫 행 border-top: dashed, 효과를 켜면 조각마다 radius 10px·drop-shadow).
+   앞 조각은 data-cont-next, 뒤 조각은 data-cont 를 달고 있으니 그것으로 마감을 접는다. */
+/* 조각 사이의 빈틈 — 이어지는 자리에서는 표 여백을 두지 않는다 */
+.jan-editor-pages .ProseMirror .tableWrapper[data-cont] table { margin-top: 0; }
+.jan-editor-pages .ProseMirror .tableWrapper[data-cont-next] table { margin-bottom: 0; }
+/* 둥근 모서리 — 이어지는 쪽은 각지게 (조각마다 둥글면 상자가 여럿으로 보인다) */
+[data-jan-effect="round"] .ProseMirror .tableWrapper[data-cont] table {
+  border-top-left-radius: 0; border-top-right-radius: 0;
 }
+[data-jan-effect="round"] .ProseMirror .tableWrapper[data-cont-next] table {
+  border-bottom-left-radius: 0; border-bottom-right-radius: 0;
+}
+/* 그림자 — 조각 아래마다 그림자가 깔리면 표가 쪽마다 끝난 것처럼 보인다.
+   뒤로 이어지는 조각에서는 끄고, 마지막 조각에만 남긴다. */
+[data-jan-effect] .ProseMirror .tableWrapper[data-cont-next] table { filter: none; }
 /* 반복해 넣은 제목 행 — 화면에서만 살짝 구분한다 (저장본에는 남지 않는다) */
 .ProseMirror tr[data-repeated] :is(th, td) { font-style: italic; }
 

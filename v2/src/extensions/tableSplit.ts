@@ -50,9 +50,22 @@ export const TableKeepAttrs = Extension.create({
   },
 })
 
-/** 이 덩이는 통째로 넘겨야 한다 (break-inside: avoid) */
+/**
+ * 이 덩이는 통째로 넘겨야 한다.
+ *
+ * 두 가지다.
+ *  · break-inside: avoid (data-keep) — 사람이 「쪼개지 말라」 고 적어 둔 것.
+ *  · 「글자처럼 취급」 인 표 (data-wrap="inline") — 한글의 거동을 그대로 따른다.
+ *    글자처럼 둔 표는 한 글자와 같아서 쪽보다 크더라도 나누지 않고 통째로 다음 쪽으로 간다.
+ *    (감싸기·문단 사이인 표는 여백 자리만 건너뛰고 다음 쪽에 이어져 보인다 — 그래서 나눈다)
+ *
+ * 배치를 보지 않고 무엇이든 행 단위로 나누던 시절, 글자처럼 둔 표도 쪼개져
+ * 문장 한가운데에서 표가 두 동강 났다.
+ */
 export function keepsWhole(node: PMNode | null | undefined): boolean {
-  return !!node?.attrs?.['data-keep']
+  if (!node) return false
+  if (node.attrs?.['data-keep']) return true
+  return node.type?.name === 'table' && node.attrs?.['data-wrap'] === 'inline'
 }
 
 /** 표를 rowIndex 앞에서 둘로 나눈 노드 쌍 (나눌 수 없으면 null) */
@@ -71,8 +84,12 @@ export function splitTableAt(table: PMNode, rowIndex: number): { head: PMNode; t
     tailRows = [cloned, ...tailRows]
   }
 
+  /* 앞 조각에도 「뒤에 이어진다」 를 적어 둔다.
+     조각들은 서로 다른 쪽(page node)에 들어앉아 CSS 로 이웃을 볼 수 없다 —
+     앞 조각이 스스로 알지 못하면 아래 여백·아래 둥근 모서리·그림자를 그대로 그려
+     쪽마다 표가 따로 끝난 것처럼 보인다. */
   return {
-    head: table.type.create(table.attrs, headRows),
+    head: table.type.create({ ...table.attrs, 'data-cont-next': '1' }, headRows),
     tail: table.type.create({ ...table.attrs, 'data-cont': '1' }, tailRows),
   }
 }
@@ -247,7 +264,7 @@ export function splitTableDeep(table: PMNode, plan: DeepSplitPlan): { head: PMNo
   const headRow = row.type.create(row.attrs, headCells)
   const tailRow = row.type.create({ ...row.attrs, 'data-row-cont': '1' }, tailCells)
   return {
-    head: table.type.create(table.attrs, [...rows.slice(0, plan.rowIndex), headRow]),
+    head: table.type.create({ ...table.attrs, 'data-cont-next': '1' }, [...rows.slice(0, plan.rowIndex), headRow]),
     tail: table.type.create({ ...table.attrs, 'data-cont': '1' }, [tailRow, ...rows.slice(plan.rowIndex + 1)]),
   }
 }
@@ -339,5 +356,8 @@ export function mergeContinuedTables(html: string): string {
   표합치기(true)   // 바깥 표 조각부터 (나뉜 행이 한 몸통에 모인다)
   행합치기()       // 나뉜 행을 도로 한 행으로
   표합치기(false)  // 그제야 이웃이 된 안쪽 표 조각을 합친다
+  /* 「뒤에 이어진다」 는 화면 조판을 위한 표시다 — 도로 한 표가 된 뒤에는 남을 자리가 없다.
+     남겨 두면 저장본을 다시 열 때 아래 여백·둥근 모서리가 사라진 표가 된다. */
+  root.querySelectorAll('table[data-cont-next]').forEach((t) => t.removeAttribute('data-cont-next'))
   return root.innerHTML
 }

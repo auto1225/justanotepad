@@ -3,6 +3,7 @@ import { Fragment } from '@tiptap/pm/model'
 import type { Node as PMNode } from '@tiptap/pm/model'
 import { flash } from './flash'
 import { cellNumber, formatNumber } from './tableFormula'
+import { cellRect, cellSelectionSize, keepCellSelection } from './tableSelect'
 
 /**
  * 워드의 표 「레이아웃」 탭에 있는데 편집기에는 없던 기능들.
@@ -66,17 +67,169 @@ export function splitTable(editor: Editor): boolean {
   return true
 }
 
-/** 행 높이 지정 — 워드의 「행 높이」 (빈 값이면 자동) */
-export function setRowHeight(editor: Editor, height: string | null): boolean {
-  const { $from } = editor.state.selection
-  for (let d = $from.depth; d > 0; d--) {
-    const row = $from.node(d)
-    if (row.type.name !== 'tableRow') continue
-    const pos = $from.before(d)
-    editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...row.attrs, 'data-height': height }))
-    return true
+/**
+ * 앞 표와 합치기 — 워드에는 단추가 없고 사이의 빈 문단을 지워서 한다.
+ * 「표 분할」 로 갈라 놓은 것을 되돌릴 길이 없어 사람이 손으로 지워야 했다.
+ * 열 수가 달라도 합친다 (워드가 그렇듯 모자란 칸은 그대로 둔다).
+ */
+export function mergeWithPreviousTable(editor: Editor): boolean {
+  const table = currentTable(editor)
+  if (!table) { flash('표 안에 커서를 두고 실행하세요'); return false }
+  const { state } = editor
+  const $pos = state.doc.resolve(table.pos)
+  const parent = $pos.parent
+  const index = $pos.index()
+
+  /* 바로 앞이 표면 그것과, 사이에 빈 문단 하나뿐이면 그 문단을 지우고 그 앞 표와 합친다 */
+  let prevIndex = index - 1
+  let 빈문단 = false
+  if (prevIndex >= 0 && parent.child(prevIndex).type.name === 'paragraph' && parent.child(prevIndex).content.size === 0) {
+    빈문단 = true
+    prevIndex -= 1
   }
-  return false
+  if (prevIndex < 0 || parent.child(prevIndex).type.name !== 'table') {
+    flash('바로 앞에 표가 없습니다')
+    return false
+  }
+
+  const prev = parent.child(prevIndex)
+  let prevPos = table.pos
+  for (let i = index - 1; i >= prevIndex; i--) prevPos -= parent.child(i).nodeSize
+
+  const rows: PMNode[] = []
+  prev.forEach((row) => rows.push(row))
+  table.node.forEach((row) => rows.push(row))
+  editor.view.dispatch(
+    state.tr.replaceWith(prevPos, table.pos + table.node.nodeSize, prev.type.create(prev.attrs, rows))
+  )
+  flash(빈문단 ? '앞 표와 합쳤습니다 (사이의 빈 줄도 지웠습니다)' : '앞 표와 합쳤습니다')
+  return true
+}
+
+/**
+ * 행 나눔 허용/금지 — 워드의 「행이 페이지를 넘어갈 때 나눔 허용」.
+ *
+ * 우리 조판은 행 경계에서만 나누므로, 금지가 뜻하는 것은
+ * 「이 행 안에 든 표를 파고들어 쪼개지 마라」 다 (그래야 그 행이 통째로 다음 쪽으로 간다).
+ * 문서에는 data-keep 으로 적히고, 붙여 넣은 break-inside: avoid 와 같은 자리를 쓴다.
+ */
+export function setRowsKeepWhole(editor: Editor, keep: boolean): boolean {
+  const table = currentTable(editor)
+  if (!table) { flash('표 안에 커서를 두고 실행하세요'); return false }
+  const target = targetRows(editor, pickCells(table.node, table.pos))
+  if (!target.length) return false
+  return keepCellSelection(editor, () => {
+    let tr = editor.state.tr
+    let offset = 0
+    let index = 0
+    table.node.forEach((row) => {
+      if (row.type.name === 'tableRow') {
+        if (target.includes(index)) {
+          tr = tr.setNodeMarkup(table.pos + 1 + offset, undefined, { ...row.attrs, 'data-keep': keep ? '1' : null })
+        }
+        index++
+      }
+      offset += row.nodeSize
+    })
+    if (!tr.docChanged) return false
+    editor.view.dispatch(tr)
+    flash(keep ? `${target.length}개 행을 쪽 경계에서 나누지 않습니다` : `${target.length}개 행의 나눔을 허용합니다`)
+    return true
+  })
+}
+
+/**
+ * 쪽을 넘느라 나뉜 조각을 도로 한 표로 — 「나누지 마라」 로 마음을 바꿨을 때.
+ *
+ * 조각들은 서로 다른 쪽(page node)에 들어앉아 형제가 아니다. 그래서 앞 조각에만 표시를
+ * 달아 봐야 뒤 조각은 영영 딴 표로 남는다 — 「표를 나누지 않기」 를 눌러도 아무 일이
+ * 없어 보였다. 조각이 걸친 자리를 통째로 합친 표 하나로 갈아 끼운다 (쪽은 조판이 다시 나눈다).
+ * 나뉜 「행」(data-row-cont)까지 있는 깊은 나눔은 건드리지 않는다 — 드물고, 잘못 붙이면 글을 잃는다.
+ */
+function 조각모으기(editor: Editor, tablePos: number, 덧붙일: Record<string, string | null> = {}): boolean {
+  const { doc } = editor.state
+  const 조각: { pos: number; node: PMNode }[] = []
+  doc.descendants((node, pos) => {
+    if (node.type.name !== 'table') return true
+    조각.push({ pos, node })
+    return false // 칸 속 표는 남의 것이다
+  })
+  const 처음 = 조각.findIndex((t) => t.pos === tablePos)
+  if (처음 < 0) return false
+
+  const 무리 = [조각[처음]]
+  for (let i = 처음 + 1; i < 조각.length && 조각[i].node.attrs['data-cont']; i++) 무리.push(조각[i])
+  if (무리.length < 2) return false
+
+  const rows: PMNode[] = []
+  let 깊은나눔 = false
+  무리.forEach(({ node }, i) => {
+    node.forEach((row) => {
+      if (row.attrs['data-row-cont']) 깊은나눔 = true
+      if (i > 0 && row.attrs['data-repeated']) return // 복제해 얹은 제목 행은 버린다
+      rows.push(row)
+    })
+  })
+  if (깊은나눔) return false
+
+  const 끝 = 무리[무리.length - 1]
+  /* 합치기와 표시 달기를 **한 트랜잭션**으로 한다. 따로 하면 갈아 끼운 뒤 커서가 표 밖으로
+     밀려나 「지금 든 표」 를 못 찾고, 표시가 달리지 않아 조판이 그대로 다시 나눠 버린다
+     (실측: 눌러도 조각 [11,13] 그대로, data-keep 은 끝내 null). */
+  const 합친표 = 무리[0].node.type.create(
+    { ...무리[0].node.attrs, 'data-cont': null, 'data-cont-next': null, ...덧붙일 },
+    rows
+  )
+  try {
+    editor.view.dispatch(editor.state.tr.replaceWith(tablePos, 끝.pos + 끝.node.nodeSize, 합친표))
+    return true
+  } catch {
+    return false // 갈아 끼울 수 없으면 그냥 둔다 (표시만 달아도 다음 조판부터는 지켜진다)
+  }
+}
+
+/** 표 전체를 쪽 경계에서 나눌지 — 「쪼개지 말라」 (한글의 「표를 나누지 않음」) */
+export function setTableKeepWhole(editor: Editor, keep: boolean): boolean {
+  const table = currentTable(editor)
+  if (!table) { flash('표 안에 커서를 두고 실행하세요'); return false }
+  const 알림 = () => flash(keep ? '표를 쪽 경계에서 나누지 않습니다 (통째로 넘어갑니다)' : '표를 쪽 경계에서 나눕니다')
+  // 이미 나뉘어 있으면 도로 한 표로 모으면서 표시를 단다
+  if (keep && 조각모으기(editor, table.pos, { 'data-keep': '1' })) { 알림(); return true }
+  editor.view.dispatch(
+    editor.state.tr.setNodeMarkup(table.pos, undefined, { ...table.node.attrs, 'data-keep': keep ? '1' : null })
+  )
+  알림()
+  return true
+}
+
+/**
+ * 행 높이 지정 — 워드의 「행 높이」 (빈 값이면 자동).
+ *
+ * 워드·한글은 고른 칸이 걸친 **행 전부**에 건다. 예전에는 커서가 든 행 하나만 고쳤다 —
+ * 세 행을 골라 60px 을 넣어도 한 행만 60px 이 되고 나머지는 그대로였다(실측).
+ */
+export function setRowHeight(editor: Editor, height: string | null): boolean {
+  const table = currentTable(editor)
+  if (!table) return false
+  const rows = targetRows(editor, pickCells(table.node, table.pos))
+  if (!rows.length) return false
+  return keepCellSelection(editor, () => {
+    let tr = editor.state.tr
+    let offset = 0
+    let index = 0
+    table.node.forEach((row) => {
+      if (row.type.name === 'tableRow') {
+        if (rows.includes(index)) {
+          tr = tr.setNodeMarkup(table.pos + 1 + offset, undefined, { ...row.attrs, 'data-height': height })
+        }
+        index++
+      }
+      offset += row.nodeSize
+    })
+    if (!tr.docChanged) return false
+    editor.view.dispatch(tr)
+    return true
+  })
 }
 
 /** 행 높이를 같게 — 지정한 높이를 모두 지운다 (내용에 따라 고르게 잡힌다) */
@@ -214,24 +367,71 @@ function pickCells(table: PMNode, tablePos: number): CellPick[] {
   return out
 }
 
-/** 지금 고른 칸들의 행·열 번호 (선택이 없으면 null) */
+/**
+ * 지금 고른 칸들의 행·열 번호 (고른 것이 없으면 null).
+ *
+ * 칸 선택은 창·리본을 거치는 사이에 글자 선택으로 되돌아가기도 한다 —
+ * 그때는 tableSelect 가 행·열 번호로 적어 둔 기억(cellRect)을 쓴다.
+ * 그러지 않으면 창을 닫고 단추를 누르는 순간 「한 칸만」 바뀐다.
+ */
 function selectedRowsCols(editor: Editor, cells: CellPick[]): { rows: number[]; cols: number[] } | null {
   const sel = editor.state.selection as unknown as { $anchorCell?: { pos: number }; $headCell?: { pos: number } }
-  if (!sel.$anchorCell || !sel.$headCell) return null
-  const inside: CellPick[] = []
-  const from = Math.min(sel.$anchorCell.pos, sel.$headCell.pos)
-  const to = Math.max(sel.$anchorCell.pos, sel.$headCell.pos)
-  const anchor = cells.find((c) => c.pos === from)
-  const head = cells.find((c) => c.pos === to)
-  if (!anchor || !head) return null
-  for (const cell of cells) {
-    if (cell.row >= Math.min(anchor.row, head.row) && cell.row <= Math.max(anchor.row, head.row)
-      && cell.col >= Math.min(anchor.col, head.col) && cell.col <= Math.max(anchor.col, head.col)) inside.push(cell)
+  let top: number, bottom: number, left: number, right: number
+  if (sel.$anchorCell && sel.$headCell) {
+    const from = Math.min(sel.$anchorCell.pos, sel.$headCell.pos)
+    const to = Math.max(sel.$anchorCell.pos, sel.$headCell.pos)
+    const anchor = cells.find((c) => c.pos === from)
+    const head = cells.find((c) => c.pos === to)
+    if (!anchor || !head) return null
+    top = Math.min(anchor.row, head.row); bottom = Math.max(anchor.row, head.row)
+    left = Math.min(anchor.col, head.col); right = Math.max(anchor.col, head.col)
+  } else {
+    // 기억해 둔 네모가 아직 살아 있을 때만 (없으면 「고른 것 없음」)
+    if (!cellSelectionSize(editor)) return null
+    const rect = cellRect(editor)
+    if (!rect) return null
+    top = rect.top; bottom = rect.bottom; left = rect.left; right = rect.right
   }
+  const inside = cells.filter((c) => c.row >= top && c.row <= bottom && c.col >= left && c.col <= right)
+  if (!inside.length) return null
   return {
     rows: [...new Set(inside.map((c) => c.row))].sort((a, b) => a - b),
     cols: [...new Set(inside.map((c) => c.col))].sort((a, b) => a - b),
   }
+}
+
+/**
+ * 이 표 자신의 DOM — 껍데기(.tableWrapper) 안의 첫 표.
+ * 칸 속에 든 표(중첩)의 col·tr 까지 걷어 오면 열·행 번호가 어긋난다.
+ */
+function ownDom(editor: Editor, tablePos: number): { table: HTMLElement | null; cols: HTMLElement[]; rows: HTMLElement[] } {
+  const dom = editor.view.nodeDOM(tablePos) as HTMLElement | null
+  const table = dom ? ((dom.querySelector('table') as HTMLElement | null) || dom) : null
+  if (!table) return { table: null, cols: [], rows: [] }
+  return {
+    table,
+    cols: [...table.querySelectorAll('col')].filter((c) => c.closest('table') === table) as HTMLElement[],
+    /* 반복 제목 행은 화면에만 있는 위젯이다 — 문서에는 없으므로 걷어 오면 행 번호가 하나씩 밀린다 */
+    rows: [...table.querySelectorAll('tr')]
+      .filter((r) => r.closest('table') === table && !r.hasAttribute('data-repeated')) as HTMLElement[],
+  }
+}
+
+/**
+ * 지금 화면에 그려진 열 너비 (픽셀).
+ *
+ * colgroup 의 col.style.width 는 **끌어서 정한 열에만** 붙는다. 지정이 없는 열은 빈 문자열이라
+ * parseFloat 이 NaN → 0 으로 셌다. 그 바람에 「열 너비를 같게」 가 폭을 절반으로 잘못 세어,
+ * 184px+152px 인 두 열을 고르면 92px·92px 로 쭈그러들었다(실측). 지정이 없으면 그려진 칸을 읽는다.
+ */
+function measuredWidths(editor: Editor, tablePos: number, colCount: number): number[] {
+  const { table, cols, rows } = ownDom(editor, tablePos)
+  const firstRow = rows[0]
+  const fallback = (table?.getBoundingClientRect().width || 0) / Math.max(1, colCount) || 80
+  return Array.from({ length: colCount }, (_, i) =>
+    parseFloat(cols[i]?.style.width || '')
+    || (firstRow?.children[i] as HTMLElement | undefined)?.getBoundingClientRect().width
+    || fallback)
 }
 
 /** 고른 열(없으면 전체)의 너비를 고르게 나눈다 */
@@ -240,31 +440,32 @@ export function distributeColumns(editor: Editor): boolean {
   if (!table) { flash('표 안에 커서를 두고 실행하세요'); return false }
   const cells = pickCells(table.node, table.pos)
   const picked = selectedRowsCols(editor, cells)
-  const dom = editor.view.nodeDOM(table.pos) as HTMLElement | null
-  const cols = dom?.querySelectorAll('colgroup col') ?? []
   const allCols = [...new Set(cells.map((c) => c.col))].sort((a, b) => a - b)
   const target = picked?.cols.length ? picked.cols : allCols
+  /* 열의 개수 — 병합(colspan)이 있으면 칸 수와 다르다. 마지막 칸이 덮는 자리까지 센다. */
+  const colCount = cells.reduce((n, c) => Math.max(n, c.col + (Number(c.node.attrs.colspan) || 1)), 0)
+  const width = measuredWidths(editor, table.pos, colCount)
 
-  // 대상 열들이 지금 차지한 폭을 합쳐 고르게 나눈다
-  let total = 0
-  target.forEach((col) => { total += parseFloat((cols[col] as HTMLElement | undefined)?.style.width || '0') })
-  if (!total) {
-    const width = dom?.querySelector('table')?.getBoundingClientRect().width || dom?.getBoundingClientRect().width || 0
-    total = (width / Math.max(1, allCols.length)) * target.length
-  }
+  // 대상 열들이 지금 차지한 폭을 합쳐 고르게 나눈다 (워드의 「열 너비를 같게」)
+  const total = target.reduce((sum, col) => sum + (width[col] || 0), 0)
   const each = Math.max(24, Math.round(total / target.length))
 
-  let tr = editor.state.tr
-  for (const cell of cells) {
-    const span = Number(cell.node.attrs.colspan) || 1
-    const covered = Array.from({ length: span }, (_, i) => cell.col + i)
-    if (!covered.some((c) => target.includes(c))) continue
-    const colwidth = covered.map((c) => (target.includes(c) ? each : ((cell.node.attrs.colwidth as number[] | null)?.[c - cell.col] ?? each)))
-    tr = tr.setNodeMarkup(cell.pos, undefined, { ...cell.node.attrs, colwidth })
-  }
-  if (tr.docChanged) editor.view.dispatch(tr)
-  flash(picked?.cols.length ? `고른 ${target.length}개 열의 너비를 같게` : '열 너비를 모두 같게')
-  return true
+  return keepCellSelection(editor, () => {
+    let tr = editor.state.tr
+    for (const cell of cells) {
+      const span = Number(cell.node.attrs.colspan) || 1
+      const covered = Array.from({ length: span }, (_, i) => cell.col + i)
+      if (!covered.some((c) => target.includes(c))) continue
+      /* 고르지 않은 열은 지금 폭을 그대로 지킨다 — 여기에 each 를 적으면
+         고르지도 않은 열이 함께 끌려가 표 전체가 뒤틀린다 */
+      const colwidth = covered.map((c) =>
+        (target.includes(c) ? each : ((cell.node.attrs.colwidth as number[] | null)?.[c - cell.col] ?? Math.round(width[c] || each))))
+      tr = tr.setNodeMarkup(cell.pos, undefined, { ...cell.node.attrs, colwidth })
+    }
+    if (tr.docChanged) editor.view.dispatch(tr)
+    flash(picked?.cols.length ? `고른 ${target.length}개 열의 너비를 같게 (${each}px)` : '열 너비를 모두 같게')
+    return true
+  })
 }
 
 /** 고른 행(없으면 전체)의 높이를 고르게 나눈다 */
@@ -273,8 +474,7 @@ export function distributeRows(editor: Editor): boolean {
   if (!table) { flash('표 안에 커서를 두고 실행하세요'); return false }
   const cells = pickCells(table.node, table.pos)
   const picked = selectedRowsCols(editor, cells)
-  const dom = editor.view.nodeDOM(table.pos) as HTMLElement | null
-  const rowEls = dom ? [...dom.querySelectorAll('tr')] : []
+  const rowEls = ownDom(editor, table.pos).rows
   const allRows = rowEls.map((_, i) => i)
   const target = picked?.rows.length ? picked.rows : allRows
   if (!target.length) return false
@@ -282,21 +482,23 @@ export function distributeRows(editor: Editor): boolean {
   const total = target.reduce((sum, i) => sum + (rowEls[i]?.getBoundingClientRect().height || 0), 0)
   const each = Math.max(18, Math.round(total / target.length))
 
-  let tr = editor.state.tr
-  let offset = 0
-  let index = 0
-  table.node.forEach((row) => {
-    if (row.type.name === 'tableRow') {
-      if (target.includes(index)) {
-        tr = tr.setNodeMarkup(table.pos + 1 + offset, undefined, { ...row.attrs, 'data-height': `${each}px` })
+  return keepCellSelection(editor, () => {
+    let tr = editor.state.tr
+    let offset = 0
+    let index = 0
+    table.node.forEach((row) => {
+      if (row.type.name === 'tableRow') {
+        if (target.includes(index)) {
+          tr = tr.setNodeMarkup(table.pos + 1 + offset, undefined, { ...row.attrs, 'data-height': `${each}px` })
+        }
+        index++
       }
-      index++
-    }
-    offset += row.nodeSize
+      offset += row.nodeSize
+    })
+    if (tr.docChanged) editor.view.dispatch(tr)
+    flash(picked?.rows.length ? `고른 ${target.length}개 행의 높이를 같게` : '행 높이를 모두 같게')
+    return true
   })
-  if (tr.docChanged) editor.view.dispatch(tr)
-  flash(picked?.rows.length ? `고른 ${target.length}개 행의 높이를 같게` : '행 높이를 모두 같게')
-  return true
 }
 
 /** 행을 위·아래로 옮긴다 — 워드의 Shift+Alt+↑/↓ */
@@ -360,26 +562,24 @@ export function resizeColumns(editor: Editor, delta: number): boolean {
   if (!target.length) return false
 
   // 지금 너비를 화면에서 읽어 기준으로 삼는다 (지정이 없던 열도 다룰 수 있게)
-  const dom = editor.view.nodeDOM(table.pos) as HTMLElement | null
-  const colEls = dom ? [...dom.querySelectorAll('colgroup col')] as HTMLElement[] : []
-  const measured = (col: number) =>
-    parseFloat(colEls[col]?.style.width || '') ||
-    (dom?.querySelectorAll('tr')[0]?.children[col] as HTMLElement | undefined)?.getBoundingClientRect().width ||
-    80
+  const colCount = cells.reduce((n, c) => Math.max(n, c.col + (Number(c.node.attrs.colspan) || 1)), 0)
+  const width = measuredWidths(editor, table.pos, colCount)
 
-  let tr = editor.state.tr
-  for (const cell of cells) {
-    const span = Number(cell.node.attrs.colspan) || 1
-    const covered = Array.from({ length: span }, (_, i) => cell.col + i)
-    if (!covered.some((c) => target.includes(c))) continue
-    const current = (cell.node.attrs.colwidth as number[] | null) ?? covered.map((c) => Math.round(measured(c)))
-    const next = current.map((w, i) => (target.includes(covered[i]) ? Math.max(24, Math.round(w + delta)) : w))
-    tr = tr.setNodeMarkup(cell.pos, undefined, { ...cell.node.attrs, colwidth: next })
-  }
-  if (!tr.docChanged) return false
-  editor.view.dispatch(tr)
-  flash(`${target.length}개 열 너비 ${delta > 0 ? '+' : ''}${delta}px`)
-  return true
+  return keepCellSelection(editor, () => {
+    let tr = editor.state.tr
+    for (const cell of cells) {
+      const span = Number(cell.node.attrs.colspan) || 1
+      const covered = Array.from({ length: span }, (_, i) => cell.col + i)
+      if (!covered.some((c) => target.includes(c))) continue
+      const current = (cell.node.attrs.colwidth as number[] | null) ?? covered.map((c) => Math.round(width[c] || 80))
+      const next = current.map((w, i) => (target.includes(covered[i]) ? Math.max(24, Math.round(w + delta)) : w))
+      tr = tr.setNodeMarkup(cell.pos, undefined, { ...cell.node.attrs, colwidth: next })
+    }
+    if (!tr.docChanged) return false
+    editor.view.dispatch(tr)
+    flash(`${target.length}개 열 너비 ${delta > 0 ? '+' : ''}${delta}px`)
+    return true
+  })
 }
 
 /** 고른 행의 높이를 delta 픽셀만큼 (음수면 줄인다) */
@@ -390,27 +590,28 @@ export function resizeRows(editor: Editor, delta: number): boolean {
   const target = targetRows(editor, cells)
   if (!target.length) return false
 
-  const dom = editor.view.nodeDOM(table.pos) as HTMLElement | null
-  const rowEls = dom ? [...dom.querySelectorAll('tr')] : []
+  const rowEls = ownDom(editor, table.pos).rows
 
-  let tr = editor.state.tr
-  let offset = 0
-  let index = 0
-  table.node.forEach((row) => {
-    if (row.type.name === 'tableRow') {
-      if (target.includes(index)) {
-        const current = parseFloat(String(row.attrs['data-height'] || '')) || rowEls[index]?.getBoundingClientRect().height || 29
-        const next = Math.max(18, Math.round(current + delta))
-        tr = tr.setNodeMarkup(table.pos + 1 + offset, undefined, { ...row.attrs, 'data-height': `${next}px` })
+  return keepCellSelection(editor, () => {
+    let tr = editor.state.tr
+    let offset = 0
+    let index = 0
+    table.node.forEach((row) => {
+      if (row.type.name === 'tableRow') {
+        if (target.includes(index)) {
+          const current = parseFloat(String(row.attrs['data-height'] || '')) || rowEls[index]?.getBoundingClientRect().height || 29
+          const next = Math.max(18, Math.round(current + delta))
+          tr = tr.setNodeMarkup(table.pos + 1 + offset, undefined, { ...row.attrs, 'data-height': `${next}px` })
+        }
+        index++
       }
-      index++
-    }
-    offset += row.nodeSize
+      offset += row.nodeSize
+    })
+    if (!tr.docChanged) return false
+    editor.view.dispatch(tr)
+    flash(`${target.length}개 행 높이 ${delta > 0 ? '+' : ''}${delta}px`)
+    return true
   })
-  if (!tr.docChanged) return false
-  editor.view.dispatch(tr)
-  flash(`${target.length}개 행 높이 ${delta > 0 ? '+' : ''}${delta}px`)
-  return true
 }
 
 /* ── 텍스트 배치 (워드) · 글자처럼 취급 (한글) ──

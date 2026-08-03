@@ -1,4 +1,6 @@
 import { Extension } from '@tiptap/core'
+import { Plugin, PluginKey, TextSelection, type EditorState, type Transaction } from '@tiptap/pm/state'
+import type { Node as PMNode } from '@tiptap/pm/model'
 import { CellSelection } from 'prosemirror-tables'
 import { distributeColumns, distributeRows, moveRow, resizeColumns, resizeRows } from '../lib/tableWord'
 import {
@@ -16,8 +18,57 @@ import { flash } from '../lib/flash'
  *
  * 표 밖에서는 아무것도 가로채지 않는다 (inTable 로 막는다).
  */
+/**
+ * 여러 칸을 고른 채 글자를 치면 — 워드·한글은 **고른 칸을 모두 비우고 첫 칸에** 글자를 넣는다.
+ *
+ * 우리는 그러지 않았다. 2×2 를 골라 「가」 를 치면 고른 네 칸 가운데 **끝 칸 하나만** 덮어쓰고
+ * 나머지 셋은 옛 글을 그대로 안고 있었다 (실측: 00·01·02·10·11·12 → 00·01·02·10·가·12).
+ * 표 구조가 무너지지는 않았지만, 지운 줄 알았던 글이 남아 있는 것이 더 나쁘다.
+ *
+ * 고른 네모를 비우고 첫 칸에 커서를 놓은 트랜잭션을 만든다 (넣을 글은 부르는 쪽이 얹는다).
+ */
+function 고른칸비우기(state: EditorState): { tr: Transaction; 첫칸안: number } | null {
+  const sel = state.selection
+  if (!(sel instanceof CellSelection)) return null
+  const 칸: { pos: number; node: PMNode }[] = []
+  sel.forEachCell((node, pos) => { 칸.push({ pos, node }) })
+  if (!칸.length) return null
+
+  const tr = state.tr
+  const 빈문단 = state.schema.nodes.paragraph
+  // 뒤에서부터 비운다 — 앞을 먼저 건드리면 뒤 칸의 자리가 어긋난다
+  for (let i = 칸.length - 1; i >= 0; i--) {
+    const { pos, node } = 칸[i]
+    const 새속 = 빈문단?.createAndFill()
+    if (!새속) continue
+    tr.replaceWith(pos + 1, pos + node.nodeSize - 1, 새속)
+  }
+  // 첫 칸(문서 차례로 맨 앞) 안의 빈 문단에 커서를 놓는다
+  const 첫칸안 = tr.mapping.map(칸[0].pos + 2)
+  tr.setSelection(TextSelection.create(tr.doc, 첫칸안))
+  return { tr, 첫칸안 }
+}
+
 export const TableKeymap = Extension.create({
   name: 'janTableKeymap',
+
+  /* 글자 입력은 단축키로 가로챌 수 없다 — 입력 자리에서 직접 받는다 */
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        key: new PluginKey('janTableCellTyping'),
+        props: {
+          handleTextInput(view, _from, _to, text) {
+            const 비움 = 고른칸비우기(view.state)
+            if (!비움) return false
+            비움.tr.insertText(text, 비움.첫칸안)
+            view.dispatch(비움.tr)
+            return true
+          },
+        },
+      }),
+    ]
+  },
 
   addKeyboardShortcuts() {
     const inTable = () => this.editor.isActive('table')
@@ -86,6 +137,15 @@ export const TableKeymap = Extension.create({
       'Shift-ArrowDown': guard(() => extendCellSelection(this.editor, 1, 0)),
       'Shift-ArrowUp': guard(() => extendCellSelection(this.editor, -1, 0)),
       Escape: guard(() => collapseCellSelection(this.editor)),
+
+      /* 고른 칸이 있을 때 Enter — 워드·한글은 고른 칸을 비우고 첫 칸으로 커서를 옮긴다.
+         예전에는 아무 일도 일어나지 않아 (실측: 글자도 문단도 그대로) 눌러도 소용이 없었다. */
+      Enter: () => {
+        const 비움 = 고른칸비우기(this.editor.state)
+        if (!비움) return false
+        this.editor.view.dispatch(비움.tr)
+        return true
+      },
 
       /* ── 칸 사이 건너뛰기 — 워드와 같은 자리 ── */
       'Alt-Home': toEdgeCell('rowStart'),

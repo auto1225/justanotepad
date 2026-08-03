@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Editor } from '@tiptap/react'
-import { splitTable, tableToText } from '../lib/tableWord'
+import { mergeWithPreviousTable, setRowsKeepWhole, setTableKeepWhole, splitTable, tableToText } from '../lib/tableWord'
 import { selectTableColumn, selectTableRow, selectWholeTable } from '../lib/tableSelect'
 import { setCellFormula, suggestFormula } from '../lib/tableCompute'
 import { flash } from '../lib/flash'
@@ -93,6 +93,20 @@ export function TableContextMenu({ editor }: Props) {
     { label: '셀 병합', run: () => chain().mergeCells().run() },
     { label: '셀 분할', run: () => chain().splitCell().run() },
     { label: '표 분할', hint: '커서 행에서 둘로', run: () => { splitTable(editor) } },
+    { label: '앞 표와 합치기', hint: '분할 되돌리기', run: () => { mergeWithPreviousTable(editor) } },
+    { label: '', divider: true },
+    /* 쪽 경계에서 나눌지 — 워드의 「행이 페이지를 넘어갈 때 나눔 허용」 과
+       한글의 「표를 나누지 않음」. 표시는 문서에 data-keep 으로 남는다. */
+    {
+      label: 행나눔금지(editor) ? '행 나눔 허용' : '행 나눔 금지',
+      hint: '고른 행',
+      run: () => { setRowsKeepWhole(editor, !행나눔금지(editor)) },
+    },
+    {
+      label: editor.getAttributes('table')['data-keep'] ? '표 나눔 허용' : '표를 나누지 않기',
+      hint: '쪽 경계',
+      run: () => { setTableKeepWhole(editor, !editor.getAttributes('table')['data-keep']) },
+    },
     { label: '', divider: true },
     { label: '행 선택', run: () => { const i = rowIndexOf(editor); if (i >= 0) selectTableRow(editor, i) } },
     { label: '열 선택', run: () => { const i = colIndexOf(editor); if (i >= 0) selectTableColumn(editor, i) } },
@@ -148,6 +162,15 @@ export function TableContextMenu({ editor }: Props) {
       )}
     </div>
   )
+}
+
+/** 커서가 든 행이 「쪽 경계에서 나누지 마라」 로 잠겨 있는가 */
+function 행나눔금지(editor: Editor): boolean {
+  const { $from } = editor.state.selection
+  for (let d = $from.depth; d > 0; d--) {
+    if ($from.node(d).type.name === 'tableRow') return !!$from.node(d).attrs['data-keep']
+  }
+  return false
 }
 
 /** 커서가 든 행의 순번 */

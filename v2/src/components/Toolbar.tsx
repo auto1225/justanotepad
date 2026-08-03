@@ -30,7 +30,7 @@ import {
   selectAll, selectSimilarFormatting, setBulletStyle, setCharBorder, setCharShading, setLineSpacing,
   setNumberStyle, setParagraphBorder, setParagraphShading, setParagraphSpace, setUnderlineStyle,
 } from '../lib/homeTab'
-import { deleteCellsShift } from '../lib/tableWord'
+import { deleteCellsShift, textToTable } from '../lib/tableWord'
 import { EMPHASIS_MARKS, OVERLAP_FRAMES } from '../extensions/TextObjects'
 import { currentDropCap, insertOverlap, insertRuby, selectedText, setDropCap, setEmphasis } from '../lib/textObjects'
 import { COVER_STYLES, insertBlankPage, insertCover, todayLabel } from '../lib/coverPage'
@@ -1266,6 +1266,8 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowLeft')go(-1);else if(e.
           onClick: () => run(() => { void insertTable() }),
           menu: [
             { short: '표 붙이기', label: '표로 붙여넣기 (CSV·엑셀 데이터)', icon: 'table', onClick: () => run(() => { void insertTableFromCsv() }) },
+            /* 워드의 「텍스트를 표로 변환」 — 만들어 두고도 부르는 자리가 없어 아무도 쓸 수 없었다 */
+            { short: '글→표', label: '고른 글을 표로 바꾸기 (창)', icon: 'table', onClick: () => run(askTextToTable) },
             { short: '표→차트', label: '표를 차트로 만들기', icon: 'chart', onClick: () => run(() => { void chartFromTable() }) },
           ],
         },
@@ -2308,6 +2310,13 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowLeft')go(-1);else if(e.
     const sep = await askText('칸을 무엇으로 구분할까요? (탭은 비워 두세요)', ',')
     if (sep === null) return
     tableToText(editor, sep || '\t')
+  }
+  /* 워드의 「텍스트를 표로 변환」 — 고른 글의 줄을 행으로, 구분자를 칸 경계로 삼는다 */
+  const askTextToTable = async () => {
+    if (editor.state.selection.empty) { flash('표로 바꿀 글을 먼저 선택하세요'); return }
+    const sep = await askText('칸을 무엇으로 나눌까요? (탭은 비워 두세요)', ',')
+    if (sep === null) return
+    textToTable(editor, sep || '\t')
   }
   /* 워드의 「수식」 대화상자 — 수식 + 번호 형식 + 함수 안내 */
   const askCellFormula = async () => {
