@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { Schema, type Node as PMNode } from '@tiptap/pm/model'
-import { keepsWhole, mergeContinuedTables, ownRows, splitTableAt } from './tableSplit'
+import { keepsWhole, mergeContinuedTables, ownRows, rowspanCrosses, safeSplitRow, splitTableAt } from './tableSplit'
 
 describe('쪽을 넘어 나뉜 표 합치기', () => {
   it('이어짐 표시가 붙은 표를 앞 표에 도로 붙인다', () => {
@@ -196,7 +196,13 @@ const schema = new Schema({
       attrs: { 'data-repeated': { default: null }, 'data-keep': { default: null } },
       toDOM: () => ['tr', 0],
     },
-    tableCell: { content: 'block+', tableRole: 'cell', toDOM: () => ['td', 0] },
+    tableCell: {
+      content: 'block+',
+      tableRole: 'cell',
+      // 세로·가로 합침 — 나눌 자리를 고를 때 이 값을 본다
+      attrs: { rowspan: { default: 1 }, colspan: { default: 1 }, 'data-jan-pad': { default: null } },
+      toDOM: () => ['td', 0],
+    },
   },
 })
 
@@ -267,5 +273,96 @@ describe('배치에 따라 나눌지 정한다', () => {
     const 행 = 표만들기(2).child(0)
     expect(keepsWhole(행)).toBe(false)
     expect(keepsWhole(schema.nodes.tableRow.create({ 'data-keep': '1' }, 행.content))).toBe(true)
+  })
+})
+
+/**
+ * 세로 합침(rowspan)을 뚫고 나누면 저장 왕복에서 표가 상한다.
+ *
+ * 뚫으면 앞 조각의 합친 칸이 조각 길이에 맞게 깎이고(4 → 2), 뒤 조각 첫 행들에는 그 열의
+ * 칸이 모자란다. 비워 두면 prosemirror-tables 의 fixTables 가 네모꼴을 맞추려 빈 칸을
+ * 행 **끝에** 덧붙이는데 — 열 자리도 틀리고 그 칸이 저장본에 그대로 남는다.
+ * 실측(60행·4행마다 세로 합침): 문서 75칸 → 저장본 80칸, 빈 칸 5개, rowspan 이 4·2·1 로 뒤섞였다.
+ * 그래서 깨끗한 행 경계까지 물러난다.
+ */
+describe('세로 합침을 뚫지 않는 나눔 자리', () => {
+  /** 4행마다 왼쪽 칸이 세로로 합쳐진 표 */
+  function 합친표(rows: number): PMNode {
+    const 글 = (t: string) => schema.nodes.paragraph.create(null, schema.text(t))
+    const 행 = Array.from({ length: rows }, (_, i) =>
+      schema.nodes.tableRow.create(null, i % 4 === 0
+        ? [schema.nodes.tableCell.create({ rowspan: 4 }, 글(`묶음 ${i / 4}`)), schema.nodes.tableCell.create(null, 글(`값 ${i}`))]
+        : [schema.nodes.tableCell.create(null, 글(`값 ${i}`))]))
+    return schema.nodes.table.create(null, 행)
+  }
+
+  it('합침이 걸친 자리는 「가로지른다」 고 답한다', () => {
+    const t = 합친표(12)
+    expect(rowspanCrosses(t, 4)).toBe(false)   // 4의 배수는 깨끗한 경계
+    expect(rowspanCrosses(t, 8)).toBe(false)
+    expect(rowspanCrosses(t, 5)).toBe(true)    // 묶음 1(4~7)을 뚫는다
+    expect(rowspanCrosses(t, 6)).toBe(true)
+    expect(rowspanCrosses(t, 7)).toBe(true)
+  })
+
+  it('뚫는 자리에서는 깨끗한 앞 경계까지 물러난다', () => {
+    const t = 합친표(12)
+    expect(safeSplitRow(t, 7)).toBe(4)
+    expect(safeSplitRow(t, 8)).toBe(8)
+    expect(safeSplitRow(t, 11)).toBe(8)
+  })
+
+  it('물러날 곳이 없으면 0 — 그때는 표를 통째로 민다', () => {
+    // 첫 칸이 여덟 행을 덮으면 2행·3행에서 나눌 자리가 없다
+    const 글 = (t: string) => schema.nodes.paragraph.create(null, schema.text(t))
+    const 행 = Array.from({ length: 8 }, (_, i) =>
+      schema.nodes.tableRow.create(null, i === 0
+        ? [schema.nodes.tableCell.create({ rowspan: 8 }, 글('큰 칸')), schema.nodes.tableCell.create(null, 글(`값 ${i}`))]
+        : [schema.nodes.tableCell.create(null, 글(`값 ${i}`))]))
+    expect(safeSplitRow(schema.nodes.table.create(null, 행), 5)).toBe(0)
+  })
+
+  it('합침이 없는 표는 재던 자리를 그대로 쓴다', () => {
+    expect(safeSplitRow(표만들기(10), 7)).toBe(7)
+  })
+})
+
+/**
+ * 자리를 맞추려고 끼워 넣은 빈 칸(data-jan-pad)은 합칠 때 자취를 남기지 않는다.
+ * 깊이 나눔이 바깥 행 하나를 두 행으로 가르면 앞뒤 행에 칸이 모자라 우리가 채운다.
+ */
+describe('채움 칸 걷어 내기', () => {
+  const html2dom = (html: string) => {
+    const d = new DOMParser().parseFromString(`<div id="r">${html}</div>`, 'text/html')
+    return d.getElementById('r')!
+  }
+
+  it('앞 조각의 채움 칸에는 뒤 조각의 글이 그대로 들어앉는다 (빈 줄을 남기지 않는다)', () => {
+    const html =
+      '<table><tbody><tr><td><p>왼쪽</p></td><td data-jan-pad="1"><p></p></td></tr></tbody></table>' +
+      '<table data-cont="1"><tbody><tr data-row-cont="1"><td><p>이어짐</p></td><td><p>값 2</p></td></tr></tbody></table>'
+    const root = html2dom(mergeContinuedTables(html))
+    const cells = [...(ownRows(root.querySelector('table')!)[0]).children]
+    expect(cells).toHaveLength(2)
+    expect(cells[1].querySelectorAll('p')).toHaveLength(1)  // 빈 문단이 앞에 남지 않았다
+    expect(cells[1].textContent).toBe('값 2')
+    expect(root.innerHTML).not.toContain('data-jan-pad')
+  })
+
+  it('뒤 조각의 채움 칸은 아무것도 옮기지 않는다', () => {
+    const html =
+      '<table><tbody><tr><td><p>왼쪽</p></td><td><p>값 2</p></td></tr></tbody></table>' +
+      '<table data-cont="1"><tbody><tr data-row-cont="1"><td data-jan-pad="1"><p></p></td><td><p>덧붙임</p></td></tr></tbody></table>'
+    const root = html2dom(mergeContinuedTables(html))
+    const cells = [...(ownRows(root.querySelector('table')!)[0]).children]
+    expect(cells[0].textContent).toBe('왼쪽')          // 채움 칸이 덮어쓰지 않았다
+    expect(cells[1].textContent).toBe('값 2덧붙임')
+    expect(root.innerHTML).not.toContain('data-jan-pad')
+  })
+
+  it('짝을 못 찾은 채움 칸은 표시만 지운다 (칸을 없애면 네모꼴이 깨진다)', () => {
+    const merged = mergeContinuedTables('<table><tbody><tr><td><p>가</p></td><td data-jan-pad="1"><p></p></td></tr></tbody></table>')
+    expect(merged).not.toContain('data-jan-pad')
+    expect(merged.match(/<td/g)).toHaveLength(2)
   })
 })

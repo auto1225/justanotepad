@@ -150,7 +150,24 @@ export function setTableWidthPercent(editor: Editor, percent: number, hostWidth?
   return true
 }
 
-/** 행 하나의 높이를 정한다 (순번으로 — 손잡이를 끌 때 쓴다) */
+/**
+ * 행 하나의 높이를 정한다 — **자리로**. (손잡이를 끌 때 쓴다)
+ *
+ * 순번으로 다루면 끄는 사이에 표가 쪽 경계에서 갈리는 순간 죽는다. 끌던 행이 뒤 조각으로
+ * 넘어가면 앞 조각에는 그 순번의 행이 없어 아무 일도 일어나지 않는다 —
+ * 실측: 여섯째 행을 끌다 조각이 [5,1,1,1] 로 갈린 걸음에서 높이가 420px 에 멎었다.
+ * 자리는 문서가 바뀔 때마다 함께 옮겨 주면 조각을 넘어가도 같은 행을 가리킨다.
+ */
+export function setRowHeightAtPos(editor: Editor, pos: number, height: string | null): boolean {
+  if (pos < 0 || pos >= editor.state.doc.content.size) return false
+  const row = editor.state.doc.nodeAt(pos)
+  if (!row || row.type.name !== 'tableRow') return false
+  if (row.attrs['data-height'] === height) return true
+  editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...row.attrs, 'data-height': height }))
+  return true
+}
+
+/** 행 하나의 높이를 정한다 (순번으로 — 표가 갈리지 않는 자리에서만 믿을 수 있다) */
 export function setRowHeightAt(editor: Editor, rowIndex: number, height: string | null): boolean {
   const table = findTable(editor)
   if (!table) return false

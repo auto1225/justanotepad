@@ -1,5 +1,7 @@
 import { Extension } from '@tiptap/core'
+import { Fragment, Slice } from '@tiptap/pm/model'
 import type { Node as PMNode } from '@tiptap/pm/model'
+import { ReplaceStep } from '@tiptap/pm/transform'
 import type { Transaction } from '@tiptap/pm/state'
 import type { EditorView } from '@tiptap/pm/view'
 
@@ -131,6 +133,42 @@ export function rowsThatFit(view: EditorView, tablePos: number, roomPx: number, 
 }
 
 /**
+ * 이 행 경계를 세로 합침(rowspan)이 가로지르는가.
+ *
+ * 가로지르는 자리에서 나누면 앞 조각의 합친 칸은 조각 길이에 맞게 **깎이고**(4 → 2),
+ * 뒤 조각 첫 행들에는 그 열의 칸이 **모자란다**. 비워 둔 채로 두면 prosemirror-tables 의
+ * fixTables 가 네모꼴을 맞추려 빈 칸을 행 **끝에** 덧붙인다 — 열 자리도 틀리고, 그 칸이
+ * 저장본에 그대로 남아 표가 부푼다. 실측(60행·4행마다 세로 합침):
+ * 문서 77칸 → 저장본 80칸, 빈 칸 5개, rowspan 이 4·2·1 로 뒤섞였다.
+ */
+export function rowspanCrosses(table: PMNode, rowIndex: number): boolean {
+  if (rowIndex <= 0) return false
+  let r = 0
+  let 가로지름 = false
+  table.forEach((row) => {
+    if (r < rowIndex && !가로지름) {
+      row.forEach((cell) => {
+        if (r + (Number(cell.attrs.rowspan) || 1) > rowIndex) 가로지름 = true
+      })
+    }
+    r += 1
+  })
+  return 가로지름
+}
+
+/**
+ * 세로 합침을 가로지르지 않는, rowIndex 이하의 가장 가까운 행 경계 (없으면 0).
+ *
+ * 워드는 합친 칸도 뚫고 나누지만, 우리는 나눈 표를 저장할 때 도로 한 표로 합친다 —
+ * 뚫고 나누면 그 왕복에서 표가 상한다. 그래서 깨끗한 자리까지만 물러난다.
+ * 합침이 길어 물러날 곳이 없으면 0 을 돌려주고, 그때는 표를 통째로 다음 쪽으로 민다.
+ */
+export function safeSplitRow(table: PMNode, rowIndex: number, min = 2): number {
+  for (let r = rowIndex; r >= min; r -= 1) if (!rowspanCrosses(table, r)) return r
+  return 0
+}
+
+/**
  * 표를 나눠 뒤 조각을 다음 쪽으로 넘긴다.
  * 성공하면 트랜잭션에 반영하고 true.
  */
@@ -194,6 +232,9 @@ export function innerSplitPlan(
   if (r >= rows.length) return null
   const rowNode = table.maybeChild(r)
   if (!rowNode || keepsWhole(rowNode)) return null
+  /* 이 행을 세로 합침이 가로지르면 깊이 나눔도 표를 상하게 한다 (바깥 표가 갈리므로) —
+     그때는 나누지 말고 표째 다음 쪽으로 민다 */
+  if (rowspanCrosses(table, r)) return null
 
   const cells = [...rows[r].children]
   for (let c = 0; c < cells.length; c += 1) {
@@ -216,69 +257,109 @@ export function innerSplitPlan(
     /* 한 행도 못 들어가면 여기서 나눠 봐야 앞 조각이 빈 껍데기가 된다 —
        표를 통째로 다음 쪽으로 밀고 (거기서는 자리가 넉넉하다) 다시 본다 */
     if (fit < 1 || fit >= innerRows.length) continue
-    return { rowIndex: r, cellIndex: c, childIndex, innerRowIndex: fit }
+    // 안쪽 표에서도 세로 합침은 뚫지 않는다
+    const 안쪽자리 = safeSplitRow(cellNode.child(childIndex), fit, 1)
+    if (안쪽자리 < 1) continue
+    return { rowIndex: r, cellIndex: c, childIndex, innerRowIndex: 안쪽자리 }
   }
   return null
 }
 
-/** 빈 칸 하나 — 뒤 조각에서 다른 칸들이 앉을 자리 (합칠 때 이 빈 문단은 버린다) */
-function emptyCell(cell: PMNode): PMNode | null {
-  return cell.type.createAndFill(cell.attrs)
+/**
+ * 자리를 맞추려고 끼워 넣은 빈 칸.
+ *
+ * 깊이 나눔은 바깥 행 하나를 두 행으로 가른다 — 그러면 앞 행에는 나눈 칸까지만,
+ * 뒤 행에는 나눈 칸부터만 남아 표가 네모꼴이 아니게 된다. 네모꼴이 아니면
+ * prosemirror-tables 가 제 나름대로 칸을 채워 넣어 저장본에 없던 칸이 늘어난다.
+ * 그래서 우리가 먼저, **표를 달고** 채운다 — 합칠 때 그 표를 보고 도로 걷어 낸다.
+ */
+function padCell(proto: PMNode): PMNode | null {
+  return proto.type.createAndFill({
+    ...proto.attrs,
+    rowspan: 1,
+    'data-jan-pad': '1',
+  })
 }
 
 /**
- * 안쪽 표를 나누어 바깥 행 하나를 두 행으로 가른다.
- * 앞 조각에는 안쪽 표의 앞부분이, 뒤 조각에는 나머지가 들어간다.
+ * 칸 속 표를 나누어 바깥 행 하나를 두 행으로 가른다 — **쪼개기**로 (매핑을 지킨다).
+ *
+ * 예전에는 바깥 표를 통째로 지우고 새 표 둘을 넣었다(replaceWith). 결과 문서는 같지만
+ * **표 안의 모든 자리가 매핑에서 사라진다.** 그래서 칸 속 표의 칸에 글을 치고 그 표가 쪽을
+ * 넘어가면 그 타자를 되돌릴 자리를 잃었다 — 실측: 안쪽 칸에 50자를 치고 Ctrl+Z 를 세 번
+ * 눌러도 468자 → 438자에서 멎고 「속칸에친글」 이 그대로 남았다.
+ *
+ * 이제는 안쪽 표의 행과 행 사이를 **쪼개기만** 한다. 그 자리 위로 안쪽표·칸·행·바깥표를
+ * 모두 닫았다 열어야 하므로 깊이가 넷이다(openStart = openEnd = 4). 끼어드는 것은 구조
+ * 표시 여덟 글자뿐이라 칸 속 자리가 모두 살아남는다.
+ *
+ * tr.split 을 그대로 쓸 수는 없다 — 표에 isolating 이 걸려 있어 canSplit 이 언제나
+ * 「안 된다」 고 답한다(사람이 선택을 표 밖으로 끌고 나가지 못하게 하는 빗장이다).
+ * 그래서 걸음을 손으로 짜 넣어 보고, 스키마가 마다하면 그때 물러난다.
  */
-export function splitTableDeep(table: PMNode, plan: DeepSplitPlan): { head: PMNode; tail: PMNode } | null {
-  if (table.type.name !== 'table') return null
-  const rows: PMNode[] = []
-  table.forEach((row) => rows.push(row))
-  const row = rows[plan.rowIndex]
-  if (!row) return null
-
-  const headCells: PMNode[] = []
-  const tailCells: PMNode[] = []
-  let 갈랐다 = false
-  let 막혔다 = false
-  row.forEach((cell, _o, ci) => {
-    if (ci === plan.cellIndex) {
-      const blocks: PMNode[] = []
-      cell.forEach((b) => blocks.push(b))
-      const inner = blocks[plan.childIndex]
-      const parts = inner && inner.type.name === 'table' ? splitTableAt(inner, plan.innerRowIndex) : null
-      if (parts) {
-        갈랐다 = true
-        headCells.push(cell.type.create(cell.attrs, [...blocks.slice(0, plan.childIndex), parts.head]))
-        tailCells.push(cell.type.create(cell.attrs, [parts.tail, ...blocks.slice(plan.childIndex + 1)]))
-        return
-      }
-    }
-    const 빈칸 = emptyCell(cell)
-    if (!빈칸) { 막혔다 = true; return }
-    headCells.push(cell)
-    tailCells.push(빈칸)
-  })
-  if (!갈랐다 || 막혔다) return null
-
-  const headRow = row.type.create(row.attrs, headCells)
-  const tailRow = row.type.create({ ...row.attrs, 'data-row-cont': '1' }, tailCells)
-  return {
-    head: table.type.create({ ...table.attrs, 'data-cont-next': '1' }, [...rows.slice(0, plan.rowIndex), headRow]),
-    tail: table.type.create({ ...table.attrs, 'data-cont': '1' }, [tailRow, ...rows.slice(plan.rowIndex + 1)]),
-  }
-}
-
-/** 안쪽 표를 나눠 뒤 조각을 다음 쪽으로 넘긴다 */
 export function splitTableDeepAcrossPages(
   tr: Transaction,
   tablePos: number,
   table: PMNode,
   plan: DeepSplitPlan
 ): boolean {
-  const parts = splitTableDeep(table, plan)
-  if (!parts) return false
-  tr.replaceWith(tablePos, tablePos + table.nodeSize, [parts.head, parts.tail])
+  if (table.type.name !== 'table') return false
+  const row = table.maybeChild(plan.rowIndex)
+  if (!row) return false
+  const cell = row.maybeChild(plan.cellIndex)
+  if (!cell) return false
+  const inner = cell.maybeChild(plan.childIndex)
+  if (!inner || inner.type.name !== 'table') return false
+  if (plan.innerRowIndex < 1 || plan.innerRowIndex >= inner.childCount) return false
+
+  /* 쪼갤 자리 — 바깥표 > 행 > 칸 > 안쪽표 를 차례로 파고들어 안쪽 행과 행 사이로 */
+  let at = tablePos + 1
+  for (let r = 0; r < plan.rowIndex; r++) at += table.child(r).nodeSize
+  at += 1
+  for (let c = 0; c < plan.cellIndex; c++) at += row.child(c).nodeSize
+  at += 1
+  for (let b = 0; b < plan.childIndex; b++) at += cell.child(b).nodeSize
+  at += 1
+  for (let ir = 0; ir < plan.innerRowIndex; ir++) at += inner.child(ir).nodeSize
+
+  /* tr.split(at, 4, [뒤 조각들]) 이 만드는 것과 똑같은 걸음:
+     「안쪽표·칸·행·바깥표를 닫고 — 다시 연다」 */
+  const 앞 = Fragment.from(
+    table.type.create({ ...table.attrs, 'data-cont-next': '1' }, Fragment.from(
+      row.type.create(row.attrs, Fragment.from(
+        cell.type.create(cell.attrs, Fragment.from(
+          inner.type.create({ ...inner.attrs, 'data-cont-next': '1' })))))))
+  )
+  const 뒤 = Fragment.from(
+    table.type.create({ ...table.attrs, 'data-cont': '1' }, Fragment.from(
+      row.type.create({ ...row.attrs, 'data-row-cont': '1' }, Fragment.from(
+        cell.type.create(cell.attrs, Fragment.from(
+          inner.type.create({ ...inner.attrs, 'data-cont': '1' })))))))
+  )
+  if (tr.maybeStep(new ReplaceStep(at, at, new Slice(앞.append(뒤), 4, 4), true)).failed) return false
+
+  /* 네모꼴 되찾기 — 쪼개기는 앞 행에 칸 0..k 만, 뒤 행에 칸 k..n 만 남긴다.
+     끼워 넣기는 매핑을 깨지 않으므로 쪼갠 **뒤에** 채운다. 뒤(높은 자리)부터 넣어야
+     앞의 자리가 흔들리지 않는다. fixTables 는 트랜잭션이 끝난 문서만 보므로
+     그 사이에 잠깐 네모꼴이 아니어도 된다. */
+  const head = tr.doc.nodeAt(tablePos)
+  if (!head || head.type.name !== 'table') return true // 자리를 못 찾으면 그대로 둔다
+  const 뒤표자리 = tablePos + head.nodeSize
+  const 뒤행앞 = 뒤표자리 + 2                    // 표를 열고 행을 연 자리
+  const 앞행끝 = tablePos + head.nodeSize - 2    // 행을 닫기 직전
+
+  const 뒤채움: PMNode[] = []
+  for (let c = 0; c < plan.cellIndex; c++) {
+    const p = padCell(row.child(c))
+    if (p) 뒤채움.push(p)
+  }
+  const 앞채움: PMNode[] = []
+  for (let c = plan.cellIndex + 1; c < row.childCount; c++) {
+    const p = padCell(row.child(c))
+    if (p) 앞채움.push(p)
+  }
+  if (뒤채움.length) tr.insert(뒤행앞, Fragment.fromArray(뒤채움))
+  if (앞채움.length) tr.insert(앞행끝, Fragment.fromArray(앞채움))
   return true
 }
 
@@ -287,7 +368,7 @@ export function splitTableDeepAcrossPages(
  * (문단의 data-jan-cont 를 합치는 것과 같은 역변환)
  */
 export function mergeContinuedTables(html: string): string {
-  if (!html || (!html.includes('data-cont') && !html.includes('data-row-cont'))) return html
+  if (!html || (!html.includes('data-cont') && !html.includes('data-row-cont') && !html.includes('data-jan-pad'))) return html
   const doc = new DOMParser().parseFromString(`<div id="r">${html}</div>`, 'text/html')
   const root = doc.getElementById('r')
   if (!root) return html
@@ -340,6 +421,14 @@ export function mergeContinuedTables(html: string): string {
         ;[...row.children].forEach((cell, i) => {
           const target = into[i]
           if (!target) return
+          /* 뒤 조각의 채움 칸은 자리만 맡고 있던 것이다 — 아무것도 옮기지 않는다 */
+          if (cell.hasAttribute('data-jan-pad')) return
+          /* 앞 조각의 채움 칸이면 그 안의 빈 문단을 먼저 버린다.
+             그러지 않으면 옮겨 온 글 앞에 없던 빈 줄이 생긴다 (앞 칸이 뒤로 갈린 자리다). */
+          if (target.hasAttribute('data-jan-pad')) {
+            target.replaceChildren()
+            target.removeAttribute('data-jan-pad')
+          }
           ;[...cell.childNodes].forEach((child) => {
             if (빈줄(child as Element)) return
             target.appendChild(child)
@@ -359,5 +448,7 @@ export function mergeContinuedTables(html: string): string {
   /* 「뒤에 이어진다」 는 화면 조판을 위한 표시다 — 도로 한 표가 된 뒤에는 남을 자리가 없다.
      남겨 두면 저장본을 다시 열 때 아래 여백·둥근 모서리가 사라진 표가 된다. */
   root.querySelectorAll('table[data-cont-next]').forEach((t) => t.removeAttribute('data-cont-next'))
+  /* 짝을 못 찾고 남은 채움 칸 — 표시만 지워 보통 빈 칸으로 둔다 (지우면 네모꼴이 깨진다) */
+  root.querySelectorAll('[data-jan-pad]').forEach((c) => c.removeAttribute('data-jan-pad'))
   return root.innerHTML
 }

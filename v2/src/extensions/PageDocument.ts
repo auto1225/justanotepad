@@ -3,7 +3,7 @@ import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { canJoin, canSplit, ReplaceStep } from '@tiptap/pm/transform'
 import { Fragment, Slice } from '@tiptap/pm/model'
-import { innerSplitPlan, keepsWhole, mergeContinuedTables, rowsThatFit, splitTableDeepAcrossPages } from './tableSplit'
+import { innerSplitPlan, keepsWhole, mergeContinuedTables, rowsThatFit, safeSplitRow, splitTableDeepAcrossPages } from './tableSplit'
 import type { EditorState, Transaction } from '@tiptap/pm/state'
 import type { EditorView } from '@tiptap/pm/view'
 import type { Node as PMNode, NodeType } from '@tiptap/pm/model'
@@ -798,10 +798,15 @@ function reflowOnce(view: EditorView, contentHeight: number): boolean {
       if (child.type.name === 'table' && !keepsWhole(child)) {
         const room = m.rooms[cutIndex]
         const fit = child.childCount > 2 ? rowsThatFit(view, tablePos, room, m.scale) : 0
+        /* 세로 합침(rowspan)을 뚫고 나누지 않는다 — 깨끗한 행 경계까지 물러난다.
+           뚫으면 앞 조각의 합친 칸이 깎이고 뒤 조각에는 그 열의 칸이 모자라, fixTables 가
+           행 끝에 빈 칸을 덧붙인다. 그 칸이 저장본에 그대로 남아 표가 부푼다
+           (실측: 문서 77칸 → 저장본 80칸, 빈 칸 5개, rowspan 이 4·2·1 로 뒤섞였다). */
+        const cut = fit >= 2 ? safeSplitRow(child, fit) : 0
         // 제목 행만 남기고 나누면 보기 흉하다 — 두 줄 이상 남을 때만 나눈다
-        if (fit >= 2 && fit < child.childCount) {
+        if (cut >= 2 && cut < child.childCount) {
           const tr = state.tr
-          if (splitTableKeepingMap(tr, tablePos, child, fit)
+          if (splitTableKeepingMap(tr, tablePos, child, cut)
             && setPageBoundary(tr, i, cutIndex + 1, pageType)) {
             tr.setMeta(reflowKey, true)
             tr.setMeta('addToHistory', false)

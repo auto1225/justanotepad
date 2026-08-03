@@ -372,43 +372,39 @@ test.describe('표 — 쪽 넘김과 여러 칸 다루기', () => {
     expect(await 저장본(page)).toContain('data-keep')
   })
 
-  test('③ 끄는 도중 표가 쪽을 넘어가도 끌기가 죽지 않는다', async ({ page }) => {
-    /* 크기를 끄는 사이에 표가 쪽 경계를 넘으면 조판이 노드를 지우고 다시 넣는다.
-       고름에 기대면 그 순간 findTable() 이 표를 잃어 그다음 걸음부터 아무 일도 일어나지 않는다 —
-       그림에서 실제로 겪고 고친 고장이다(ImageHandles). 표 손잡이도 같은 수를 썼다:
-       끄는 동안 표의 자리를 붙들고, 문서가 바뀌면 그 자리도 함께 옮기고, 걸음마다 커서를 되돌린다.
-
-       ※ 이 시험은 **못 지킨다**. 고침을 빼고도 그대로 통과한다 — 지금 조판에서는 나눌 때
-         커서가 든 칸이 앞 조각에 남아 고름이 표 밖으로 나가지 않기 때문이다(실측:
-         열 걸음 내내 「표안: true」, 열째 걸음에서 조각이 2개가 되어도 끌기는 이어졌다).
-         고침은 그 전제가 깨지는 날(뒤 조각으로 넘어가는 나눔, 노드 통째 교체)을 위한 대비이고,
-         지금 이 시험이 지키는 것은 「끌기가 끝까지 따라온다」 뿐이다. */
-    await 문서를(page, '<p>' + '앞 글을 채운다. '.repeat(150) + '</p>' + 긴표(6) + '<p>표 뒤</p>')
+  test('③ 끌던 행이 다음 쪽으로 넘어가도 끌기가 죽지 않는다', async ({ page }) => {
+    /* 행 높이를 끄는 사이에 그 행이 커져 쪽 경계를 넘으면 조판이 표를 갈라 그 행을 뒤 조각으로
+       보낸다. 순번으로 행을 짚던 시절에는 그 순간 앞 조각에 그 순번의 행이 없어 끌기가 죽었다 —
+       실측: 조각이 [5,1,1,1] 로 갈린 걸음에서 높이가 420px 에 멎고 더는 자라지 않았다.
+       이제는 행의 **자리**를 붙들고 문서가 바뀔 때마다 함께 옮긴다. */
+    await 문서를(page, '<p>' + '앞 글을 채운다. '.repeat(110) + '</p><table><tbody>' +
+      Array.from({ length: 8 }, (_, i) => `<tr><td><p>행 ${i + 1}</p></td><td><p>값 ${i + 1}</p></td></tr>`).join('') +
+      '</tbody></table><p>표 뒤</p>')
     await 조판끝(page)
-    await page.locator('.ProseMirror table td').first().click()
-    await page.waitForTimeout(400)
 
-    const 손잡이 = page.locator('.jan-th-rowsize').first()
+    // 아래쪽 행(여섯째)에 커서를 두고 그 행의 아래 경계를 끈다 — 곧 다음 쪽으로 밀리는 행이다
+    await page.locator('.ProseMirror table td').nth(10).click()
+    await page.waitForTimeout(400)
+    const 손잡이 = page.locator('.jan-th-rowsize').nth(5)
     await expect(손잡이).toBeAttached()
     const box = await 손잡이.boundingBox()
-    const 처음높이 = (await page.evaluate(() =>
-      [...document.querySelectorAll('.ProseMirror tr')].map((r) => Math.round(r.getBoundingClientRect().height))))[0]
 
-    // 한 번에 크게 끌어 표가 쪽 경계를 넘게 만든다 (걸음마다 조판이 돈다)
+    const 제일높은행 = () => page.evaluate(() =>
+      Math.max(...[...document.querySelectorAll('.ProseMirror tr')].map((r) => Math.round(r.getBoundingClientRect().height))))
+
     await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2)
     await page.mouse.down()
-    for (let i = 1; i <= 8; i++) {
-      await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2 + i * 30)
-      await page.waitForTimeout(80)
+    for (let i = 1; i <= 16; i++) {
+      await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2 + i * 35)
+      await page.waitForTimeout(110)
     }
     await page.mouse.up()
     await 조판끝(page)
 
-    const 끝높이 = (await page.evaluate(() =>
-      [...document.querySelectorAll('.ProseMirror tr')].map((r) => Math.round(r.getBoundingClientRect().height))))[0]
-    // 끝까지 따라왔다 — 한 걸음 만에 죽었다면 30px 언저리에서 멈춘다
-    expect(끝높이 - 처음높이).toBeGreaterThan(150)
-    // 손잡이도 살아 있다
+    // 표는 정말 갈렸고, 끌던 행은 끝까지 자랐다 (죽었다면 420px 언저리에서 멎는다)
+    expect((await 표조각(page)).length).toBeGreaterThan(1)
+    expect(await 제일높은행()).toBeGreaterThan(500)
+    // 손잡이도 그 행을 따라갔다
     await expect(page.locator('.jan-th-rowsize').first()).toBeAttached()
   })
 
@@ -443,6 +439,47 @@ test.describe('표 — 쪽 넘김과 여러 칸 다루기', () => {
     expect(m.칸).toBe(9)
     expect(m.글).toContain('가나')
     expect(m.글).toContain('부산')
+  })
+
+  test('③ 세로 합친 칸을 뚫고 나누지 않는다 — 저장 왕복에서 칸이 늘지 않는다', async ({ page }) => {
+    /* 뚫고 나누면 앞 조각의 합친 칸이 조각 길이에 맞게 깎이고(4 → 2), 뒤 조각 첫 행들에는
+       그 열의 칸이 모자라 fixTables 가 행 **끝에** 빈 칸을 덧붙인다. 열 자리도 틀리고 그 칸이
+       저장본에 그대로 남는다 — 실측: 문서 75칸 → 저장본 80칸, 빈 칸 5개, rowspan 이 4·2·1 로.
+       이제는 깨끗한 행 경계(합침의 배수)까지 물러나 나눈다. */
+    const rows: string[] = []
+    for (let i = 0; i < 60; i++) {
+      rows.push(i % 4 === 0
+        ? `<tr><td rowspan="4"><p>묶음 ${i / 4}</p></td><td><p>값 ${i}</p></td></tr>`
+        : `<tr><td><p>값 ${i}</p></td></tr>`)
+    }
+    await 문서를(page, '<p>표 앞</p><table><tbody>' + rows.join('') + '</tbody></table><p>표 뒤</p>')
+    await 조판끝(page)
+
+    const 조각 = await 표조각(page)
+    expect(조각.length).toBeGreaterThan(1)              // 정말 쪽에 걸쳐 나뉘었다
+    // 나눈 자리가 모두 합침 경계다 (4의 배수) — 합친 칸을 뚫지 않았다
+    let 누적 = 0
+    for (const t of 조각.slice(0, -1)) {
+      누적 += t.행수
+      expect(누적 % 4).toBe(0)
+    }
+
+    const saved = await 저장본(page)
+    const m = await page.evaluate((h) => {
+      const wrap = document.createElement('div')
+      wrap.innerHTML = h
+      const td = [...wrap.querySelectorAll('td')]
+      return {
+        표: wrap.querySelectorAll('table').length,
+        행: wrap.querySelectorAll('tr').length,
+        칸: td.length,
+        빈칸: td.filter((c) => !(c.textContent || '').trim()).length,
+        rowspan: [...new Set(td.map((c) => c.getAttribute('rowspan')))].sort(),
+        pad: wrap.querySelectorAll('[data-jan-pad]').length,
+      }
+    }, saved)
+    // 원본 그대로 — 60행 · 75칸 (15행 × 2칸 + 45행 × 1칸)
+    expect(m).toEqual({ 표: 1, 행: 60, 칸: 75, 빈칸: 0, rowspan: ['1', '4'], pad: 0 })
   })
 
   /* ── 사람이 실제로 하는 흐름 ─────────────────────────────────────── */

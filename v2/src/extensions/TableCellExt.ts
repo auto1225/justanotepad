@@ -57,6 +57,20 @@ const backgroundColorAttr = {
     renderHTML: (attrs: Record<string, unknown>) =>
       attrs['data-diag'] ? { 'data-diag': attrs['data-diag'] } : {},
   },
+  /**
+   * 자리를 맞추려고 끼워 넣은 빈 칸 — 쪽 경계에서 행이 둘로 갈릴 때만 생긴다.
+   *
+   * 표는 네모꼴이어야 한다. 행 하나를 가르면 앞뒤 행에 칸이 모자라는데, 비워 둔 채로 두면
+   * prosemirror-tables 가 제 나름대로 칸을 채워 넣고 그 칸은 저장본에 그대로 남는다
+   * (실측: 원본 75칸이 저장본에서 80칸으로 늘었다). 그래서 우리가 표를 달고 채우고,
+   * 합칠 때 그 표를 보고 도로 걷어 낸다.
+   */
+  'data-jan-pad': {
+    default: null as string | null,
+    parseHTML: (el: HTMLElement) => el.getAttribute('data-jan-pad'),
+    renderHTML: (attrs: Record<string, unknown>) =>
+      (attrs['data-jan-pad'] ? { 'data-jan-pad': String(attrs['data-jan-pad']) } : {}),
+  },
   /** 칸 안 글자 방향 — 워드의 「텍스트 방향 변경」 */
   'data-text-dir': {
     default: null as string | null,
