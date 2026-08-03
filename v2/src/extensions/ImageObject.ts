@@ -1,5 +1,6 @@
 import { Image } from '@tiptap/extension-image'
-import { Plugin, PluginKey } from '@tiptap/pm/state'
+import { NodeSelection, Plugin, PluginKey } from '@tiptap/pm/state'
+import { dropPoint } from '@tiptap/pm/transform'
 
 /**
  * 그림 개체 — 워드의 「그림 서식」 탭에 있는 것들을 담는 노드.
@@ -377,6 +378,44 @@ export const ImageObject = Image.extend({
     const editor = this.editor
     return [
       ...(this.parent?.() || []),
+      new Plugin({
+        key: new PluginKey('janImageMove'),
+        props: {
+          /**
+           * 그림을 끌어 옮기는 일은 우리가 직접 한다 — 지우기와 넣기를 한 트랜잭션에.
+           *
+           * 브라우저의 끌어놓기에 맡기면, 집어 든 자리를 기억했다가 놓을 때 거기를 지운다.
+           * 그런데 끄는 사이 쪽이 다시 짜여 그림이 다른 자리로 가면 원래 자리를 못 찾아
+           * 지우지 못하고 넣기만 한다 — 그림이 둘이 된다. 여백에 닿을 때, 표 선에 닿을 때,
+           * 쪽을 넘길 때가 모두 쪽이 다시 짜이는 순간이라 꼭 그때 벌어졌다.
+           *
+           * 우리가 하면 지금 문서에서 그 그림이 어디 있는지 보고 지우므로, 그 사이 무슨 일이
+           * 있었든 상관없다. 한 트랜잭션이라 둘이 될 수가 없다.
+           */
+          handleDrop(view, event, slice, moved) {
+            if (!moved) return false
+            const sel = view.state.selection
+            if (!(sel instanceof NodeSelection) || sel.node.type.name !== 'image') return false
+            const drag = event as DragEvent
+            const at = view.posAtCoords({ left: drag.clientX, top: drag.clientY })
+            if (!at) return false
+            const target = dropPoint(view.state.doc, at.pos, slice)
+            if (target == null) return false
+
+            const node = sel.node
+            const tr = view.state.tr
+            tr.delete(sel.from, sel.to)
+            const where = tr.mapping.map(target)
+            tr.insert(where, node)
+            /* 옮긴 뒤에도 고른 채로 둔다 — 워드처럼 바로 이어서 다룰 수 있게 */
+            const landed = tr.doc.nodeAt(where)
+            if (landed && landed.type.name === 'image') tr.setSelection(NodeSelection.create(tr.doc, where))
+            view.dispatch(tr)
+            event.preventDefault()
+            return true
+          },
+        },
+      }),
       new Plugin({
         key: new PluginKey('janImageNatural'),
         view() {
