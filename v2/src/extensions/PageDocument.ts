@@ -993,6 +993,15 @@ export const PageReflow = Extension.create<ReflowOptions>({
             raf = 0
             running = true
             try {
+              /* 끌어 옮기는 중에는 손대지 않는다.
+                 브라우저의 끌어놓기는 집어 든 그 자리를 기억했다가 놓을 때 거기를 지운다.
+                 그 사이 쪽을 다시 짜서 그림이 다른 자리로 가면, 놓을 때 원래 자리를 못 찾아
+                 지우지 못하고 넣기만 한다 — 그림이 복사되어 둘이 된다.
+                 그림을 여백까지 끌면 쪽이 다시 짜이므로 꼭 그때 벌어졌다. */
+              if ((view as unknown as { dragging?: unknown }).dragging) {
+                raf = window.requestAnimationFrame(() => run(view))
+                return
+              }
               const contentHeight = options.getContentHeight()
               if (!contentHeight || contentHeight < 40) return
               /* 아직 오지 않은 그림이 있으면 재지 않는다 — 0 으로 재고 짜면 뒤 글이 여백을 뚫는다.

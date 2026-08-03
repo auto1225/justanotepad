@@ -84,3 +84,61 @@ test('손잡이를 끄는 내내 크기가 따라오고, 놓아도 고른 채로
   /* 놓은 뒤에도 고른 채로 남아 바로 더 다룰 수 있다 */
   await expect(page.locator('.jan-ih-dot')).toHaveCount(8)
 })
+
+test('끄는 동안 그림이 계속 보인다 — 빈 자리에서 크기만 바뀌지 않는다', async ({ page }) => {
+  /* 저장소를 거치는 그림(jan-blob://)이라야 드러난다. 크기를 바꾸면 노드가 새로 그려지며
+     src 가 1×1 빈 그림으로 돌아가는데, 진짜 그림을 다시 물리는 데 50ms 가 걸린다.
+     손잡이를 끄는 동안에는 걸음마다 그 일이 되풀이되어 그림이 내내 안 보였다. */
+  await page.goto('./')
+  await page.evaluate(() => localStorage.setItem('jan-v2-role-onboarded', '1'))
+  await page.reload()
+  const doc = page.locator('.ProseMirror').first()
+  await doc.waitFor({ state: 'visible' })
+  await doc.click()
+  await page.keyboard.type('저장소를 거치는 그림')
+  const chooser = page.waitForEvent('filechooser')
+  await page.locator('.jan-ribbon-tab', { hasText: /^삽입$/ }).first().click()
+  await page.locator('.jan-ribbon-body button[aria-label="그림 넣기 (파일에서)"]').first().click()
+  await (await chooser).setFiles(path.join(process.cwd(), 'e2e', 'fixtures', 'big.png'))
+  await expect(doc.locator('img')).toHaveCount(1)
+  await page.keyboard.press('Control+s')
+  await page.waitForTimeout(1500)
+  await page.reload()
+  await doc.waitFor({ state: 'visible' })
+  await page.waitForTimeout(2500)
+
+  const img = doc.locator('img').first()
+  await expect(img).toHaveAttribute('data-blob-ref', /jan-blob/)
+  await img.click()
+  await expect(page.locator('.jan-ih-dot')).toHaveCount(8)
+
+  const se = await page.evaluate(() => {
+    const dots = [...document.querySelectorAll('.jan-ih-dot')] as HTMLElement[]
+    const pick = dots.reduce((a, b) => {
+      const ra = a.getBoundingClientRect(); const rb = b.getBoundingClientRect()
+      return rb.x + rb.y > ra.x + ra.y ? b : a
+    })
+    const r = pick.getBoundingClientRect()
+    return { x: r.x + r.width / 2, y: r.y + r.height / 2 }
+  })
+  await page.mouse.move(se.x, se.y)
+  await page.mouse.down()
+  const 빈번 = { blank: 0, total: 0 }
+  for (let i = 1; i <= 8; i += 1) {
+    /* 움직인 바로 그 순간을 잰다 — 기다렸다 재면 빈 구간(50ms)이 이미 지나가 버린다.
+       사람 눈에는 그 구간이 「그림이 사라진 채로 크기만 바뀌는」 것으로 보인다. */
+    await page.mouse.move(se.x - i * 14, se.y - i * 10)
+    const s = await page.evaluate(() => {
+      const im = document.querySelector('.ProseMirror img') as HTMLImageElement
+      return { blank: (im.getAttribute('src') || '').startsWith('data:image/gif'), drawn: im.naturalWidth > 2 }
+    })
+    빈번.total += 1
+    if (s.blank || !s.drawn) 빈번.blank += 1
+    await page.waitForTimeout(70)
+  }
+  await page.mouse.up()
+  await page.waitForTimeout(400)
+
+  /* 끄는 내내 진짜 그림이 붙어 있어야 한다 */
+  expect(빈번.blank).toBe(0)
+})

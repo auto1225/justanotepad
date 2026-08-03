@@ -205,6 +205,31 @@ const missingRefs = new Set<string>()
 /** 브라우저가 더는 부르지 않도록 놓아 두는 빈 그림 (1×1 투명) */
 const BLANK = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
 
+/**
+ * 이미 풀어 둔 그림을 그 자리에서 곧바로 물린다 (기다리지 않는다).
+ *
+ * 크기를 바꾸면 그림 노드가 새로 그려지고 src 는 다시 1×1 빈 그림이 된다. 진짜 그림은
+ * 저장소를 거쳐 물리므로 50ms 남짓 비어 있는데, 손잡이를 끄는 동안에는 그 일이 걸음마다
+ * 되풀이되어 그림이 내내 안 보인 채로 크기만 바뀐다. 한 번 풀어 둔 주소는 이미 손에
+ * 있으므로, 기다릴 것 없이 그 자리에서 물린다.
+ *
+ * @returns 아직 못 물린 것이 남았으면 true (그것만 저장소를 다녀와야 한다)
+ */
+function attachCached(root: ParentNode): boolean {
+  let pending = false
+  const elements = root.querySelectorAll<HTMLImageElement>(`img[data-blob-ref], img[src^="${REF_PREFIX}"]`)
+  for (const element of Array.from(elements)) {
+    const ref = element.getAttribute('data-blob-ref') || element.getAttribute('src') || ''
+    if (!isBlobRef(ref)) continue
+    const id = blobRefId(ref)
+    if (missingRefs.has(id)) continue
+    const url = objectUrls.get(id)
+    if (!url) { pending = true; continue }
+    if (element.getAttribute('src') !== url) element.src = url
+  }
+  return pending
+}
+
 export async function resolveBlobRefsInElement(root: ParentNode | null): Promise<void> {
   if (!root || !('querySelectorAll' in root)) return
   /* 그림은 src 에 빈 그림을 놓고 주소를 data-blob-ref 에 둔다 (브라우저가 못 읽는 주소를
@@ -332,12 +357,19 @@ export function watchBlobRefs(root: HTMLElement): () => void {
 
   const mo = new MutationObserver((records) => {
     for (const r of records) {
-      if (r.type === 'attributes') { schedule(); return }
-      for (const n of Array.from(r.addedNodes)) {
-        if (n.nodeType !== 1) continue
-        const el = n as Element
-        if (el.tagName === 'IMG' || el.querySelector?.('img, audio, video')) { schedule(); return }
+      let hit = r.type === 'attributes'
+      if (!hit) {
+        for (const n of Array.from(r.addedNodes)) {
+          if (n.nodeType !== 1) continue
+          const el = n as Element
+          if (el.tagName === 'IMG' || el.querySelector?.('img, audio, video')) { hit = true; break }
+        }
       }
+      if (!hit) continue
+      /* 아는 것부터 그 자리에서 물린다 — 기다리는 동안 그림이 비어 보이지 않게.
+         모르는 것이 남았을 때만 저장소를 다녀온다. */
+      if (attachCached(root)) schedule()
+      return
     }
   })
   mo.observe(root, { subtree: true, childList: true, attributes: true, attributeFilter: ['src', 'data-blob-ref'] })
