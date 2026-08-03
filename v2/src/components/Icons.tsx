@@ -34,7 +34,7 @@ export type IconName =
   | 'image-text' | 'page' | 'globe' | 'cloud'
   | 'maximize' | 'minimize' | 'focus' | 'tag' | 'hash'
   | 'cmd' | 'paragraph' | 'briefcase' | 'sync' | 'home' | 'shield' | 'clock' | 'page-break' | 'columns' | 'sup' | 'box' | 'qr' | 'history' | 'download' | 'upload' | 'dot' | 'send' | 'card' | 'cards' | 'sliders' | 'refresh-cw' | 'window-min' | 'window-max' | 'window-pin' | 'kanban'
-  | 'chart' | 'pen' | 'cube' | 'smart' | 'signature' | 'stamp'
+  | 'chart' | 'pen' | 'cube' | 'smart' | 'signature' | 'stamp' | 'eraser'
 
 const PATHS: Record<IconName, string> = {
   // 파일
@@ -171,6 +171,8 @@ const PATHS: Record<IconName, string> = {
   signature: 'M3 17c3-6 5 2 8-2s4 1 7-3 M3 21h18',
   // 도장 — 손잡이를 쥔 인장과 찍히는 자리
   stamp: 'M9 2h6v5l2 4H7l2-4z M4 15h16v3H4z M3 21h18',
+  // 지우개 — 비스듬히 누운 몸통과 지워지는 줄
+  eraser: 'M8.5 20H20 M15.5 4.5l4 4L10 18H6.5L4 15.5z M9.5 8.5l6 6',
 }
 
 export function Icon({ name, size = 16, className = '', strokeWidth = 2 }: IconProps) {
