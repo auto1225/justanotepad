@@ -15,6 +15,31 @@ import { flash } from './flash'
 
 export interface ImageHit { node: PMNode; pos: number }
 
+/**
+ * 그림을 문서에 넣기 전에 미리 풀어 둔다 — 디코딩을 조판 트랜잭션에서 떼어 놓는 것.
+ *
+ * 큰 그림을 넣으면 그 자리에서 곧바로 타자가 늦어진다. 재어 보니(4000×3000 WebP,
+ * 넣은 뒤 2초 동안 가장 오래 붙들린 프레임):
+ *   아무것도 안 넣었을 때        18ms
+ *   data: 주소로 넣기          219ms
+ *   object 주소로 넣기         250ms   ← 글자값이 아니라 디코딩이 붙든다
+ *   미리 풀어 두고 넣기          37ms
+ * 8MB 짜리 data: 글자를 다루는 값이 아니었다. 같은 그림을 짧은 object 주소로 넣어도
+ * 250ms 붙들렸으니, 붙드는 것은 디코딩이다. 미리 풀어 두면 브라우저가 그림판을
+ * 손에 쥔 채로 조판에 들어가 250ms 가 37ms 가 된다 (바닥값 18ms).
+ *
+ * 못 풀어도 그냥 넘어간다 — 넣는 일 자체를 막을 만한 이유가 아니다.
+ */
+export async function decodeBeforeInsert(src: string): Promise<void> {
+  if (!src || typeof Image === 'undefined') return
+  try {
+    const img = new Image()
+    img.src = src
+    if (typeof img.decode !== 'function') return
+    await img.decode()
+  } catch { /* 못 풀면 예전처럼 넣는다 */ }
+}
+
 /** 지금 다루는 그림 (없으면 null) */
 export function currentImage(editor: Editor | null): ImageHit | null {
   if (!editor) return null

@@ -4,6 +4,7 @@ import { dropPoint } from '@tiptap/pm/transform'
 import { Fragment, Slice } from '@tiptap/pm/model'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import type { EditorView } from '@tiptap/pm/view'
+import { peekBlobRef } from '../lib/blobRefs'
 
 /**
  * 그림 개체 — 워드의 「그림 서식」 탭에 있는 것들을 담는 노드.
@@ -126,6 +127,132 @@ export const IMAGE_SHAPES: { key: string; label: string; clip: string }[] = [
   { key: 'heart', label: '하트', clip: 'path("M 50 90 C 10 60 0 35 15 18 C 30 2 50 12 50 28 C 50 12 70 2 85 18 C 100 35 90 60 50 90 Z")' },
   { key: 'arrow', label: '화살표', clip: 'polygon(0% 25%, 60% 25%, 60% 0%, 100% 50%, 60% 100%, 60% 75%, 0% 75%)' },
 ]
+
+/* ── SVG 가 스스로 밝힌 치수 ──────────────────────────────────────────────
+ *
+ * 다른 갈래는 브라우저가 잰 naturalWidth·naturalHeight 가 곧 원래 크기다.
+ * SVG 만 다르다 — width·height 없이 viewBox 만 있는 SVG 에는 물리 치수가 없어서,
+ * 브라우저는 「기본 개체 크기」 300×150 안에 비율을 맞춰 넣은 값을 대신 준다.
+ * 그림이 스스로 밝힌 치수와는 아무 상관이 없는 숫자다. 재어 보니(크로뮴 141):
+ *
+ *   viewBox="0 0 800 200"  → naturalWxH 300×75   → 화면 300×75
+ *     (치수를 적어 둔 똑같은 그림은 800×200 → 화면 641×160. 두 배가 넘게 다르다)
+ *   viewBox="0 0 200 800"  → 38×150              → 세로 그림이 폭 38px 조각이 된다
+ *   viewBox="0 0 1 1000"   → 0×150               ← naturalWidth 가 0 이다
+ *
+ * 마지막 것이 특히 나쁘다. naturalWidth 가 0 이면 아래 janImageNatural 이
+ * 「아직 안 물린 그림」 으로 보고 data-nw 를 영영 안 적는다. 그러면 예약 상자도
+ * 못 걸고 브라우저의 비율만 남아, 그림 하나가 641×640,531px 로 부푼다 —
+ * 재어 보니 문서 높이가 1,123 에서 640,684px 이 되었다(570배). 지면이 찢어진다.
+ *
+ * 워드와 한글은 viewBox 를 그림의 치수로 읽는다. 우리도 그렇게 읽는다.
+ * 알맹이를 읽지 못하면(멀리 있는 .svg 주소 따위) 손대지 않고 예전 길로 둔다 —
+ * 못 읽은 채로 지어낸 숫자보다 브라우저가 준 값이 적어도 화면과는 맞기 때문이다.
+ */
+
+/** CSS 길이 단위를 px 로 (백분율·상대 단위는 물리 치수가 아니므로 뺀다) */
+const CSS_UNIT_PX: Record<string, number> = {
+  '': 1, px: 1, pt: 96 / 72, pc: 16, in: 96, cm: 96 / 2.54, mm: 96 / 25.4, q: 96 / 101.6,
+}
+
+function cssLengthToPx(value: string | undefined): number | null {
+  if (!value) return null
+  const m = /^\s*([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)\s*([a-z]*)\s*$/i.exec(value)
+  if (!m) return null
+  const n = Number(m[1])
+  const k = CSS_UNIT_PX[m[2].toLowerCase()]
+  return Number.isFinite(n) && n > 0 && k !== undefined ? n * k : null
+}
+
+export interface NaturalSize { nw: number; nh: number }
+
+/** 예약 상자에 쓸 만한 수인지 — 0 이나 어처구니없이 큰 값은 안 쓴다 */
+function sane(nw: number, nh: number): NaturalSize | null {
+  const w = Math.round(nw)
+  const h = Math.round(nh)
+  if (!Number.isFinite(w) || !Number.isFinite(h)) return null
+  if (w < 1 || h < 1 || w > 50000 || h > 50000) return null
+  return { nw: w, nh: h }
+}
+
+const SVG_OPEN_TAG = /<svg\b[^>]*>/i
+const NUMBERS = /[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?/gi
+
+/** SVG 글자에서 여는 태그 하나만 보고 치수를 낸다 (안쪽 symbol 의 viewBox 에 속지 않게) */
+export function svgSizeFromMarkup(markup: string): NaturalSize | null {
+  const open = SVG_OPEN_TAG.exec(markup)
+  if (!open) return null
+  const tag = open[0]
+  const pick = (name: string) => {
+    const m = new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, 'i').exec(tag)
+    return m ? (m[1] ?? m[2]) : undefined
+  }
+  const w = cssLengthToPx(pick('width'))
+  const h = cssLengthToPx(pick('height'))
+  if (w && h) return sane(w, h)
+
+  const vb = pick('viewBox')
+  const nums = vb ? (vb.match(NUMBERS) || []).map(Number) : []
+  if (nums.length === 4 && nums[2] > 0 && nums[3] > 0) {
+    /* 한쪽만 물리 치수로 적혀 있으면 viewBox 의 비율로 나머지를 채운다 */
+    const ratio = nums[2] / nums[3]
+    if (w) return sane(w, w / ratio)
+    if (h) return sane(h * ratio, h)
+    return sane(nums[2], nums[3])
+  }
+  return null
+}
+
+/** 한 번 읽은 것은 기억한다 — renderHTML 은 다시 그릴 때마다 부르는 자리다 */
+const svgSizes = new Map<string, NaturalSize | null>()
+
+function remember(key: string, size: NaturalSize | null): NaturalSize | null {
+  if (svgSizes.size > 200) svgSizes.clear()
+  svgSizes.set(key, size)
+  return size
+}
+
+/** data: 주소에 담긴 SVG 글자를 앞에서 조금만 꺼낸다 — viewBox 는 여는 태그에 있다 */
+function svgHeadFromDataUrl(src: string): string | null {
+  const comma = src.indexOf(',')
+  if (comma < 0) return null
+  const base64 = /;base64/i.test(src.slice(0, comma))
+  let body = src.slice(comma + 1)
+  const HEAD = 8192
+  try {
+    if (base64) {
+      if (body.length > HEAD) body = body.slice(0, HEAD - (HEAD % 4))
+      return atob(body)
+    }
+    if (body.length > HEAD) body = body.slice(0, HEAD)
+    /* 퍼센트 인코딩은 %XX 가 잘리면 터진다 — 잘린 꼬리를 한두 자 떼어 본다 */
+    for (let i = 0; i < 3; i += 1) {
+      try { return decodeURIComponent(body) } catch { body = body.slice(0, -1) }
+    }
+    return null
+  } catch { return null }
+}
+
+/**
+ * 이 주소의 그림이 SVG 라면 스스로 밝힌 치수를 돌려준다 (아니거나 못 읽으면 null).
+ *
+ * 알맹이가 지금 손에 있는 것만 읽는다 — data: 주소와, 이미 물려 둔 저장소 주소.
+ * 멀리 있는 .svg 주소는 여기서 알 수 없다(가져오려면 기다려야 하는데 조판은 기다리지
+ * 않는다). 그때는 null 을 주고 예전 길로 둔다.
+ */
+export function svgIntrinsicSize(src: unknown): NaturalSize | null {
+  if (typeof src !== 'string' || !src) return null
+  if (src.startsWith('jan-blob://')) {
+    const cached = peekBlobRef(src)
+    /* 아직 안 풀린 주소는 기억하지 않는다 — 곧 풀리면 그때 읽어야 한다 */
+    return cached ? svgIntrinsicSize(cached) : null
+  }
+  /* SVG 가 아닌 것은 기억할 것도 없다 — 큰 그림의 data: 주소를 열쇠로 붙들지 않는다 */
+  if (!/^data:image\/svg\+xml/i.test(src)) return null
+  if (svgSizes.has(src)) return svgSizes.get(src) ?? null
+  const head = svgHeadFromDataUrl(src)
+  return remember(src, head ? svgSizeFromMarkup(head) : null)
+}
 
 /** 지금 그림에 걸린 변형(회전·대칭)을 CSS transform 으로 */
 function transformOf(attrs: Record<string, unknown>): string {
@@ -447,6 +574,10 @@ export const ImageObject = Image.extend({
   renderHTML({ node }) {
     const a = node.attrs as Record<string, unknown>
     const crop = parseCrop(a.crop)
+    /* SVG 는 브라우저가 잰 값 대신 그림이 스스로 밝힌 치수를 쓴다 (위 svgIntrinsicSize 참고).
+       여기서 다시 읽는 까닭은, 예전 판이 적어 둔 data-nw(브라우저의 기본 개체 크기
+       300×150 에 맞춰 넣은 값)가 이미 문서에 저장되어 있어서다 — 다시 그리면 스스로 고쳐진다. */
+    const svgSize = svgIntrinsicSize(a.src)
     const data: Record<string, string> = {}
     const put = (key: string, value: unknown) => { if (value != null && value !== '' && value !== false) data[key] = String(value) }
     put('data-align', a.align)
@@ -465,8 +596,12 @@ export const ImageObject = Image.extend({
     put('data-radius', a.radius)
     put('data-adjust', a.adjust)
     put('data-opacity', a.opacity)
-    put('data-nw', a.nw)
-    put('data-nh', a.nh)
+    /* 이미 적혀 있는 값이 SVG 의 것과 어긋나면 여기서 바로잡아 내보낸다 — 예전 판이 적어 둔
+       브라우저 기본 치수는 이렇게 저장 한 번으로 씻긴다. 아직 아무 값도 없으면 비워 둔다:
+       아래 janImageNatural 이 노드에 적어야 「원래 크기로」 같은 것이 함께 맞는다
+       (data-nw 를 미리 내보내면 그쪽 선별자 :not([data-nw]) 에 걸려 영영 안 적힌다). */
+    put('data-nw', a.nw ? (svgSize ? svgSize.nw : a.nw) : null)
+    put('data-nh', a.nh ? (svgSize ? svgSize.nh : a.nh) : null)
     put('data-lock', a.lock === false ? '0' : null)
     put('data-width', a.width)
     put('data-height', a.height)
@@ -498,8 +633,8 @@ export const ImageObject = Image.extend({
        끝나고, 잠시 뒤 진짜 그림이 물리면 높이가 수백 px 로 뛰어 쪽이 통째로 밀린다.
        원래 크기를 알고 있으니(data-nw·nh) 비율을 미리 일러 준다 — 그림이 와도 자리가
        그대로라 다시 조판할 일이 없다. */
-    const nw = Number(a.nw) || 0
-    const nh = Number(a.nh) || 0
+    const nw = svgSize ? svgSize.nw : Number(a.nw) || 0
+    const nh = svgSize ? svgSize.nh : Number(a.nh) || 0
     /* 비율만 일러 주면 모자란다 — 빈 그림은 1×1 이라 폭이 1px 로 잡히고, 비율을 지켜 봐야
        높이도 1px 이다. 원래 폭까지 함께 일러 줘야 진짜 그림이 왔을 때와 같은 자리가 된다
        (본문보다 넓은 그림은 본문 폭에 맞춘다 — 물린 뒤와 똑같이). 뒤에 오는 imgStyle 이
@@ -756,19 +891,29 @@ export const ImageObject = Image.extend({
             if (!editor || editor.isDestroyed || !editor.view?.dom) return
             const root = editor.view.dom as HTMLElement
             root.querySelectorAll<HTMLImageElement>('img.jan-img-el:not([data-nw])').forEach((img) => {
-              /* 아직 진짜 그림이 아니다 — 저장소 주소는 1×1 빈 그림을 놓고 나중에 물린다.
-                 그 1×1 을 「원래 크기」 로 적어 두면 비율이 통째로 망가진다. */
-              if (img.naturalWidth <= 1) {
-                img.addEventListener('load', () => measure(), { once: true })
-                return
-              }
-              const pos = editor.view.posAtDOM(img, 0)
+              let pos: number
+              try { pos = editor.view.posAtDOM(img, 0) } catch { return }
               if (pos == null || pos < 0) return
               const node = editor.state.doc.nodeAt(pos)
               if (!node || node.type.name !== 'image' || node.attrs.nw) return
+
+              /* SVG 는 그림이 스스로 밝힌 치수가 먼저다 — 물리기를 기다릴 것도 없다.
+                 브라우저가 주는 naturalWidth 는 viewBox 만 있는 SVG 에서 300×150 을 맞춰
+                 넣은 엉뚱한 값이고, 비율이 극단이면 아예 0 이 되어 아래 빗장에 영영 걸린다. */
+              const svgSize = svgIntrinsicSize(node.attrs.src)
+              /* 아직 진짜 그림이 아니다 — 저장소 주소는 1×1 빈 그림을 놓고 나중에 물린다.
+                 그 1×1 을 「원래 크기」 로 적어 두면 비율이 통째로 망가진다. */
+              if (!svgSize && img.naturalWidth <= 1) {
+                img.addEventListener('load', () => measure(), { once: true })
+                return
+              }
               editor.view.dispatch(
                 editor.view.state.tr
-                  .setNodeMarkup(pos, undefined, { ...node.attrs, nw: img.naturalWidth, nh: img.naturalHeight })
+                  .setNodeMarkup(pos, undefined, {
+                    ...node.attrs,
+                    nw: svgSize ? svgSize.nw : img.naturalWidth,
+                    nh: svgSize ? svgSize.nh : img.naturalHeight,
+                  })
                   .setMeta('addToHistory', false)
               )
             })

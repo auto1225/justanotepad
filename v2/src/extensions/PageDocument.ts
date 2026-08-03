@@ -349,6 +349,30 @@ function measure(view: EditorView, pagePos: number, contentHeight: number): Page
     for (const child of Array.from(dom.children)) {
       const el = child as HTMLElement
       if (el.classList.contains('ProseMirror-widget')) continue
+      /* 상자가 없는 블록(display:none — 숨김 서식·변경 이력 추적)은 재지 않는다.
+         여러 단 갈래는 이미 이렇게 한다(`if (!rects.length)`). 한 단 갈래만 빠져 있어
+         맞춰 둔다.
+
+         **다만 이 고침이 무엇을 막는지는 재어 내지 못했다.** 표에서 잡은 같은 종류의
+         버그(rowsThatFit 이 숨은 행을 재어, 화면을 2,923px 내려본 채 다시 짜니 앞 조각이
+         15행에서 4행으로 줄었다)가 여기에도 있으리라 보고 손댔는데, 재어 보니 아니었다:
+         여기서는 starts 와 ends 를 **둘 다 같은 식**((rect − contentTop)/scale)으로
+         셈하므로 contentTop 오차가 서로 상쇄된다. 표는 「행 바닥 − 표 꼭대기」 라
+         상쇄가 없어 터졌다.
+
+         남는 어긋남은 하나뿐이다 — 당기기 단계의 `ends[c] − starts[c]` 가 숨은 블록을
+         제 위아래 여백의 합만큼 있는 것으로 센다(0 이어야 한다). 그 자리를 노려 시험을
+         두 번 써 봤지만(여백 120px 을 준 숨은 블록 열 개), 고침을 빼도 쪽 나눔이 달라지지
+         않아 **떨어뜨리지 못했다.** 처음 배치는 밀기로 앉아 당기기 경로를 안 타기 때문으로
+         보인다. 시험이 안 떨어지면 지키는 것이 없으므로 시험은 넣지 않았다.
+         고침 자체는 남긴다 — 숨은 것이 0 인 것은 어느 쪽에서 보든 옳고, 두 갈래가
+         같은 답을 내는 편이 나중에 덫이 되지 않는다. */
+      if (el.getClientRects().length === 0) {
+        starts.push(acc); ends.push(acc); rooms.push(0)
+        overflows.push(false); spanning.push(false)
+        bands.push({ band, spanning: false })
+        continue
+      }
       const rect = el.getBoundingClientRect()
       const style = window.getComputedStyle(el)
       const top = (rect.top - geom.contentTop) / geom.scale - (parseFloat(style.marginTop) || 0)
@@ -1018,6 +1042,30 @@ function imageKey(img: HTMLImageElement): string {
   return `${img.currentSrc || img.getAttribute('src') || ''}|${img.naturalWidth || 0}x${img.naturalHeight || 0}`
 }
 
+/**
+ * 「길이에 관계있는」 전역 스타일의 지문 — <html>·<body> 에 걸린 모든 속성.
+ *
+ * 문서 서식·단락 간격·글꼴·장평·문단 기호 보이기 따위는 **문서를 하나도 고치지 않는다.**
+ * CSS 변수 한 줄(`--jan-doc-line` …)이나 몸통 클래스(`jan-show-pilcrow` …)만 갈아
+ * 같은 글이 옷을 갈아입는 방식이라, 「문서가 바뀔 때」 만 도는 쪽 나눔이 그것을 못 본다.
+ *
+ * 줌만 뺀다 — 확대는 모든 길이를 같은 비율로 키우므로 쪽 나눔이 달라지지 않는다.
+ * (재어 보니 확대 0.75·1·1.25·1.5 에서 쪽 수 6, 조판 트랜잭션 7, 잦아드는 시간 138~145ms 로
+ *  한 자리도 다르지 않았다.) 빼지 않으면 Ctrl+휠 한 눈금마다 온 문서를 다시 재게 된다.
+ */
+function globalStyleKey(): string {
+  const 훑기 = (el: HTMLElement | null) => {
+    if (!el) return ''
+    let out = ''
+    for (const a of Array.from(el.attributes)) {
+      out += a.name === 'style' ? a.value.replace(/--jan-zoom\s*:[^;]*;?/g, '') : a.value
+      out += ' '
+    }
+    return out
+  }
+  return `${훑기(document.documentElement)}${훑기(document.body)}`
+}
+
 function hasPendingImages(view: EditorView): boolean {
   const imgs = view.dom.querySelectorAll('img')
   for (let i = 0; i < imgs.length; i += 1) {
@@ -1215,6 +1263,35 @@ export const PageReflow = Extension.create<ReflowOptions>({
           editorView.dom.addEventListener('load', onImageSettled, true)
           editorView.dom.addEventListener('error', onImageSettled, true)   // 못 불러온 그림도 자리는 정해진다
 
+          /**
+           * 전역 스타일이 바뀌면 다시 짠다 — 문서는 하나도 안 바뀌는 길이다.
+           *
+           * 「디자인 → 단락 간격」 을 「두 줄 간격」 으로 고르면 문단 높이가 47.6px 에서
+           * 61.6px 이 된다. 그런데 문서는 한 글자도 바뀌지 않으므로 update() 가 불리지 않고,
+           * 쪽 나눔이 그대로 남아 늘어난 글이 종이 밖으로 밀려난다. 쪽은 overflow:clip 이라
+           * 밀려난 글은 **화면에서 그냥 사라진다** — 지워지지도, 다음 쪽으로 가지도 않는다.
+           * 실측(A4 여섯 쪽): 쪽 다섯이 아래 여백을 306.8px 뚫었고 블록 15개가 보이지 않았다.
+           * 3.5초를 기다려도 조판 트랜잭션은 0회, 글자 하나를 치면 그제야 8회 돌며 바로잡혔다.
+           *
+           * 값이 언제 굳는지도 재 봤다 — 고른 바로 다음 프레임에 이미 61.59px 이었고 열네
+           * 프레임 동안 한 번도 흔들리지 않았다. 브라우저가 좌표를 물을 때 스타일을 먼저
+           * 셈해 주므로 「낡은 높이로 재는」 경합은 없다. 없는 문제는 고치지 않는다.
+           */
+          let 스타일지문 = globalStyleKey()
+          const onGlobalStyle = (records: MutationRecord[]) => {
+            /* <head> 의 스타일 한 장이 갈린 것이면(이름 있는 스타일 한 벌) 무엇이
+               달라졌는지 지문으로 알 길이 없다 — 그때는 따지지 않고 다시 짠다 */
+            const 머리 = records.some((r) => r.target !== document.documentElement && r.target !== document.body)
+            const 지금 = globalStyleKey()
+            if (!머리 && 지금 === 스타일지문) return
+            스타일지문 = 지금
+            schedule(editorView)
+          }
+          const styleWatcher = new MutationObserver(onGlobalStyle)
+          styleWatcher.observe(document.documentElement, { attributes: true })
+          if (document.body) styleWatcher.observe(document.body, { attributes: true })
+          if (document.head) styleWatcher.observe(document.head, { childList: true, subtree: true, characterData: true })
+
           // 문서를 처음 열었을 때도 용지 규격대로 나눠야 한다 (로드 직후 1회)
           schedule(editorView)
 
@@ -1225,6 +1302,7 @@ export const PageReflow = Extension.create<ReflowOptions>({
             },
             destroy() {
               window.cancelAnimationFrame(raf)
+              styleWatcher.disconnect()
               editorView.dom.removeEventListener('load', onImageSettled, true)
               editorView.dom.removeEventListener('error', onImageSettled, true)
             },

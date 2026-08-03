@@ -4103,6 +4103,24 @@ html, body, #root {
 .jan-editor-pages .ProseMirror .tableWrapper[data-fit="contents"] :is(th, td) { white-space: nowrap; width: auto; }
 .jan-editor-pages .ProseMirror .tableWrapper[data-fit="fixed"] table { table-layout: fixed; }
 
+/* 쪽으로 갈린 조각은 「내용에 맞춤」 을 접는다.
+   내용 맞춤(table-layout: auto)은 **그 <table> 안의 내용만** 보고 열 너비를 정하는데,
+   쪽을 넘어 나뉜 조각들은 서로 다른 <table> 이라 각자 제 몫만 재게 된다.
+   실측(40행·앞 30행은 짧은 이름·뒤 10행은 긴 이름·A4):
+     앞 조각(1~26행)  열 45/45  표 폭 92px
+     뒤 조각(27~40행) 열 229/45 표 폭 275px
+   한 표가 쪽을 넘으며 폭이 세 배로 벌어졌다. 조각 사이 여백·모서리·그림자를 접는 것과
+   같은 까닭이다 — 조각들은 CSS 로 서로를 볼 수 없으니, 「제 내용에 맞추기」 처럼 이웃을
+   알아야 답이 같아지는 규칙은 나뉜 동안에는 쓸 수 없다. 고정 배분은 어느 조각에서 재도
+   같은 답이 나온다. (붙여 저장하면 한 표로 돌아가 다시 내용에 맞춰진다) */
+.jan-editor-pages .ProseMirror .tableWrapper[data-fit="contents"]:is([data-cont], [data-cont-next]) table {
+  width: 100% !important;
+  table-layout: fixed;
+}
+.jan-editor-pages .ProseMirror .tableWrapper[data-fit="contents"]:is([data-cont], [data-cont-next]) :is(th, td) {
+  white-space: normal;
+}
+
 /* 표 정렬 — 표가 단·지면보다 좁을 때만 눈에 보인다 (워드와 같다) */
 .jan-editor-pages .ProseMirror .tableWrapper[data-align="center"] table { margin-left: auto; margin-right: auto; }
 .jan-editor-pages .ProseMirror .tableWrapper[data-align="right"] table { margin-left: auto; margin-right: 0; }

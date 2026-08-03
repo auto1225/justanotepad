@@ -190,6 +190,34 @@ test.describe('표 — 쪽 넘김과 여러 칸 다루기', () => {
     expect(m).toEqual({ 표: 1, 행: 61, cont: 0, contNext: 0, repeated: 0 })
   })
 
+  test('① 「내용에 맞춤」 표가 나뉘어도 조각마다 열 너비가 달라지지 않는다', async ({ page }) => {
+    /* 내용 맞춤(table-layout: auto)은 **그 <table> 안의 내용만** 보고 열 너비를 정한다.
+       나뉜 조각은 서로 다른 <table> 이라 각자 제 몫만 재게 되어, 실측(앞 30행은 짧은 이름·
+       뒤 10행은 긴 이름)에서 앞 조각이 45/45(폭 92px), 뒤 조각이 229/45(폭 275px) 로
+       한 표가 쪽을 넘으며 폭이 세 배 벌어졌다. */
+    const 행 = (i: number) =>
+      `<tr><td><p>${i < 30 ? `행${i + 1}` : `행${i + 1} 아주 긴 이름이 들어간 칸입니다`}</p></td>` +
+      `<td><p>값${i + 1}</p></td></tr>`
+    await 문서를(page, '<p>표 앞</p><table data-fit="contents"><tbody>' +
+      Array.from({ length: 40 }, (_, i) => 행(i)).join('') + '</tbody></table><p>표 뒤</p>')
+    await 조판끝(page)
+
+    const 폭 = await page.evaluate(() =>
+      [...document.querySelectorAll('.ProseMirror .tableWrapper')].map((w) => {
+        const t = w.querySelector('table') as HTMLElement
+        return {
+          열: [...t.querySelectorAll('tr:first-child > :is(td,th)')]
+            .map((c) => Math.round(c.getBoundingClientRect().width)),
+          표폭: Math.round(t.getBoundingClientRect().width),
+        }
+      }))
+    expect(폭.length).toBeGreaterThan(1)          // 정말 나뉘었는가
+    폭.slice(1).forEach((it) => {
+      expect(it.열).toEqual(폭[0].열)
+      expect(it.표폭).toBe(폭[0].표폭)
+    })
+  })
+
   /* ── ② 여러 칸을 골라 크기 바꾸기 ─────────────────────────────────── */
 
   /** 왼쪽 위에서 n개 열을 세로로 끝까지 고른다 (워드에서 열 머리를 끌어 고르는 것과 같다) */

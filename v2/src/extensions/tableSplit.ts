@@ -108,6 +108,25 @@ export function ownRows(table: Element): HTMLElement[] {
 }
 
 /**
+ * 이 행이 자리를 차지하는가 — 숨은 행(display:none)은 상자가 **아예 없다.**
+ *
+ * 상자가 없으면 getBoundingClientRect() 가 0,0,0,0 을 준다. 아래에서 재는 값은
+ * 「행 바닥 − 표 꼭대기」 인데, 화면을 내려 표 꼭대기가 음수가 되면 그 0 이
+ * 「표 꼭대기에서 2,623px 아래」 라는 뜻으로 읽힌다 — 숨은 행 하나가 지면을 넘긴 것처럼
+ * 보여 거기서 세기를 멈춘다.
+ *
+ * 실측(40행 표·5~14행 숨김·A4·본문 1280×720):
+ *   화면 맨 위(표 top = +246)        앞 조각 36행 — 지면을 꽉 채운다
+ *   2,923px 내려봄(표 top = −2,623)  앞 조각 **4행**(140px), 쪽 3 → **4**
+ * 숨김이 없으면 두 경우 모두 15행으로 같았다. 즉 **화면을 어디까지 내렸느냐가 조판을
+ * 바꾸고 있었다.** 상자가 없는 행은 재지 말고 건너뛴다 — 어느 조각에 넣어도 자리를
+ * 먹지 않으니 「들어간다」 가 맞는 답이다.
+ */
+function hasBox(el: Element): boolean {
+  return el.getClientRects().length > 0
+}
+
+/**
  * 남은 자리(roomPx)에 몇 행까지 들어가는지 센다.
  * 화면에 그려진 행 높이를 그대로 읽는다 — 계산으로 짐작하면 한두 줄씩 어긋난다.
  */
@@ -124,12 +143,17 @@ export function rowsThatFit(view: EditorView, tablePos: number, roomPx: number, 
   const cs = window.getComputedStyle(el)
   const room = roomPx - (parseFloat(cs.marginTop) || 0) - (parseFloat(cs.marginBottom) || 0)
   let fit = 0
+  let 보이는행 = 0
   for (const row of rows) {
+    if (!hasBox(row)) { fit++; continue }   // 자리를 안 먹는 행 — 어디에 두어도 같다
     const bottom = (row.getBoundingClientRect().bottom - top) / (scale || 1)
     if (bottom > room) break
     fit++
+    보이는행++
   }
-  return fit
+  /* 앞 조각이 죄다 숨은 행뿐이면 나눠 봐야 빈 껍데기 표만 한 쪽에 남는다 —
+     그럴 바에는 표째 다음 쪽으로 민다 (워드·한글도 보이는 것이 없으면 넘긴다). */
+  return 보이는행 > 0 ? fit : 0
 }
 
 /**
@@ -226,9 +250,9 @@ export function innerSplitPlan(
   const room = roomPx - (parseFloat(cs.marginTop) || 0) - (parseFloat(cs.marginBottom) || 0)
   const 아래 = (e: Element) => (e.getBoundingClientRect().bottom - top) / (scale || 1)
 
-  // 들어가지 못하는 첫 행 — 그 행 안에서 나눠야 한다
+  // 들어가지 못하는 첫 행 — 그 행 안에서 나눠야 한다 (숨은 행은 자리를 안 먹으니 건너뛴다)
   let r = 0
-  while (r < rows.length && 아래(rows[r]) <= room) r += 1
+  while (r < rows.length && (!hasBox(rows[r]) || 아래(rows[r]) <= room)) r += 1
   if (r >= rows.length) return null
   const rowNode = table.maybeChild(r)
   if (!rowNode || keepsWhole(rowNode)) return null
@@ -250,10 +274,14 @@ export function innerSplitPlan(
     const innerRows = ownRows(innerEl)
     if (innerRows.length < 2) continue
     let fit = 0
+    let 보이는행 = 0
     for (const ir of innerRows) {
+      if (!hasBox(ir)) { fit += 1; continue }
       if (아래(ir) > room) break
       fit += 1
+      보이는행 += 1
     }
+    if (!보이는행) continue
     /* 한 행도 못 들어가면 여기서 나눠 봐야 앞 조각이 빈 껍데기가 된다 —
        표를 통째로 다음 쪽으로 밀고 (거기서는 자리가 넉넉하다) 다시 본다 */
     if (fit < 1 || fit >= innerRows.length) continue

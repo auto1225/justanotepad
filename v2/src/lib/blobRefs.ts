@@ -137,6 +137,17 @@ export async function saveDataUrlAsBlobRef(dataUrl: string): Promise<string> {
   return REF_PREFIX + id
 }
 
+/**
+ * 이미 손에 있는 알맹이를 그 자리에서 (저장소를 다녀오지 않고) — 없으면 null.
+ *
+ * 조판이 도는 동안에는 기다릴 틈이 없다. 그림을 그리는 자리(renderHTML)에서
+ * 「이 SVG 는 스스로 치수를 뭐라고 밝혔나」 를 물으려면 알맹이가 지금 필요하다.
+ * 화면에 이미 물려 있는 그림이면 memoryCache 에 들어 있으므로 곧바로 답이 된다.
+ */
+export function peekBlobRef(ref: string): string | null {
+  return memoryCache.get(blobRefId(ref)) ?? null
+}
+
 export async function readBlobRef(ref: string): Promise<string | null> {
   const id = blobRefId(ref)
   if (memoryCache.has(id)) return memoryCache.get(id) || null
