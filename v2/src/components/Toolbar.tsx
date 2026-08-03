@@ -73,6 +73,7 @@ import { Icon } from './Icons'
 import type { IconName } from './Icons'
 import { useTypographyStore } from '../store/typographyStore'
 import { PAPER_STYLES, pageMarginsSummary, useUIStore } from '../store/uiStore'
+import { findStyle, styleTree } from '../lib/docStyles'
 import { useMemosStore } from '../store/memosStore'
 import { exportV2ToJson, importV2FromJsonAsync } from '../lib/v1Import'
 import { fileToDataUrl } from '../lib/attachments'
@@ -97,7 +98,8 @@ import {
   loadSources, markAuthority, markIndexEntry, putAuthorityList, putBibliography, putCaptionList,
   putIndex, putToc, refreshAllFields, setCiteStyle,
 } from '../lib/docRefs'
-import { insertNumberedEquation, insertFigureCaption, insertTableCaption, insertCrossRef, paperTargetCount, renumberPaperTags, renumberWithFeedback } from '../lib/paperRefs'
+import { insertNumberedEquation, insertFigureCaption, insertTableCaption, insertCrossRef, paperTargetCount, renumberPaperTags, renumberWithFeedback, setCaptionLabelLang, captionLang } from '../lib/paperRefs'
+import { CAPTION_LANGS } from '../extensions/PaperTag'
 import { pickMathTemplate, lintPaper, showLintReport, insertCreditBlock, insertCoiBlock, insertDataAvailabilityBlock, insertListOfFigures, insertListOfTables, insertAcronymList } from '../lib/paperTools'
 import { downloadLatex } from '../lib/latexExport'
 import { downloadHtmlFile, downloadDocFile } from '../lib/htmlDocExport'
@@ -216,6 +218,8 @@ export function Toolbar(p: ToolbarProps) {
   /* 문서 디자인 — 워드 「디자인」 탭이 쓰는 값과 명령 */
   const design = useUIStore((s) => s.design)
   const setDesign = useUIStore((s) => s.setDesign)
+  /* 이름 있는 스타일 한 벌 — 리본에서 바로 입힐 수 있게 목록을 꺼내 둔다 */
+  const styleSheet = useUIStore((s) => s.styles)
   /* 쪽 배치 — 워드 「레이아웃」 탭이 쓰는 값과 명령 */
   const layout = useUIStore((s) => s.layout)
   const setLayout = useUIStore((s) => s.setLayout)
@@ -464,6 +468,8 @@ export function Toolbar(p: ToolbarProps) {
     setShowLinkPop(false)
   }
   const insertHr = () => editor.chain().focus().setHorizontalRule().run()
+  /** 스타일 창 — 이름 있는 스타일과 그 기준(상속)을 보고 고친다 */
+  const openStylePanel = () => window.dispatchEvent(new Event('jan-style-panel'))
 
   /* === 자료 탭 (워드 「참조」) === */
   const openSources = () => window.dispatchEvent(new Event('jan-source-dialog'))
@@ -1185,6 +1191,22 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowLeft')go(-1);else if(e.
           ],
         },
         {
+          /* 여기부터가 「이름 있는 스타일」 이다. 위의 스타일 갤러리는 그 자리에서 마크를
+             입히고 끝나는 한 번짜리 명령이지만, 이것은 문단에 이름표를 붙인다 —
+             나중에 정의를 고치면 그 표를 단 글이 모두 함께 바뀐다. */
+          label: '스타일 창 (기준 스타일·상속)', short: '스타일 창', icon: 'palette',
+          onClick: () => run(openStylePanel),
+          menu: [
+            ...styleTree(styleSheet, 'paragraph').map(({ style, depth }): MenuItem => ({
+              label: `${'　'.repeat(depth)}${style.name}${style.basedOn ? ` — 기준: ${findStyle(styleSheet, style.basedOn)?.name || '?'}` : ''}`,
+              short: style.name, icon: 'paragraph',
+              onClick: () => run(() => { editor.chain().focus().setParagraphStyle(style.id).run() }),
+            })),
+            { label: '이 문단의 스타일 표 떼기', short: '표 떼기', icon: 'eraser', onClick: () => run(() => { editor.chain().focus().setParagraphStyle(null).run() }) },
+            { label: '스타일 창 열기 — 새 스타일·기준 고치기', short: '스타일 창', icon: 'palette', onClick: () => run(openStylePanel) },
+          ],
+        },
+        {
           label: '내 스타일 적용 / 관리', short: '내 스타일', icon: 'star-on',
           onClick: () => run(() => showMyStylesPicker(editor)),
           menu: [
@@ -1509,6 +1531,13 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowLeft')go(-1);else if(e.
           menu: [
             { short: '그림 캡션', label: '그림 캡션 넣기 (그림 n)', icon: 'image-text', onClick: () => run(() => { void insertCaption('figure') }) },
             { short: '표 캡션', label: '표 캡션 넣기 (표 n)', icon: 'table', onClick: () => run(() => { void insertCaption('table') }) },
+            /* 워드 「캡션 › 레이블」 — 문서 전체의 캡션·참조가 한 말을 쓰게 맞춘다 */
+            ...CAPTION_LANGS.map((l): MenuItem => ({
+              short: `라벨: ${l.label}`,
+              label: `${captionLang() === l.key ? '● ' : ''}캡션 라벨을 ${l.label}로 (${l.hint}) — 이미 있는 캡션도 함께 고친다`,
+              icon: 'sliders',
+              onClick: () => run(() => { setCaptionLabelLang(editor, l.key) }),
+            })),
           ],
         },
         {

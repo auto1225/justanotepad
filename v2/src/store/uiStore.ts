@@ -1,8 +1,10 @@
 import { create } from 'zustand'
 import { DEFAULT_DESIGN, applyDesign } from '../lib/docDesign'
 import { DEFAULT_LAYOUT, applyLayout, normalizeLayout } from '../lib/docLayout'
+import { DEFAULT_STYLE_SHEET, applyStyleSheet, normalizeStyleSheet, sameStyleSheet } from '../lib/docStyles'
 import type { DocLayout } from '../lib/docLayout'
 import type { DocDesign } from '../lib/docDesign'
+import type { NamedStyle, StyleSheet } from '../lib/docStyles'
 import { persist } from 'zustand/middleware'
 
 export type PaperStyle = 'lined' | 'grid' | 'dot' | 'blank' | 'music' | 'cornell'
@@ -48,6 +50,12 @@ export interface MemoPageSettings {
   design: DocDesign
   /** 쪽 배치 — 워드 「레이아웃」 탭 (텍스트 방향·줄 번호·하이픈·원고지) */
   layout: DocLayout
+  /**
+   * 이름 있는 스타일 한 벌 — 워드 「스타일」 창.
+   * 문단에는 이름표만 붙고 서식 값은 여기 한 곳에 산다. 그래서 문서와 함께 다녀야 한다:
+   * 정의가 없으면 표만 붙은 채 아무 서식도 안 붙은 문단이 남는다.
+   */
+  styles: StyleSheet
 }
 
 export const DEFAULT_MEMO_PAGE_SETTINGS: MemoPageSettings = {
@@ -69,6 +77,7 @@ export const DEFAULT_MEMO_PAGE_SETTINGS: MemoPageSettings = {
   watermarkText: '',
   design: DEFAULT_DESIGN,
   layout: DEFAULT_LAYOUT,
+  styles: DEFAULT_STYLE_SHEET,
 }
 
 /** 워드식 이름 있는 여백 프리셋 */
@@ -257,6 +266,7 @@ export function normalizeMemoPageSettings(value: unknown, fallback: MemoPageSett
     watermarkText: typeof raw.watermarkText === 'string' ? raw.watermarkText.trim().slice(0, 40) : fallback.watermarkText,
     design: normalizeDesign(raw.design, fallback.design),
     layout: normalizeLayout(raw.layout, fallback.layout),
+    styles: normalizeStyleSheet(raw.styles, fallback.styles),
   }
 }
 
@@ -314,6 +324,7 @@ export function pageSettingsFromUi(state: Pick<UIState, keyof MemoPageSettings>)
     watermarkText: state.watermarkText,
     design: state.design,
     layout: state.layout,
+    styles: state.styles,
   })
 }
 
@@ -340,7 +351,8 @@ export function sameMemoPageSettings(a: unknown, b: unknown): boolean {
     left.firstPageRunningOff === right.firstPageRunningOff &&
     left.watermarkText === right.watermarkText &&
     JSON.stringify(left.design) === JSON.stringify(right.design) &&
-    JSON.stringify(left.layout) === JSON.stringify(right.layout)
+    JSON.stringify(left.layout) === JSON.stringify(right.layout) &&
+    sameStyleSheet(left.styles, right.styles)
 }
 
 export function formatRunningText(template: string, page = 1, total = 1): string {
@@ -403,6 +415,8 @@ interface UIState {
   design: DocDesign
   /** 쪽 배치 — 워드 「레이아웃」 탭 */
   layout: DocLayout
+  /** 이름 있는 스타일 한 벌 — 워드 「스타일」 창 */
+  styles: StyleSheet
   toggleFocus: () => void
   setFocus: (v: boolean) => void
   toggleReading: () => void
@@ -439,6 +453,10 @@ interface UIState {
   applyPageSettings: (settings: Partial<MemoPageSettings>) => void
   setDesign: (patch: Partial<DocDesign>) => void
   setLayout: (patch: Partial<DocLayout>) => void
+  /** 스타일 한 벌을 통째로 갈아 끼운다 (스타일 창이 쓴다) */
+  setStyleSheet: (sheet: StyleSheet) => void
+  /** 스타일 하나만 고친다 — 고치는 순간 그 표를 단 글이 모두 함께 바뀐다 */
+  updateStyle: (id: string, patch: Partial<NamedStyle>) => void
 }
 
 export const useUIStore = create<UIState>()(
@@ -454,6 +472,7 @@ export const useUIStore = create<UIState>()(
         }
       })(),
       layout: DEFAULT_LAYOUT,
+      styles: DEFAULT_STYLE_SHEET,
       focusMode: false,
       readingMode: false,
       typewriterMode: false,
@@ -551,9 +570,11 @@ export const useUIStore = create<UIState>()(
           watermarkText: next.watermarkText,
           design: next.design,
           layout: next.layout,
+          styles: next.styles,
         })
         applyDesign(next.design) // 화면(그리고 인쇄)에 바로 입힌다
         applyLayout(next.layout)
+        applyStyleSheet(next.styles)
       },
       /** 쪽 배치 한 가지만 바꾼다 — 워드 「레이아웃」 탭의 단추들이 쓴다 */
       setLayout: (patch) => {
@@ -566,6 +587,26 @@ export const useUIStore = create<UIState>()(
         const next = normalizeDesign({ ...get().design, ...patch }, get().design)
         set({ design: next })
         applyDesign(next)
+      },
+      /** 스타일 한 벌을 통째로 — 스타일 창이 쓴다 */
+      setStyleSheet: (sheet) => {
+        const next = normalizeStyleSheet(sheet, get().styles)
+        set({ styles: next })
+        applyStyleSheet(next)
+      },
+      /**
+       * 스타일 하나만 고친다. 문서는 건드리지 않는다 —
+       * 표를 단 글이 함께 바뀌는 것은 CSS 한 장이 갈리기 때문이다.
+       */
+      updateStyle: (id, patch) => {
+        const cur = get().styles
+        const next = normalizeStyleSheet({
+          styles: cur.styles.map((s) => (s.id === id
+            ? { ...s, ...patch, id: s.id, props: patch.props ? { ...s.props, ...patch.props } : s.props }
+            : s)),
+        }, cur)
+        set({ styles: next })
+        applyStyleSheet(next)
       },
     }),
     {

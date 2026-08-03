@@ -61,6 +61,32 @@ export const FieldBlocks = Extension.create({
             renderHTML: (attrs: Record<string, unknown>) =>
               (attrs.janField ? { 'data-jan-field': String(attrs.janField) } : {}),
           },
+          /**
+           * 이 줄이 목록에서 맡은 몫 — 지금은 'head'(머리글) 하나뿐이다.
+           *
+           * 참고 문헌·미주는 매달린 들여쓰기를 쓰는데, 그 조판을 class 에 걸어 두었더니
+           * class 가 저장·재파싱에서 벗겨져 들여쓰기가 아예 걸리지 않았다 (실측: text-indent 0px).
+           * 목차 쪽 번호와 같은 뿌리라, 같은 수 — 살아남는 data-* 속성 — 를 쓴다.
+           */
+          janFieldRole: {
+            default: null,
+            parseHTML: (el: HTMLElement) => el.getAttribute('data-jan-field-role') || null,
+            renderHTML: (attrs: Record<string, unknown>) =>
+              (attrs.janFieldRole ? { 'data-jan-field-role': String(attrs.janFieldRole) } : {}),
+          },
+          /**
+           * 「고쳐야 함」 — 심어 둔 목록이 지금 문서와 어긋났다는 표시.
+           *
+           * 쪽 번호는 스스로 따라가지만(attrs 만 바꾸므로 안전하다), 제목이 늘거나 이름이 바뀌면
+           * 줄 자체를 다시 만들어야 한다. 그것은 문서 크기를 바꾸는 일이라 조용히 할 수 없다 —
+           * 되돌리기에 남고 쪽 나눔을 다시 흔든다. 그래서 워드가 회색 음영으로 알리듯 눈에 띄게 알린다.
+           */
+          janStale: {
+            default: null,
+            parseHTML: (el: HTMLElement) => el.getAttribute('data-jan-stale') || null,
+            renderHTML: (attrs: Record<string, unknown>) =>
+              (attrs.janStale ? { 'data-jan-stale': String(attrs.janStale) } : {}),
+          },
         },
       },
     ]

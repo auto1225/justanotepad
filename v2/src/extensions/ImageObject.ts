@@ -243,12 +243,42 @@ function imgStyle(attrs: Record<string, unknown>, inCrop: boolean): string {
   return css
 }
 
+/**
+ * 감싸기 모양 — 글이 그림의 「굽은 가장자리」를 따라 흐르게 하는 값.
+ *
+ * 워드의 「자세히 편집 › 배치 다듬기」, 한글의 「바깥 여백 다각형」 에 해당한다.
+ * 밖에서 붙여넣은 마크업은 이것을 style 에 담아 온다 — 예전에는 renderHTML 이
+ * 스타일을 통째로 새로 짜는 바람에 float 도 shape-outside 도 함께 버려졌다.
+ * 그러면 원형 그림을 넣어도 글은 네모난 상자를 피해 흐른다.
+ *
+ * 값을 함부로 받으면 style 주입이 되므로, 아는 함수 꼴만 통과시킨다.
+ */
+const SHAPE_OUTSIDE_OK = /^(none|circle\([^;{}<>]*\)|ellipse\([^;{}<>]*\)|inset\([^;{}<>]*\)|polygon\([^;{}<>]*\))$/i
+
+export function safeShapeOutside(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const v = value.trim()
+  if (!v || v.length > 400) return null
+  return SHAPE_OUTSIDE_OK.test(v) ? v : null
+}
+
+/** 인라인 style 문자열에서 한 속성 값을 꺼낸다 (밖에서 붙여넣은 마크업을 읽을 때) */
+function fromInlineStyle(el: HTMLElement, prop: string): string | null {
+  const v = el.style.getPropertyValue(prop)
+  return v ? v.trim() : null
+}
+
 /** 텍스트 배치를 바깥 요소의 스타일로 */
 function wrapStyle(attrs: Record<string, unknown>): string {
   const wrap = (attrs.wrap as string) || 'topbottom'
   const gap = 12
-  if (wrap === 'left') return `float:left;margin:4px ${gap}px ${gap}px 0;`
-  if (wrap === 'right') return `float:right;margin:4px 0 ${gap}px ${gap}px;`
+  /* 감싸기일 때만 뜻이 있다 — shape-outside 는 뜬 상자(float)에만 걸린다 */
+  const shape = safeShapeOutside(attrs.shapeOutside)
+  const shapeCss = shape
+    ? `shape-outside:${shape};${attrs.shapeMargin ? `shape-margin:${Number(attrs.shapeMargin) || 0}px;` : ''}`
+    : ''
+  if (wrap === 'left') return `float:left;margin:4px ${gap}px ${gap}px 0;${shapeCss}`
+  if (wrap === 'right') return `float:right;margin:4px 0 ${gap}px ${gap}px;${shapeCss}`
   if (wrap === 'behind') return 'position:absolute;z-index:-1;pointer-events:none;'
   if (wrap === 'front') return 'position:absolute;z-index:5;'
   if (wrap === 'inline') return 'display:inline-block;vertical-align:middle;margin:0 2px;'
@@ -293,7 +323,33 @@ export const ImageObject = Image.extend({
       width: { default: null, parseHTML: (el: HTMLElement) => el.getAttribute('width') || el.getAttribute('data-width'), renderHTML: () => ({}) },
       height: { default: null, parseHTML: (el: HTMLElement) => el.getAttribute('height') || el.getAttribute('data-height'), renderHTML: () => ({}) },
       align: attr('align'),
-      wrap: attr('wrap'),
+      /* 밖에서 붙여넣은 그림은 배치를 style 의 float 에 담아 온다 —
+         data-wrap 이 없다고 「위/아래」 로 보면 감싸기가 통째로 풀린다 */
+      wrap: {
+        default: null,
+        parseHTML: (el: HTMLElement) => {
+          const own = el.getAttribute('data-wrap')
+          if (own) return own
+          const f = fromInlineStyle(el, 'float')
+          return f === 'left' || f === 'right' ? f : null
+        },
+        renderHTML: () => ({}),
+      },
+      shapeOutside: {
+        default: null,
+        parseHTML: (el: HTMLElement) =>
+          safeShapeOutside(el.getAttribute('data-shape-outside') ?? fromInlineStyle(el, 'shape-outside')),
+        renderHTML: () => ({}),
+      },
+      shapeMargin: {
+        default: null,
+        parseHTML: (el: HTMLElement) => {
+          const raw = el.getAttribute('data-shape-margin') ?? fromInlineStyle(el, 'shape-margin')
+          const n = parseFloat(String(raw ?? ''))
+          return Number.isFinite(n) && n >= 0 && n <= 200 ? n : null
+        },
+        renderHTML: () => ({}),
+      },
       rotate: { default: 0, parseHTML: (el: HTMLElement) => Number(el.getAttribute('data-rotate')) || 0, renderHTML: () => ({}) },
       flipH: { default: false, parseHTML: (el: HTMLElement) => el.getAttribute('data-flip-h') === '1', renderHTML: () => ({}) },
       flipV: { default: false, parseHTML: (el: HTMLElement) => el.getAttribute('data-flip-v') === '1', renderHTML: () => ({}) },
@@ -340,6 +396,8 @@ export const ImageObject = Image.extend({
     const put = (key: string, value: unknown) => { if (value != null && value !== '' && value !== false) data[key] = String(value) }
     put('data-align', a.align)
     put('data-wrap', a.wrap)
+    put('data-shape-outside', safeShapeOutside(a.shapeOutside))
+    put('data-shape-margin', a.shapeMargin)
     put('data-rotate', a.rotate || null)
     put('data-flip-h', a.flipH ? '1' : null)
     put('data-flip-v', a.flipV ? '1' : null)

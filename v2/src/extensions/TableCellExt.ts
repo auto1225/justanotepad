@@ -106,7 +106,7 @@ export const JanTableHeader = TableHeader.extend({
  *  place  다단 문서에서의 자리: 'column' 단 안 | 'page' 단 걸치기(지면 전체 폭) | null 자동
  *         (워드에는 없는 항목이지만 2단 논문 조판에는 반드시 필요하다)
  */
-const TABLE_PROP_KEYS = ['data-fit', 'data-align', 'data-place', 'data-width', 'data-style', 'data-header-row', 'data-first-col', 'data-last-col', 'data-last-row', 'data-banded-rows', 'data-banded-cols', 'data-cell-pad', 'data-cont', 'data-repeat-header', 'data-wrap'] as const
+const TABLE_PROP_KEYS = ['data-fit', 'data-align', 'data-place', 'data-width', 'data-style', 'data-header-row', 'data-first-col', 'data-last-col', 'data-last-row', 'data-banded-rows', 'data-banded-cols', 'data-cell-pad', 'data-cont', 'data-repeat-header', 'data-wrap', 'data-keep'] as const
 
 /**
  * 칸 수식 자동 계산 — 표가 바뀔 때마다 결과를 다시 써넣는다.

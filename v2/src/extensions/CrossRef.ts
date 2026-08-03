@@ -1,7 +1,7 @@
 import { Node } from '@tiptap/core'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { collectTargets, findTarget, pageOfPos, refText } from '../lib/crossRef'
-import { newRefId } from './RefTargets'
+import { newRefId, REF_TARGET_TYPES } from './RefTargets'
 import type { RefKind, RefShow } from '../lib/crossRef'
 
 /**
@@ -79,7 +79,9 @@ export const CrossRef = Node.create({
         let targetRef = target?.refId
         if (target && !targetRef) {
           const node = tr.doc.nodeAt(target.pos)
-          if (node) {
+          /* 캡션 줄은 이름표를 붙일 수 없는 갈래다 (문단에는 janRef 자리가 없다) —
+             그런 대상은 캡션이 이미 지닌 열쇠(refKey)를 이름표로 쓴다 */
+          if (node && REF_TARGET_TYPES.includes(node.type.name)) {
             targetRef = newRefId()
             tr.setNodeMarkup(target.pos, undefined, { ...node.attrs, janRef: targetRef })
           }

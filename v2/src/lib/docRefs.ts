@@ -1,5 +1,7 @@
 import type { Editor } from '@tiptap/react'
+import { captionWord } from '../extensions/PaperTag'
 import { flash } from './flash'
+import { outlineLevelOfElement } from './docStyles'
 
 /**
  * 자료 — 워드 「참조」 탭이 하는 일들.
@@ -44,6 +46,15 @@ function putBlock(editor: Editor, kind: string, html: string): 'replaced' | 'ins
 
 /** 이 목록에 속한 줄임을 알리는 표시 */
 const field = (kind: string) => ` data-jan-field="${kind}"`
+
+/**
+ * 이 줄이 목록의 「머리글」 이라는 표시.
+ *
+ * class 는 문서 구조에 없어 저장·재파싱에서 벗겨진다 — 목차 쪽 번호가 제목에 달라붙던 것과
+ * 같은 뿌리다. 그래서 참고 문헌·미주의 매달린 들여쓰기를 «머리글만 빼고» 걸려면
+ * 살아남는 속성이 하나 더 있어야 한다. 「고쳐야 함」 알림도 이 줄에 붙는다.
+ */
+const headRole = ' data-jan-field-role="head"'
 
 /**
  * 오른쪽 끝 쪽 칸 — 반드시 janFieldPage 노드로 넣는다.
@@ -114,10 +125,13 @@ export interface TocEntry { level: number; text: string; page: number }
 export function collectHeadings(editor: Editor, maxLevel = 3): TocEntry[] {
   const out: TocEntry[] = []
   const root = editor.view.dom
-  root.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach((el) => {
-    const level = Number(el.tagName.slice(1))
+  /* 태그만 보지 않는다 — 스타일로 「제목1」 을 붙인 문단도 제목이고, h1 에 「바탕글」 을
+     붙였으면 제목이 아니다. 그래서 문단까지 훑어 개요 수준으로 가른다.
+     목차 줄 자신은 개요 수준 0(바탕글에서 물려받음)이라 제 목차에 다시 잡히지 않는다. */
+  root.querySelectorAll('h1, h2, h3, h4, h5, h6, p').forEach((el) => {
+    const level = outlineLevelOfElement(el)
     const text = (el.textContent || '').trim()
-    if (!text || level > maxLevel) return
+    if (!text || level < 1 || level > maxLevel) return
     out.push({ level, text, page: pageOf(editor, el) })
   })
   return out
@@ -131,9 +145,11 @@ export function putToc(editor: Editor, opts: { maxLevel?: number; pageNumbers?: 
   const 쪽보임 = opts.pageNumbers !== false
   const rows = items.map((i) => {
     const dots = 쪽보임 ? pageCell(i.page || '') : ''
-    return `<p${field('toc')} data-indent="${Math.min(8, i.level - 1)}" class="jan-toc-row"><a href="#${escAttr(headingAnchor(i.text))}">${esc(i.text)}</a>${dots}</p>`
+    /* 목차 줄에도 스타일 이름표를 붙인다 — toc1·toc2·toc3 정의를 고치면 이미 넣어 둔
+       목차도 함께 바뀐다 (data-indent 는 조판이 쓰므로 그대로 둔다) */
+    return `<p${field('toc')} data-jan-style="toc${Math.min(3, i.level)}" data-indent="${Math.min(8, i.level - 1)}" class="jan-toc-row"><a href="#${escAttr(headingAnchor(i.text))}">${esc(i.text)}</a>${dots}</p>`
   }).join('')
-  const html = `<p${field('toc')} class="jan-toc-head"><strong>${esc(opts.title || '목차')}</strong></p>${rows}`
+  const html = `<p${field('toc')}${headRole} class="jan-toc-head"><strong>${esc(opts.title || '목차')}</strong></p>${rows}`
   const how = putBlock(editor, 'toc', html)
   /* 목차가 밀어낸 만큼 쪽이 달라진다 — 앉은 뒤에 번호만 다시 적는다 */
   if (쪽보임) fixPagesWhenSettled(editor, 'toc', () => collectHeadings(editor, maxLevel).map((i) => i.page || ''))
@@ -168,7 +184,7 @@ export function insertEndnote(editor: Editor): number {
   } else {
     const end = editor.state.doc.content.size
     editor.chain().insertContentAt(Math.max(1, end - 1),
-      `<p${field('endnote')} class="jan-en-head"><strong>미주</strong></p>${row}`).run()
+      `<p${field('endnote')}${headRole} class="jan-en-head"><strong>미주</strong></p>${row}`).run()
   }
   flash(`미주 ${roman(n)} 을 넣었습니다 — 문서 끝에 모입니다`)
   return n
@@ -329,7 +345,7 @@ export function putBibliography(editor: Editor, sources: Source[], style: CiteSt
   const sorted = style === 'IEEE' ? sources : [...sources].sort((a, b) => firstAuthor(a).localeCompare(firstAuthor(b), 'ko'))
   const rows = sorted.map((s, i) =>
     `<p${field('bib')} class="jan-ref-item">${esc(referenceText(s, style, i + 1))}</p>`).join('')
-  const html = `<p${field('bib')} class="jan-bib-head"><strong>참고 문헌</strong></p>${rows}`
+  const html = `<p${field('bib')}${headRole} class="jan-bib-head"><strong>참고 문헌</strong></p>${rows}`
   const how = putBlock(editor, 'bib', html)
   flash(how === 'replaced' ? `참고 문헌을 새로 만들었습니다 (${style})` : `참고 문헌 ${sources.length}건을 넣었습니다 (${style})`)
   return true
@@ -350,17 +366,28 @@ function captionText(el: Element): string {
   return (copy.textContent || '').replace(/^(그림|표|Fig\.?|Table)\s*\d+\s*[.:]?\s*/i, '').trim()
 }
 
+/**
+ * 이 캡션이 스스로 쓴 이름 — «그림 1.» · «Fig. 1.».
+ * 목록이 제 낱말을 따로 지어 적으면 캡션은 「Fig. 1.」 인데 목차는 「그림 1.」 이 되어
+ * 한 문서에 이름이 두 가지가 된다. 그래서 라벨 노드가 그린 글을 그대로 옮겨 적는다.
+ */
+function captionMark(el: Element, fallbackWord: string, n: number): string {
+  const tag = el.querySelector('[data-paper-tag]')
+  const text = (tag?.textContent || '').trim()
+  return text || `${fallbackWord} ${n}.`
+}
+
 export function putCaptionList(editor: Editor, kind: 'figure' | 'table'): boolean {
   if (editor.isDestroyed) return false
   const root = editor.view.dom
   const sel = kind === 'figure' ? '.paper-figcap, [data-paper-block="figcap"]' : '.paper-tabcap, [data-paper-block="tabcap"]'
   const caps = [...root.querySelectorAll(sel)]
-  const word = kind === 'figure' ? '그림' : '표'
+  const word = captionWord(kind === 'figure' ? 'figlabel' : 'tablabel', null)
   if (!caps.length) { flash(`${word} 캡션이 없습니다 — 캡션을 먼저 넣어 주세요`); return false }
   const key = kind === 'figure' ? 'figlist' : 'tablist'
   const rows = caps.map((el, i) =>
-    `<p${field(key)} class="jan-toc-row">${word} ${i + 1}. ${esc(captionText(el))}${pageCell(pageOf(editor, el) || '')}</p>`).join('')
-  const html = `<p${field(key)}><strong>${word} 목차</strong></p>${rows}`
+    `<p${field(key)} class="jan-toc-row">${esc(captionMark(el, word, i + 1))} ${esc(captionText(el))}${pageCell(pageOf(editor, el) || '')}</p>`).join('')
+  const html = `<p${field(key)}${headRole} class="jan-toc-head"><strong>${word} 목차</strong></p>${rows}`
   const how = putBlock(editor, key, html)
   fixPagesWhenSettled(editor, key, () =>
     [...editor.view.dom.querySelectorAll(sel)].map((el) => pageOf(editor, el) || ''))
@@ -401,7 +428,7 @@ export function putIndex(editor: Editor): boolean {
     .sort((a, b) => a[0].localeCompare(b[0], 'ko'))
     .map(([term, pages]) => `<p${field('index')} class="jan-index-row">${esc(term)}${pageCell([...pages].sort((x, y) => x - y).join(', '))}</p>`)
     .join('')
-  const html = `<p${field('index')}><strong>색인</strong></p>${rows}`
+  const html = `<p${field('index')}${headRole}><strong>색인</strong></p>${rows}`
   const how = putBlock(editor, 'index', html)
   flash(how === 'replaced' ? '색인을 새로 만들었습니다' : `색인 ${map.size}항목을 만들었습니다`)
   return true
@@ -446,10 +473,197 @@ export function putAuthorityList(editor: Editor): boolean {
     [...items.entries()].sort((a, b) => a[0].localeCompare(b[0], 'ko')).map(([label, pages]) =>
       `<p${field('auth')} class="jan-index-row">${esc(label)}${pageCell([...pages].sort((x, y) => x - y).join(', '))}</p>`).join('')
   ).join('')
-  const html = `<p${field('auth')}><strong>근거 목차</strong></p>${body}`
+  const html = `<p${field('auth')}${headRole}><strong>근거 목차</strong></p>${body}`
   const how = putBlock(editor, 'auth', html)
   flash(how === 'replaced' ? '근거 목차를 새로 만들었습니다' : '근거 목차를 만들었습니다')
   return true
+}
+
+/* ── 심어 둔 목록이 스스로 따라가게 ───────────────────── */
+
+/**
+ * 지금 문서가 말하는 「이 목록에 들어가야 할 것」 — 줄마다 (이름, 쪽) 한 쌍.
+ *
+ * 목록을 만들 때 쓴 것과 같은 셈을 쓴다. 다르게 세면 멀쩡한 목록을 「어긋났다」 고 잘못 알린다.
+ */
+function fieldEntries(editor: Editor, kind: string): Array<{ name: string; page: string }> | null {
+  const root = editor.view.dom
+  const 쪽글 = (el: Element) => String(pageOf(editor, el) || '')
+  if (kind === 'toc') {
+    return collectHeadings(editor).map((i) => ({ name: i.text, page: String(i.page || '') }))
+  }
+  if (kind === 'figlist' || kind === 'tablist') {
+    const sel = kind === 'figlist'
+      ? '.paper-figcap, [data-paper-block="figcap"]'
+      : '.paper-tabcap, [data-paper-block="tabcap"]'
+    const word = captionWord(kind === 'figlist' ? 'figlabel' : 'tablabel', null)
+    return [...root.querySelectorAll(sel)].map((el, i) => ({
+      name: `${captionMark(el, word, i + 1)} ${captionText(el)}`.trim(),
+      page: 쪽글(el),
+    }))
+  }
+  if (kind === 'index') {
+    const map = new Map<string, Set<number>>()
+    root.querySelectorAll('[data-index]').forEach((el) => {
+      const term = el.getAttribute('data-index') || ''
+      if (!term) return
+      if (!map.has(term)) map.set(term, new Set())
+      const page = pageOf(editor, el)
+      if (page) map.get(term)!.add(page)
+    })
+    return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0], 'ko'))
+      .map(([term, pages]) => ({ name: term, page: [...pages].sort((x, y) => x - y).join(', ') }))
+  }
+  if (kind === 'auth') {
+    const byKind = new Map<string, Map<string, Set<number>>>()
+    root.querySelectorAll('[data-authority]').forEach((el) => {
+      const k = el.getAttribute('data-auth-kind') || '기타'
+      const label = el.getAttribute('data-authority') || ''
+      if (!label) return
+      if (!byKind.has(k)) byKind.set(k, new Map())
+      const inner = byKind.get(k)!
+      if (!inner.has(label)) inner.set(label, new Set())
+      const page = pageOf(editor, el)
+      if (page) inner.get(label)!.add(page)
+    })
+    /* 갈래 머리글에는 쪽 칸이 없다 — 쪽 칸을 가진 줄만 센다 */
+    return [...byKind.values()].flatMap((items) =>
+      [...items.entries()].sort((a, b) => a[0].localeCompare(b[0], 'ko'))
+        .map(([label, pages]) => ({ name: label, page: [...pages].sort((x, y) => x - y).join(', ') })))
+  }
+  return null // 참고 문헌·미주는 쪽 칸이 없다
+}
+
+interface FieldSpot {
+  cells: Array<{ pos: number; text: string; row: string }>
+  head: number
+  stale: string | null
+}
+
+/**
+ * 심어 둔 목록이 지금 차지하고 있는 자리 — 갈래마다 머리글 위치와 쪽 칸들.
+ * 문서를 한 번만 훑는다 (갈래마다 훑으면 긴 문서에서 헛일이 다섯 배가 된다).
+ */
+function fieldSpots(editor: Editor): Map<string, FieldSpot> {
+  const out = new Map<string, FieldSpot>()
+  const 자리 = (kind: string) => {
+    let spot = out.get(kind)
+    if (!spot) { spot = { cells: [], head: -1, stale: null }; out.set(kind, spot) }
+    return spot
+  }
+  editor.state.doc.descendants((node, pos, parent) => {
+    const kind = node.attrs?.janField as string | undefined
+    if (kind && node.attrs?.janFieldRole === 'head') {
+      const spot = 자리(kind)
+      if (spot.head < 0) {
+        spot.head = pos
+        spot.stale = (node.attrs.janStale as string | null) ?? null
+      }
+    }
+    if (node.type.name !== 'janFieldPage') return
+    const owner = parent?.attrs?.janField as string | undefined
+    if (!owner) return
+    /* 쪽 칸은 알맹이가 attrs 에만 있으므로 줄 글에는 섞이지 않는다 — 이름만 견주게 된다 */
+    자리(owner).cells.push({ pos, text: String(node.attrs.text ?? ''), row: (parent!.textContent || '').trim() })
+  })
+  return out
+}
+
+/** 「고쳐야 함」 표시를 켜거나 끈다 (attrs 만 바꾼다 — 되돌리기에도 남기지 않는다) */
+function markStale(editor: Editor, head: number, want: string | null, now: string | null): boolean {
+  if (head < 0 || want === now) return false
+  const node = editor.state.doc.nodeAt(head)
+  if (!node) return false
+  const tr = editor.state.tr.setNodeMarkup(head, undefined, { ...node.attrs, janStale: want })
+  tr.setMeta('addToHistory', false)
+  editor.view.dispatch(tr)
+  return true
+}
+
+/**
+ * 심어 둔 목록을 지금 문서에 맞춘다 — 워드의 F9 를 사람 대신 눌러 주는 자리.
+ *
+ * 두 가지를 나눠 다룬다.
+ *  쪽 번호는 스스로 고친다. attrs 만 바꾸므로 문서 크기가 그대로여서 쪽 나눔이 다시 흔들리지
+ *    않고, 되돌리기에도 남지 않는다 — 글이 밀려 제목이 다른 쪽으로 가도 목차가 따라간다.
+ *  줄이 늘거나 이름이 바뀐 것은 고치지 않고 「고쳐야 함」 으로 알린다. 줄을 다시 만드는 일은
+ *    문서 크기를 바꾸는 일이라 조용히 할 수 없다 (되돌리기가 더럽혀지고 쪽이 다시 흔들린다).
+ *
+ * 반환: 손댄 목록 수
+ */
+export function syncFieldPages(editor: Editor): number {
+  if (editor.isDestroyed) return 0
+  const spots = fieldSpots(editor)
+  let touched = 0
+  for (const kind of ['toc', 'figlist', 'tablist', 'index', 'auth']) {
+    const spot = spots.get(kind)
+    if (!spot) continue
+    const { cells, head, stale } = spot
+    const want = fieldEntries(editor, kind)
+    if (!want) continue
+    if (want.length !== cells.length) {
+      if (markStale(editor, head, '1', stale)) touched++
+      continue
+    }
+    /* 줄 글이 달라졌으면(제목 이름이 바뀌었다) 쪽만 고쳐서는 맞지 않는다 */
+    const 이름다름 = want.some((w, i) => !cells[i].row.startsWith(w.name.slice(0, 24)))
+    if (이름다름) {
+      if (markStale(editor, head, '1', stale)) touched++
+      continue
+    }
+    let tr = null as null | ReturnType<typeof editor.state.tr.setNodeMarkup>
+    cells.forEach((칸, i) => {
+      const next = want[i].page
+      if (next === 칸.text) return
+      const node = editor.state.doc.nodeAt(칸.pos)
+      if (!node) return
+      tr = (tr ?? editor.state.tr).setNodeMarkup(칸.pos, undefined, { ...node.attrs, text: next })
+    })
+    if (tr) {
+      ;(tr as { setMeta: (k: string, v: unknown) => void }).setMeta('addToHistory', false)
+      editor.view.dispatch(tr)
+      touched++
+    }
+    if (markStale(editor, head, null, stale)) touched++
+  }
+  return touched
+}
+
+/**
+ * 문서가 바뀌면 심어 둔 목록을 스스로 맞춘다.
+ *
+ * 캡션 번호가 그러하듯 목차 쪽 번호도 사람 손에 맡길 자리가 아니다 — 「고쳐 넣기」 를 잊으면
+ * 5쪽이라 적힌 제목이 7쪽에 있다. 쪽 나눔이 앉기를 기다렸다가(잇달아 바뀌는 동안은 미룬다)
+ * 한 번만 맞춘다.
+ */
+export function watchFieldPages(editor: Editor, waitMs = 700): () => void {
+  let timer: number | undefined
+  let inFlight = false
+  let 지난모양 = ''
+
+  const 한걸음 = () => {
+    if (editor.isDestroyed || inFlight) return
+    const 모양 = `${editor.view.dom.querySelectorAll('[data-jan-page]').length}|${editor.state.doc.content.size}`
+    if (모양 !== 지난모양) {           // 아직 쪽이 움직인다 — 앉을 때까지 미룬다
+      지난모양 = 모양
+      timer = window.setTimeout(한걸음, waitMs)
+      return
+    }
+    inFlight = true
+    try { syncFieldPages(editor) } finally { inFlight = false }
+  }
+
+  const onTransaction = ({ transaction }: { transaction: { docChanged: boolean } }) => {
+    if (!transaction.docChanged || inFlight) return
+    window.clearTimeout(timer)
+    timer = window.setTimeout(한걸음, waitMs)
+  }
+
+  editor.on('transaction', onTransaction)
+  return () => {
+    window.clearTimeout(timer)
+    editor.off('transaction', onTransaction)
+  }
 }
 
 /** 심어 둔 목록을 모두 새로 만든다 — 워드에서 F9 를 여러 번 누르는 일 */

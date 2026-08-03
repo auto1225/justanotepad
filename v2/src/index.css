@@ -4143,8 +4143,13 @@ html, body, #root {
   column-rule: 0 !important;
 }
 
+/* 편집기 안 글꼴의 바닥값 — 붙여 온 글이 제 글꼴을 끌고 들어와도 문서 글꼴로 모인다.
+   !important 를 쓰지 않는다. 힘으로 누르면 사람이 글꼴 고르개로 일부러 고른 글꼴
+   (인라인 font-family) 까지 함께 눌려 화면에 전혀 나타나지 않았다 — 실물로 쟀다.
+   붙여 온 글꼴은 이제 들어오는 문에서 벗긴다 (lib/pasteFont.ts) 므로,
+   여기 남는 인라인 글꼴은 곧 사람 뜻이다. 직접 서식이 이겨야 워드·한글과 차례가 같다. */
 .jan-editor-pages .ProseMirror :where(:not(code):not(pre):not(kbd):not(samp)) {
-  font-family: var(--jan-editor-font) !important;
+  font-family: var(--jan-editor-font);
 }
 
 /* 줄노트 — 줄 간격을 글의 줄 간격에서 끌어온다.
@@ -7556,8 +7561,9 @@ body:has(.jan-modal-overlay) .jan-bubble-toolbar { display: none; }
   font-size: var(--jan-doc-body-size, inherit);
 }
 .jan-editor-pages .ProseMirror :where(h1, h2, h3, h4, h5, h6) {
-  /* 편집기 본문 글꼴 규칙이 !important 라, 제목만큼은 같은 무게로 되찾는다 */
-  font-family: var(--jan-doc-head-font, inherit) !important;
+  /* 본문 글꼴 규칙과 무게(0,2,0)가 같고 뒤에 오므로 그대로 이긴다 —
+     예전에는 그 규칙이 !important 라 여기도 !important 로 맞받아야 했다. */
+  font-family: var(--jan-doc-head-font, inherit);
 }
 .ProseMirror p {
   line-height: var(--jan-doc-line, 1.7);
@@ -7694,9 +7700,33 @@ p[data-jan-field="index"], p[data-jan-field="auth"] { display: flex; align-items
   border-bottom: 1px dotted #d0d6de; flex: 1; text-align: right;
 }
 .jan-toc, .jan-bib, .jan-endnotes { break-inside: avoid-page; }
-.jan-bib .jan-ref-item { text-indent: -1.2em; padding-left: 1.2em; }
+
+/* 참고 문헌·미주의 매달린 들여쓰기 (APA·MLA·시카고가 모두 요구하는 조판).
+   .jan-bib .jan-ref-item 에 걸어 두었더니 감싸는 .jan-bib 도, 줄의 class 도 문서 구조에 없어
+   둘 다 벗겨져 한 번도 걸린 적이 없었다 (실측: text-indent 0px). 살아남는 것은 data-* 뿐이다.
+   머리글(「참고 문헌」·「미주」)은 첫 줄이 튀어나오면 안 되므로 뺀다. */
+/* 문서 기본 첫 줄 들여쓰기(.jan-page-node > p:not(…):not(…))가 같은 무게로 맞서므로
+   .ProseMirror 를 앞에 두어 무게를 맞추고 뒤에 놓는다 — 안 그러면 padding 만 걸리고
+   text-indent 는 0 으로 눌린다 (실측). */
+.ProseMirror p[data-jan-field="bib"]:not([data-jan-field-role="head"]),
+.ProseMirror p[data-jan-field="endnote"]:not([data-jan-field-role="head"]) {
+  text-indent: -1.6em; padding-left: 1.6em;
+}
+.ProseMirror p[data-jan-field="endnote"][data-jan-field-role="head"] {
+  border-top: 1px solid #d8dce3; margin-top: 14px; padding-top: 8px;
+}
 .jan-endnotes { border-top: 1px solid #d8dce3; margin-top: 14px; padding-top: 8px; }
 .jan-en-num { color: var(--jan-accent, #d97757); margin-right: 4px; }
+
+/* 「고쳐야 함」 — 쪽 번호는 스스로 따라가지만 줄이 늘거나 이름이 바뀌면 다시 만들어야 한다.
+   워드가 필드에 회색 음영을 깔아 알리듯, 머리글 옆에 눈에 띄게 붙인다 (인쇄에는 나오지 않는다) */
+p[data-jan-field][data-jan-stale]::after {
+  content: '고쳐 넣기 필요';
+  margin-left: 8px; padding: 1px 7px; border-radius: 999px;
+  background: rgba(217, 119, 87, 0.16); color: var(--jan-accent, #d97757);
+  font-size: 11px; font-weight: 600; vertical-align: 2px; white-space: nowrap;
+}
+@media print { p[data-jan-field][data-jan-stale]::after { display: none; } }
 .jan-index-mark { border-bottom: 1px dotted #b3bcc7; }
 .jan-auth-mark { border-bottom: 1px dashed #a8b4c2; }
 .jan-auth-kind { margin-top: 8px; }
@@ -8094,3 +8124,62 @@ body.jan-hide-highlight [data-highlight] { background: none !important; box-shad
 /* 좁은 화면에서는 판 번호부터 접는다 — 이름이 먼저다 */
 @media (max-width: 900px) { .jan-bar-appver { display: none; } }
 @media (max-width: 640px) { .jan-bar-appname { display: none; } }
+
+/* ── 스타일 창 — 이름 있는 스타일과 그 기준(상속) ─────────────────── */
+/* 워드의 스타일 창처럼 옆에 떠 있다 — 덮개가 아니라서 문서를 그대로 만질 수 있다.
+   덮개로 두면 「선택한 곳에 적용」 을 쓰려고 커서를 옮기는 순간 창이 닫힌다. */
+.jan-stylepanel {
+  position: fixed; right: 16px; top: 140px; width: 330px; max-height: 74vh;
+  display: flex; flex-direction: column;
+  background: var(--jan-surface, #fff);
+  border: 1px solid var(--jan-border, #d8dce3);
+  border-radius: 8px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .18);
+  z-index: 520; font-size: 13px;
+}
+.jan-stylepanel-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 8px 10px; border-bottom: 1px solid var(--jan-border, #eceff3);
+}
+.jan-stylepanel-head h3 { margin: 0; font-size: 13px; }
+.jan-stylepanel-cursor { padding: 6px 10px 0; font-size: 11px; color: var(--jan-dim, #6b7684); }
+.jan-stylepanel-cursor strong { color: var(--jan-fg, #191919); }
+/* 낱칸 배치(grid)로 두었더니 목록이 2px 로 찌그러졌다 — 스크롤 상자는 최소 높이가 0 이라
+   높이가 정해진 격자 안에서 아래 칸(고치는 자리)에 자리를 다 내주기 때문이다.
+   보통 흐름(block)으로 두면 아무도 남에게 짓눌리지 않는다. */
+.jan-stylepanel-body { display: block; padding: 8px 10px 12px; overflow: auto; flex: 1; min-height: 0; }
+.jan-stylepanel-body > * + * { margin-top: 10px; }
+.jan-stylepanel-list {
+  border: 1px solid var(--jan-border, #d8dce3); border-radius: 7px;
+  overflow: auto; max-height: 30vh; min-height: 120px;
+}
+.jan-stylepanel-list > button {
+  display: grid; width: 100%; gap: 1px; padding: 6px 8px; text-align: left;
+  background: none; border: 0; border-bottom: 1px solid var(--jan-border, #eceff3); cursor: pointer;
+}
+.jan-stylepanel-list > button > strong { font-size: 12px; }
+.jan-stylepanel-list > button > strong em { font-style: normal; color: var(--jan-dim, #6b7684); font-weight: 400; }
+.jan-stylepanel-list > button > span { font-size: 11px; color: var(--jan-dim, #6b7684); }
+.jan-stylepanel-list > button.is-active { background: rgba(217, 119, 87, 0.14); }
+.jan-stylepanel-branch { color: var(--jan-dim, #9aa4b2); }
+.jan-stylepanel-form { display: grid; gap: 8px; align-content: start; }
+.jan-stylepanel-field { display: grid; gap: 2px; min-width: 0; }
+.jan-stylepanel-fieldhead { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; font-size: 11px; color: var(--jan-dim, #6b7684); }
+.jan-stylepanel-field > input, .jan-stylepanel-field > select { width: 100%; min-width: 0; }
+.jan-stylepanel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; }
+
+.jan-stylepanel-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.jan-stylepanel-toggles { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.jan-stylepanel-toggle { display: inline-flex; align-items: center; gap: 4px; }
+.jan-stylepanel-toggle > button { padding: 3px 10px; border: 1px solid var(--jan-border, #d8dce3); border-radius: 5px; background: none; cursor: pointer; }
+.jan-stylepanel-toggle > button.is-active { background: rgba(217, 119, 87, 0.18); border-color: #d97757; }
+.jan-stylepanel-from, .jan-stylepanel-reset {
+  font-size: 10px; padding: 0 5px; margin-left: 4px; border-radius: 4px; cursor: pointer;
+  border: 1px solid var(--jan-border, #d8dce3); background: none; color: var(--jan-dim, #6b7684);
+}
+.jan-stylepanel-preview {
+  padding: 10px 12px; border: 1px solid var(--jan-border, #d8dce3); border-radius: 7px;
+  background: var(--jan-paper, #fff);
+}
+.jan-stylepanel-preview > p { margin: 0 0 6px; }
+.jan-stylepanel-preview > small { color: var(--jan-dim, #6b7684); font-size: 11px; }

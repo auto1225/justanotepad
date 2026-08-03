@@ -2,8 +2,8 @@ import { Node, Extension } from '@tiptap/core'
 import { NodeSelection, Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { canJoin } from '@tiptap/pm/transform'
-import { mergeContinuedTables, rowsThatFit, splitTableAcrossPages } from './tableSplit'
-import type { Transaction } from '@tiptap/pm/state'
+import { innerSplitPlan, keepsWhole, mergeContinuedTables, rowsThatFit, splitTableAcrossPages, splitTableDeepAcrossPages } from './tableSplit'
+import type { EditorState, Transaction } from '@tiptap/pm/state'
 import type { EditorView } from '@tiptap/pm/view'
 import type { Node as PMNode, NodeType } from '@tiptap/pm/model'
 
@@ -35,14 +35,20 @@ const reflowKey = new PluginKey('janPageReflow')
 const growKey = new PluginKey<number[]>('janPageGrow')
 
 /**
- * 문서의 「모양」 — 쪽마다 블록이 몇이고 문서가 얼마나 큰가.
+ * 문서의 「모양」 — 쪽마다 블록이 몇이고 글이 얼마나 담겼는가.
  *
  * 쪽 나눔이 이 모양으로 되돌아왔다면 맴돌고 있는 것이다.
+ *
+ * 예전에는 「쪽별 블록 수 + 문서 전체 크기」 만 봤다. 그것으로는 **정상 전진과 되풀이를
+ * 가릴 수 없다** — 줄 간격을 좁혀 다음 쪽 첫 문단에서 한 줄을 끌어올릴 때, 쪽마다 블록은
+ * 그대로 하나씩이고 쪼갠 뒤 도로 잇느라 문서 전체 크기도 그대로다. 지문이 매번 똑같이
+ * 나와서, 여섯 쪽을 줄여 가는 정상 과정이 두 걸음 만에 멈췄다.
+ * 쪽마다 「담긴 크기」 까지 넣으면 한 줄이 오르내린 것이 지문에 드러난다.
  */
 function pageShape(doc: PMNode): string {
-  const counts: number[] = []
-  doc.forEach((page) => { if (page.type.name === PAGE_NODE_NAME) counts.push(page.childCount) })
-  return `${counts.join(',')}|${doc.content.size}`
+  const parts: string[] = []
+  doc.forEach((page) => { if (page.type.name === PAGE_NODE_NAME) parts.push(`${page.childCount}:${page.content.size}`) })
+  return parts.join(',')
 }
 
 /** 페이지 노드 — 한 장의 용지 */
@@ -437,8 +443,14 @@ function collectPages(doc: PMNode): Array<{ pos: number; node: PMNode }> {
   return pages
 }
 
+/* ── 조판 문턱값 — 재어 가며 다듬는 자리라 한군데 모아 둔다 ── */
+
 /** 한 줄이라도 넣어 볼 만한 최소 여유 (이보다 좁으면 문단을 통째로 넘긴다) */
 const MIN_SPLIT_ROOM = 24
+/** 당겨올 때 블록마다 남겨 두는 안전망 (글꼴 렌더링 소수점 오차 몫) */
+const PULL_GAP = 3
+/** 되풀이를 알아채는 창 — 최근 이만큼의 모양 안에서 되돌아오면 맴도는 것이다 */
+const SHAPE_WINDOW = 8
 
 /* ── 떨어지면 안 되는 짝 ──
    제목은 뒤따르는 본문과, 표 캡션은 아래 표와, 그림 캡션은 위 그림과 붙어 다닌다.
@@ -584,6 +596,75 @@ function joinContinuedAt(tr: Transaction, pos: number) {
 }
 
 /**
+ * 쪽 첫머리에서 백스페이스 — 앞 쪽 마지막 문단과 잇는다.
+ *
+ * 쪽이 노드라서 2쪽 첫 블록과 1쪽 마지막 블록은 **부모가 다르다**. ProseMirror 의 기본
+ * 백스페이스(joinBackward)는 그 벽을 넘지 못하고, 대신 조각을 앞 쪽으로 잠깐 들어 올렸다가
+ * 리플로우가 도로 내려보낸다. 그 사이 「쪽의 첫 블록이 아닌 이어짐 표시는 지운다」 는
+ * 뒷정리가 돌아 janCont 를 지워 버린다. 겉으로는 아무 일도 안 일어난 것처럼 보이는데,
+ * 실제로는 **한 문단이 영영 두 문단으로 갈라진다** — 재어 보니 저장 문단 수가 3 에서 4 로 늘었다.
+ * (글자는 하나도 안 지워지고 커서도 그대로였다. 그래서 오래 눈에 띄지 않았다.)
+ *
+ * 그래서 우리가 직접 잇는다. 두 갈래다.
+ *  - 이어짐 조각(janCont)이면 원래 한 문단이므로, 워드처럼 **앞 글자 하나를 지운다**.
+ *  - 서로 다른 문단이면 워드처럼 **앞 문단에 합친다**.
+ * 어느 쪽이든 한 트랜잭션으로 끝내므로 되돌리기도 한 번에 걸린다.
+ */
+function joinBackwardAcrossPages(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
+  const sel = state.selection
+  if (!(sel instanceof TextSelection) || !sel.empty) return false
+  const $from = sel.$from
+  // 텍스트블록의 맨 앞이어야 한다
+  if ($from.parentOffset !== 0) return false
+  // doc > page > block 의 세 겹만 다룬다 (목록·인용 안쪽은 기본 동작에 맡긴다)
+  if ($from.depth !== 2 || $from.node(1).type.name !== PAGE_NODE_NAME) return false
+  if ($from.index(1) !== 0) return false // 쪽의 첫 블록이 아니면 기본 동작으로 충분하다
+
+  const page = $from.node(1)
+  const pagePos = $from.before(1)
+  if (pagePos <= 0) return false // 첫 쪽 — 앞 쪽이 없다
+  const prevPage = state.doc.resolve(pagePos).nodeBefore
+  if (!prevPage || prevPage.type.name !== PAGE_NODE_NAME) return false
+  const prev = prevPage.lastChild
+  const cur = $from.parent
+  if (!prev || !prev.isTextblock || !cur.isTextblock) return false
+  /* 손으로 넣은 쪽 나눔은 지킨다 — 워드·한글도 이때는 합치지 않는다 */
+  if (prev.type.name === 'pageBreak') return false
+
+  if (!dispatch) return true
+
+  /* 자리 값은 모두 「고치기 전 문서」 기준이다. 문서 뒤쪽부터 손대면 앞쪽 값이 흔들리지 않는다.
+     prevEnd(앞 조각 내용 끝) < curStart(이 블록 시작) 이므로 지우기 → 붙이기 → 이음매 순서로 간다. */
+  const prevEnd = pagePos - 2   // 앞 쪽 마지막 블록의 내용 끝
+  const curStart = pagePos + 1  // 이 블록의 시작
+  const 이어짐 = !!cur.attrs?.janCont
+  const tr = state.tr
+  // 이 블록이 쪽의 유일한 내용이면 쪽째 지운다 (빈 용지가 유령으로 남지 않게)
+  if (page.childCount === 1) tr.delete(pagePos, pagePos + page.nodeSize)
+  else tr.delete(curStart, curStart + cur.nodeSize)
+  if (cur.content.size > 0) tr.insert(prevEnd, cur.content)
+  // 원래 한 문단이었다면 백스페이스는 「글자 하나 지우기」 여야 한다
+  if (이어짐 && prev.content.size > 0) tr.delete(prevEnd - 1, prevEnd)
+  const caret = 이어짐 && prev.content.size > 0 ? prevEnd - 1 : prevEnd
+  tr.setSelection(TextSelection.near(tr.doc.resolve(Math.max(1, Math.min(caret, tr.doc.content.size)))))
+  dispatch(tr.scrollIntoView())
+  return true
+}
+
+/**
+ * 쪽 경계를 넘는 편집 — 기본 키맵보다 먼저 잡아야 하므로 우선순위를 높여 둔다.
+ */
+export const PageBoundaryKeymap = Extension.create({
+  name: 'janPageBoundaryKeymap',
+  priority: 200,
+  addKeyboardShortcuts() {
+    return {
+      Backspace: ({ editor }) => joinBackwardAcrossPages(editor.state, editor.view.dispatch.bind(editor.view)),
+    }
+  },
+})
+
+/**
  * 한 번의 리플로우 패스 — 넘치는 첫 쪽에서 마지막 블록을 다음 쪽으로 밀거나,
  * 여유 있는 쪽으로 다음 쪽 첫 블록을 당겨온다. 변경했으면 true.
  */
@@ -683,18 +764,33 @@ function reflowOnce(view: EditorView, contentHeight: number): boolean {
 
     /* ── 표는 행 단위로 나눠 넘긴다 (워드·한글과 같다) ──
        예전에는 표가 통째로 밀리거나, 밀 수 없으면 종이가 늘어났다.
-       경계에 걸린 것이 표라면 들어가는 행까지만 남기고 나머지를 다음 쪽으로 흘린다. */
+       경계에 걸린 것이 표라면 들어가는 행까지만 남기고 나머지를 다음 쪽으로 흘린다.
+       「쪼개지 말라」(break-inside: avoid → data-keep) 가 걸린 표는 통째로 넘긴다. */
     {
       let childOffset = 0
       for (let c = 0; c < cutIndex; c++) childOffset += node.child(c).nodeSize
       const child = node.child(cutIndex)
-      if (child.type.name === 'table' && child.childCount > 2) {
+      const tablePos = pos + 1 + childOffset
+      if (child.type.name === 'table' && !keepsWhole(child)) {
         const room = m.rooms[cutIndex]
-        const fit = rowsThatFit(view, pos + 1 + childOffset, room, m.scale)
+        const fit = child.childCount > 2 ? rowsThatFit(view, tablePos, room, m.scale) : 0
         // 제목 행만 남기고 나누면 보기 흉하다 — 두 줄 이상 남을 때만 나눈다
         if (fit >= 2 && fit < child.childCount) {
           const tr = state.tr
-          if (splitTableAcrossPages(tr, pos + 1 + childOffset, child, fit)
+          if (splitTableAcrossPages(tr, tablePos, child, fit)
+            && pushRestToNextPage(tr, i, cutIndex + 1, pageType)) {
+            tr.setMeta(reflowKey, true)
+            tr.setMeta('addToHistory', false)
+            view.dispatch(tr)
+            return true
+          }
+        }
+        /* 행 단위로는 나눌 수 없다 — 경계에 걸린 행 자체가 한 쪽보다 길다.
+           그 행의 칸에 든 표를 파고들어 나눈다 (안 그러면 그 쪽 용지가 늘어난다). */
+        const plan = innerSplitPlan(view, tablePos, child, room, m.scale)
+        if (plan) {
+          const tr = state.tr
+          if (splitTableDeepAcrossPages(tr, tablePos, child, plan)
             && pushRestToNextPage(tr, i, cutIndex + 1, pageType)) {
             tr.setMeta(reflowKey, true)
             tr.setMeta('addToHistory', false)
@@ -818,7 +914,16 @@ function reflowOnce(view: EditorView, contentHeight: number): boolean {
         const bandUsed = Math.min(flowAfter, contentHeight)
         if (bandUsed + h > contentHeight - 1) break
       } else {
-        if (h > room) break
+        /* 안전망 — 재어 둔 높이보다 실제로 조금 더 먹는 자리가 있다.
+           블록을 다음 쪽에서 잴 때와 앞 쪽 끝에 붙였을 때의 여백이 다르기 때문이다
+           (첫 자식이라 위 여백이 안 잡히던 것이, 옮기면 앞 블록과 사이에 생긴다).
+           그 차이가 밀기와 당기기를 끝없이 오가게 했다 — 4초에 밀기 116 · 당기기 115 회.
+           매번 같은 숫자였다: 남은 자리 63px 에 「50px 이면 들어간다」 고 보고 올렸는데
+           실제로는 66px 을 먹어 3px 이 넘쳤다. 블록당 8px 이 숨어 있었다.
+           갭을 늘려 가며 쓸어 보니 13px 에서 진동이 0 이 됐다. 다만 13px 은 여백 몫이라
+           여기서 메울 값이 아니다 — 여기 갭은 글꼴 렌더링 소수점 오차용 안전망이고,
+           되풀이 자체는 아래 「모양 지문」 이 끊는다. */
+        if (h + PULL_GAP > room) break
         room -= h
       }
       flowAfter += h
@@ -840,7 +945,33 @@ function reflowOnce(view: EditorView, contentHeight: number): boolean {
     joinContinuedAt(tr, at)
     tr.setMeta(reflowKey, true)
     tr.setMeta('addToHistory', false)
+
+    /* ── 넣어 보고, 넘치면 무른다 ──
+       산술 예측만으로는 원리상 맞출 수 없다. 여백이 「블록의 성질」 이 아니라
+       「자리의 성질」 이기 때문이다:
+
+         .ProseMirror h3            { margin: 0.65em 0 0.25em }   ← 위 여백 ≈11px
+         .ProseMirror h3:first-child { margin-top: 0 }
+
+       다음 쪽의 첫 자식인 제목은 그 자리에서 위 여백이 **정말로 0** 이다
+       (getComputedStyle 로 읽어도 0 이 나온다). 앞 쪽으로 옮겨 첫 자식이 아니게 되는
+       순간에야 여백이 살아난다. 재어 보니 21px 로 잰 블록이 옮기고 나서 41px 이 됐다 —
+       「63px 남았고 50px 이면 들어간다」 고 보고 올렸는데 실제로는 66px 을 먹어 3px 이 넘쳤다.
+       그 3px 때문에 곧바로 도로 밀려나고, 밀려나면 다시 자리가 남아 또 올라왔다.
+       4초에 밀기 116 · 당기기 115 회. 여백을 셈에 넣어 보정하려는 시도는 듣지 않았다
+       (235 → 233회) — 옮기기 전에는 브라우저 자신도 그 높이를 모르기 때문이다.
+
+       그래서 옮겨 놓고 실제로 잰다. 브라우저는 자바스크립트 호출 스택이 비워진 뒤에야
+       화면을 그리므로, 한 흐름 안에서 dispatch → 재기 → 무르기까지 끝내면 깜빡임이
+       화면에 나오지 않는다. getBoundingClientRect 는 좌표만 새로 셈할 뿐 그리지는 않는다.
+       무를 때는 이전 상태를 통째로 되돌린다 — ProseMirror 는 그것이 싸다. */
+    const 되돌릴상태 = state
     view.dispatch(tr)
+    const 옮긴뒤 = measure(view, pos, contentHeight)
+    if (옮긴뒤?.anyOverflow) {
+      view.updateState(되돌릴상태)
+      continue // 이 쪽은 더 담을 수 없다 — 다음 쪽을 본다
+    }
     return true
   }
 
@@ -977,10 +1108,16 @@ export const PageReflow = Extension.create<ReflowOptions>({
              블록 둘을 3쪽↔4쪽으로 옮기기를 초당 쉰 번씩 되풀이했다 (6초에 문서 고쳐쓰기 295번,
              그림 요소 새로 만들기 1,486번). 겉보기 쪽 수는 그대로라 눈에 띄지 않지만, 그동안
              그림 노드가 매 프레임 갈아치워져 그림을 붙잡을 수도 손잡이를 끌 수도 없었다.
-             「같은 모양이 다시 나오면 멈춤」 은 너무 거칠다 — 줄 간격을 줄여 내용을 여러 쪽에
-             걸쳐 끌어올리는 정상 과정도 걸려서 쪽이 안 줄어든다. 실제로 관측된 것은 두 모양을
-             오가는 왕복이므로, 마지막 넷이 A·B·A·B 일 때만 맴돌기로 본다.
-             (곧바로 이어지는 되풀이가 아니면 아직 나아가는 중이다.) */
+
+             처음에는 「마지막 넷이 A·B·A·B」 일 때만 잡았다. 그것으로 잡히는 것은 두 모양을
+             곧바로 오가는 왕복뿐이라, 세 모양 이상을 도는 되풀이(A·B·C·A·B·C…)는 그대로 샜다.
+             그렇다고 「같은 모양이 한 번이라도 다시 나오면 멈춤」 으로 넓히면 정상 전진까지
+             걸린다 — 줄 간격을 줄여 여러 쪽에 걸쳐 내용을 끌어올리는 과정이 그렇다
+             (e2e/page-split.spec.ts 의 「줄 간격을 줄이면…」 이 예전에 그것을 잡아냈다).
+             그래서 **최근 몇 판만 보는 창**(SHAPE_WINDOW)으로 한다. 창 안에서 되돌아오면
+             되풀이고, 창 밖의 옛 모양과 같아지는 것은 아직 나아가는 중으로 본다.
+             되풀이를 애초에 안 만드는 몫은 당기기의 「넣어 보고 무르기」 가 맡는다 —
+             이것은 마지막 안전망이다. */
           let shapes: string[] = []
           /* 크기를 셈에 넣고 쪽을 다 짠 그림들. 쪽을 다시 짜면 그림 요소가 통째로 새로
              만들어지고, 새 요소는 「다 왔다」 는 소식(load)을 또 낸다. 그 소식이 schedule 을
@@ -1017,9 +1154,13 @@ export const PageReflow = Extension.create<ReflowOptions>({
               }
               passes++
               const changed = reflowOnce(view, contentHeight)
-              if (changed) shapes = [...shapes.slice(-3), pageShape(view.state.doc)]
-              const 왕복 = shapes.length === 4 && shapes[3] === shapes[1] && shapes[2] === shapes[0]
-              if (changed && !왕복) {
+              let 되풀이 = false
+              if (changed) {
+                const 지금 = pageShape(view.state.doc)
+                되풀이 = shapes.includes(지금)
+                shapes = [...shapes.slice(-(SHAPE_WINDOW - 1)), 지금]
+              }
+              if (changed && !되풀이) {
                 raf = window.requestAnimationFrame(() => run(view))
               } else {
                 /* 다 짰거나(changed 가 false), 맴돌기를 알아채고 멈춘 것이다.

@@ -16,6 +16,8 @@ export interface RefTarget {
   kind: RefKind
   /** 대상에 붙은 이름표 — 앞에 무엇이 끼어들어도 이것으로 다시 찾는다 */
   refId?: string
+  /** 캡션(paperTag)이 지닌 이름표 — 캡션으로만 있는 대상은 이것으로 찾는다 */
+  capKey?: string
   /** 문서 안에서 이 대상을 다시 찾는 열쇠 (제목 글·책갈피 이름·차례 번호) */
   id: string
   /** 사람이 보는 이름 — 목록에 뜬다 */
@@ -24,6 +26,8 @@ export interface RefTarget {
   number: string
   /** 제목 글 등 본문 */
   text: string
+  /** 이 대상이 쓰는 이름 낱말 — 캡션이 정한 것이 있으면 그것을 따른다 (그림 · Fig.) */
+  word?: string
   pos: number
 }
 
@@ -49,6 +53,78 @@ const KIND_WORD: Record<RefKind, string> = {
 }
 
 /**
+ * 참조 대상 하나가 될 「거리」 — 개체 노드일 수도 있고 캡션 줄일 수도 있다.
+ *
+ * 참조 갈래가 두 벌로 따로 놀았다. 상호 참조 창은 image·table 「노드」 만 세고,
+ * 캡션(paperTag)은 논문 쪽 번호 매기기가 따로 세었다. 그래서 캡션이 셋 있는 문서에서
+ * 창은 「그림 (0) · 표 (0)」 이라고 했다. 워드에서 「참조 대상: 그림」 은 곧 캡션 목록이다.
+ */
+interface Piece {
+  src: 'node' | 'cap'
+  pos: number
+  refId?: string
+  capKey?: string
+  word?: string
+  text: string
+}
+
+interface Merged {
+  pos: number
+  refId?: string
+  capKey?: string
+  word?: string
+  text: string
+  hasNode: boolean
+  hasCap: boolean
+}
+
+/**
+ * 개체와 그 캡션을 한 대상으로 묶는다.
+ *
+ * 그림 아래(워드) · 표 위(워드·한글)에 캡션이 온다. 묶지 않으면 그림 하나에 캡션 하나를 단
+ * 문서가 「그림 2개」 로 세어져 번호가 곱절이 된다. 바로 이웃한 것만 묶는다.
+ */
+function mergePieces(pieces: Piece[]): Merged[] {
+  const out: Merged[] = []
+  for (const p of pieces) {
+    const last = out[out.length - 1]
+    if (p.src === 'cap' && last && last.hasNode && !last.hasCap) {
+      last.hasCap = true
+      last.capKey = p.capKey
+      last.word = p.word
+      if (p.text) last.text = p.text
+      continue
+    }
+    if (p.src === 'node' && last && last.hasCap && !last.hasNode) {
+      last.hasNode = true
+      last.refId = last.refId || p.refId
+      if (!last.text) last.text = p.text
+      continue
+    }
+    out.push({ pos: p.pos, refId: p.refId, capKey: p.capKey, word: p.word, text: p.text, hasNode: p.src === 'node', hasCap: p.src === 'cap' })
+  }
+  return out
+}
+
+/** 캡션 줄에서 라벨 노드를 빼고 설명만 (라벨은 노드가 그린 글이라 글자열로는 못 벗긴다) */
+function capPiece(node: PMNode, pos: number, kinds: string[]): Piece {
+  let capKey = ''
+  let word: string | undefined
+  let text = ''
+  node.forEach((child) => {
+    if (child.type.name === 'paperTag' && kinds.includes(String(child.attrs.kind))) {
+      capKey = String(child.attrs.refKey || '')
+      word = (child.attrs.label as string | null) || undefined
+      return
+    }
+    text += child.textContent || ''
+  })
+  /* 손으로 적은 캡션(«Table 1. 설명»)은 라벨 노드가 없다 — 글자열에서 벗긴다 */
+  const only = text.replace(/^\s*(그림|표|수식|Fig\.?|Table|Eq\.?)?\s*\d*\s*[.:]?\s*/i, '').trim()
+  return { src: 'cap', pos, capKey: capKey || undefined, word, text: only }
+}
+
+/**
  * 문서를 훑어 참조할 수 있는 자리를 모은다.
  * doc 을 따로 주면 그것을 본다 — 문서가 바뀌는 순간(appendTransaction)에는
  * editor.state 가 아직 예전 것이라, 갓 바뀐 문서를 넘겨야 번호가 한 박자 늦지 않는다.
@@ -56,11 +132,19 @@ const KIND_WORD: Record<RefKind, string> = {
 export function collectTargets(editor: Editor | null, doc?: PMNode): RefTarget[] {
   if (!editor || editor.isDestroyed) return []
   const out: RefTarget[] = []
-  const count: Record<string, number> = { table: 0, figure: 0, chart: 0, equation: 0, footnote: 0 }
+  const count: Record<string, number> = { chart: 0, footnote: 0 }
   const numbers: number[] = [0, 0, 0, 0, 0, 0]
+  const figs: Piece[] = []
+  const tabs: Piece[] = []
+  const eqs: Piece[] = []
 
   ;(doc || editor.state.doc).descendants((node, pos) => {
     const name = node.type.name
+    /* 캡션 줄 — 안으로 들어가지 않는다 (라벨·수식 노드를 두 번 세게 된다) */
+    const block = node.attrs?.['data-paper-block'] as string | undefined
+    if (block === 'figcap') { figs.push(capPiece(node, pos, ['figlabel'])); return false }
+    if (block === 'tabcap') { tabs.push(capPiece(node, pos, ['tablabel'])); return false }
+    if (block === 'eq') { eqs.push(capPiece(node, pos, ['eqnum'])); return false }
     if (name === 'heading') {
       const level = Math.max(1, Math.min(6, Number(node.attrs.level) || 1))
       numbers[level - 1] += 1
@@ -71,15 +155,11 @@ export function collectTargets(editor: Editor | null, doc?: PMNode): RefTarget[]
       return
     }
     if (name === 'table') {
-      count.table += 1
-      const cap = tableCaption(node)
-      out.push({ kind: 'table', id: `table:${count.table}`, refId: node.attrs.janRef || undefined, label: `표 ${count.table}${cap ? ' — ' + cap : ''}`, number: String(count.table), text: cap, pos })
+      tabs.push({ src: 'node', pos, refId: node.attrs.janRef || undefined, text: tableCaption(node) })
       return
     }
     if (name === 'image' || name === 'janImage') {
-      count.figure += 1
-      const cap = String(node.attrs?.caption || node.attrs?.alt || '').trim()
-      out.push({ kind: 'figure', id: `figure:${count.figure}`, refId: node.attrs.janRef || undefined, label: `그림 ${count.figure}${cap ? ' — ' + cap : ''}`, number: String(count.figure), text: cap, pos })
+      figs.push({ src: 'node', pos, refId: node.attrs.janRef || undefined, text: String(node.attrs?.caption || node.attrs?.alt || '').trim() })
       return
     }
     if (name === 'janChart') {
@@ -90,8 +170,7 @@ export function collectTargets(editor: Editor | null, doc?: PMNode): RefTarget[]
       return
     }
     if (name === 'mathBlock' || name === 'math' || name === 'janMath') {
-      count.equation += 1
-      out.push({ kind: 'equation', id: `equation:${count.equation}`, label: `수식 ${count.equation}`, number: String(count.equation), text: '', pos })
+      eqs.push({ src: 'node', pos, text: '' })
       return
     }
     if (name === 'footnote' || node.attrs?.['data-footnote']) {
@@ -99,6 +178,28 @@ export function collectTargets(editor: Editor | null, doc?: PMNode): RefTarget[]
       out.push({ kind: 'footnote', id: `footnote:${count.footnote}`, label: `각주 ${count.footnote}`, number: String(count.footnote), text: node.textContent.trim(), pos })
     }
   })
+
+  /* 개체와 캡션을 묶어 갈래마다 하나씩 — 워드의 「참조 대상」 목록과 같은 차례 */
+  const 채우기 = (kind: RefKind, pieces: Piece[], fallbackWord: string) => {
+    mergePieces(pieces).forEach((m, i) => {
+      const n = String(i + 1)
+      const word = m.word || fallbackWord
+      out.push({
+        kind,
+        id: `${kind}:${n}`,
+        refId: m.refId || m.capKey || undefined,
+        capKey: m.capKey,
+        label: `${word} ${n}${m.text ? ' — ' + m.text : ''}`,
+        number: n,
+        text: m.text,
+        word,
+        pos: m.pos,
+      })
+    })
+  }
+  채우기('figure', figs, KIND_WORD.figure)
+  채우기('table', tabs, KIND_WORD.table)
+  채우기('equation', eqs, KIND_WORD.equation)
 
   // 책갈피는 글자 안에 들어 있어 DOM 에서 찾는다 (span[data-bookmark])
   try {
@@ -128,7 +229,8 @@ function tableCaption(node: { childCount: number; child: (i: number) => { textCo
 /** 참조가 보여 줄 글 */
 export function refText(target: RefTarget | undefined, show: RefShow, page?: number): string {
   if (!target) return '[참조 없음]'
-  const word = KIND_WORD[target.kind]
+  /* 캡션이 정한 이름을 그대로 쓴다 — 캡션은 「그림 2.」 인데 참조만 「Fig. 2」 이면 안 된다 */
+  const word = target.word ?? KIND_WORD[target.kind]
   switch (show) {
     case 'number': return word ? `${word} ${target.number}` : target.number || target.text
     case 'text': return target.text || target.label
@@ -167,5 +269,8 @@ export function pageOfPos(editor: Editor | null, pos: number): number | undefine
 
 /** 이름표로 대상을 다시 찾는다 — 없으면 예전 방식(몇 번째)으로 물러선다 */
 export function findTarget(targets: RefTarget[], refId?: string, fallbackId?: string): RefTarget | undefined {
-  return (refId ? targets.find((t) => t.refId === refId) : undefined) || targets.find((t) => t.id === fallbackId)
+  /* 이름표는 두 갈래다 — 개체에 붙인 janRef 와 캡션이 지닌 refKey.
+     그림에 캡션을 나중에 달아도 예전 참조가 길을 잃지 않도록 둘 다 살핀다. */
+  return (refId ? targets.find((t) => t.refId === refId || t.capKey === refId) : undefined)
+    || targets.find((t) => t.id === fallbackId)
 }

@@ -2,6 +2,7 @@
 import type { Editor } from '@tiptap/react'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import type { EditorState } from '@tiptap/pm/state'
+import { outlineLevelOf } from '../lib/docStyles'
 
 interface OutlinePanelProps {
   editor: Editor | null
@@ -105,12 +106,11 @@ function useEditorStateSnapshot(editor: Editor | null): EditorState | null {
 function collectHeadings(doc: ProseMirrorNode): Heading[] {
   const list: Heading[] = []
   doc.descendants((node, pos) => {
-    if (node.type.name === 'heading') {
-      list.push({
-        level: node.attrs.level || 1,
-        text: node.textContent || '(빈 제목)',
-        pos,
-      })
+    /* 태그(h1~h6)가 아니라 개요 수준으로 모은다 — 스타일로 「제목1」 을 붙인 문단도
+       제목이고, h1 에 「바탕글」 을 붙였으면 제목이 아니다 (워드와 같은 차례). */
+    const level = outlineLevelOf(node)
+    if (level > 0) {
+      list.push({ level, text: node.textContent || '(빈 제목)', pos })
     }
     return true
   })

@@ -9,6 +9,7 @@ import { Table } from '@tiptap/extension-table'
 import { TableRow } from '@tiptap/extension-table-row'
 import { JanTableCell, JanTableHeader, TablePlacement, TableFormulaAuto } from '../extensions/TableCellExt'
 import { TableKeymap } from '../extensions/TableKeymap'
+import { TableKeepAttrs } from '../extensions/tableSplit'
 import { CellPickEdge } from '../extensions/CellPickEdge'
 import { TablePen } from '../extensions/TablePen'
 import { ImageObject as Image } from '../extensions/ImageObject'
@@ -24,7 +25,10 @@ import { AuthorityMark, IndexMark } from '../extensions/RefMarks'
 import { DeleteMark, InsertMark, TrackChanges } from '../extensions/TrackChanges'
 import { EditGuard } from '../extensions/EditGuard'
 import { applyDesign, watermarkSvgOf, type DocDesign } from '../lib/docDesign'
+import { applyStyleSheet } from '../lib/docStyles'
+import { stripPastedFontFamily } from '../lib/pasteFont'
 import { watchPaperNumbers } from '../lib/paperRefs'
+import { watchFieldPages } from '../lib/docRefs'
 import { watchStill } from '../lib/stillImage'
 import { DesignPanel } from './DesignPanel'
 import { Model3D } from '../extensions/Model3D'
@@ -58,6 +62,7 @@ import { SignaturePanel } from './SignaturePanel'
 import { StampModal } from './StampModal'
 import { CrossRefPanel } from './CrossRefPanel'
 import { SourcePanel } from './SourcePanel'
+import { StylePanel } from './StylePanel'
 import { SymbolPanel } from './SymbolPanel'
 import { ObjectPane } from './ObjectPane'
 import { ObjectBar } from './ObjectBar'
@@ -131,7 +136,8 @@ import { AudioNode, VideoNode } from '../extensions/Media'
 import { PageBreak } from '../extensions/PageBreak'
 import { PaperTag, PaperBlockAttrs } from '../extensions/PaperTag'
 import { CurrentParaHighlight } from '../extensions/CurrentParaHighlight'
-import { PageDoc, PageNode, PageReflow, ContinuedAttr, getSavableHtml, PAGE_NODE_NAME } from '../extensions/PageDocument'
+import { DocStyleAttr, CharStyleMark } from '../extensions/DocStyle'
+import { PageDoc, PageNode, PageReflow, PageBoundaryKeymap, ContinuedAttr, getSavableHtml, PAGE_NODE_NAME } from '../extensions/PageDocument'
 import { HorizontalRuler, VerticalRulers } from './PageRulers'
 import { PageThumbnailPanel } from './PageThumbnailPanel'
 import { SplitEditorPane } from './SplitEditorPane'
@@ -222,6 +228,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   const [xrefPanel, setXrefPanel] = useState(false)
   const [designPanel, setDesignPanel] = useState<'styles' | 'background' | null>(null)
   const [sourcePanel, setSourcePanel] = useState(false)
+  const [stylePanel, setStylePanel] = useState(false)
   /* 문자표와 개체 목록 — 워드의 「기호」 대화상자와 「선택 창(Alt+F10)」 */
   const [showSymbols, setShowSymbols] = useState(false)
   const [showObjects, setShowObjects] = useState(false)
@@ -454,6 +461,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       CellPickEdge,
       TablePen,
       TableRow,
+      TableKeepAttrs,
       JanTableHeader,
       JanTableCell,
       /* base64 이미지를 파싱에서 받아들인다 — 기본값(allowBase64:false)이면 저장본을 다시 열 때
@@ -508,6 +516,9 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       PaperTag,
       CurrentParaHighlight,
       PaperBlockAttrs,
+      /* 이름 있는 스타일의 표 — 스키마에 등록해야 저장·재파싱에서 살아남는다 */
+      DocStyleAttr,
+      CharStyleMark,
     ]
     // 독립 페이지 모델 — 용지마다 실제 page 노드 + 자동 리플로우 (PaginationPlus 대체)
     if (usePageNodes) {
@@ -515,6 +526,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
         PageDoc,
         PageNode,
         ContinuedAttr,
+        PageBoundaryKeymap,
         PageReflow.configure({
           getContentHeight: () =>
             pagePx.pageHeight - pageMarginPx.top - pageMarginPx.bottom,
@@ -570,6 +582,9 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       content: collab.ydoc ? '' : initialContent,
       editorProps: {
         attributes: { class: 'ProseMirror', spellcheck: spellCheck ? 'true' : 'false' },
+        /* 붙여 온 글은 제 글꼴을 두고 온다 — 문서 글꼴로 통일된다.
+           예전에는 CSS 가 !important 로 눌렀는데, 그 그물이 사람이 고른 글꼴까지 잡았다. */
+        transformPastedHTML: stripPastedFontFamily,
         /**
          * 목차 줄을 누르면 그 제목으로 간다.
          * 목차는 <a href="#h-…"> 로 걸리는데 제목에는 그 이름표가 붙은 적이 없어
@@ -610,6 +625,13 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   useEffect(() => {
     if (!editor) return
     return watchPaperNumbers(editor)
+  }, [editor])
+
+  /* 목차·그림 목차·색인의 쪽 번호도 마찬가지다 — 글이 밀려 제목이 다른 쪽으로 가면 따라간다.
+     줄이 늘거나 이름이 바뀐 것은 문서 크기를 바꾸는 일이라 「고쳐야 함」 으로 알린다 */
+  useEffect(() => {
+    if (!editor) return
+    return watchFieldPages(editor)
   }, [editor])
 
   /* 저장소 주소(jan-blob://)를 계속 지켜보며 진짜 그림으로 바꾼다 —
@@ -676,6 +698,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
     const onXref = () => setXrefPanel(true)
     const onDesign = (e: Event) => setDesignPanel((e as CustomEvent<{ tab?: 'styles' | 'background' }>).detail?.tab || 'styles')
     const onSources = () => setSourcePanel(true)
+    const onStyles = () => setStylePanel(true)
     const onSymbols = () => setShowSymbols(true)
     const onObjects = () => setShowObjects((v) => !v)
     /* 개체 목록은 워드와 같은 자리(Alt+F10)에서 열고 닫는다 */
@@ -746,6 +769,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
     window.addEventListener('jan-xref-dialog', onXref)
     window.addEventListener('jan-design-dialog', onDesign)
     window.addEventListener('jan-source-dialog', onSources)
+    window.addEventListener('jan-style-panel', onStyles)
     return () => {
       window.removeEventListener('jan-image-dialog', onDialog)
       window.removeEventListener('jan-image-replace', onReplace)
@@ -757,6 +781,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       window.removeEventListener('jan-xref-dialog', onXref)
       window.removeEventListener('jan-design-dialog', onDesign)
       window.removeEventListener('jan-source-dialog', onSources)
+      window.removeEventListener('jan-style-panel', onStyles)
       window.removeEventListener('jan-symbol-panel', onSymbols)
       window.removeEventListener('jan-object-pane', onObjects)
       window.removeEventListener('jan-comment-pane', onComments)
@@ -893,10 +918,17 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
   useEffect(() => {
     if (editor) setEditor(editor)
     // dev 전용 디버그 핸들 (프로덕션 번들에서는 제거됨)
-    if (import.meta.env.DEV && editor) (window as unknown as { __janEditor?: TiptapEditor }).__janEditor = editor
+    if (import.meta.env.DEV && editor) {
+      const w = window as unknown as { __janEditor?: TiptapEditor; __janSavable?: () => string }
+      w.__janEditor = editor
+      /* 시험이 「저장하면 어떻게 되는가」 를 진짜 저장 경로로 물어볼 수 있게 —
+         시험이 같은 변환을 따로 베껴 쓰면 정작 저장 경로가 틀려도 통과한다 */
+      w.__janSavable = () => getSavableHtml(editor)
+    }
     applyTheme()
     applyTypo()
     applyDesign(useUIStore.getState().design) // 이 문서의 디자인을 화면에 입힌다
+    applyStyleSheet(useUIStore.getState().styles) // 이름 있는 스타일 한 벌도 함께
     applyTrackView(editor)                     // 지난번 추적 상태(켬/끔·표시 방식)를 되살린다
     tauriSyncOnBoot().catch(() => {})
     trackEvent('app_boot')
@@ -1403,6 +1435,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       {xrefPanel && <CrossRefPanel editor={editor} onClose={() => setXrefPanel(false)} />}
       {designPanel && <DesignPanel tab={designPanel} onClose={() => setDesignPanel(null)} />}
       {sourcePanel && <SourcePanel editor={editor} onClose={() => setSourcePanel(false)} />}
+      {stylePanel && <StylePanel editor={editor} onClose={() => setStylePanel(false)} />}
       {showSymbols && <SymbolPanel editor={editor} onClose={() => setShowSymbols(false)} />}
       {showObjects && <ObjectPane editor={editor} onClose={() => setShowObjects(false)} />}
       {showComments && <CommentPane editor={editor} onClose={() => setShowComments(false)} />}

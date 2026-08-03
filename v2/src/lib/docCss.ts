@@ -1,3 +1,5 @@
+import { currentStyleSheet, styleSheetCss } from './docStyles'
+
 /**
  * 내보낸 문서(HTML·Word)에 함께 넣는 서식.
  *
@@ -40,3 +42,15 @@ export const DOC_EXPORT_CSS = `
   p[data-jan-field] > a { flex: 0 1 auto; min-width: 0; }
   .jan-toc-page { margin-left: 6px; padding-left: 8px; flex: 1; text-align: right; color: #6b7684; font-size: 0.9em; border-bottom: 1px dotted #d0d6de; }
 `
+
+/**
+ * 이름 있는 스타일까지 실은 내보내기 서식.
+ *
+ * 문단에는 이름표만 붙어 있으므로(data-jan-style), 정의를 함께 내보내지 않으면
+ * 파일로 열었을 때 그 문단들이 통째로 밋밋해진다 — 화면에서 본 문서와 달라진다.
+ * 내보내기 경로는 이 함수를 써야 한다 (DOC_EXPORT_CSS 를 직접 쓰면 스타일이 빠진다).
+ */
+export function docExportCss(): string {
+  const styles = styleSheetCss(currentStyleSheet())
+  return styles ? `${DOC_EXPORT_CSS}\n  /* 이름 있는 스타일 */\n${styles}\n` : DOC_EXPORT_CSS
+}

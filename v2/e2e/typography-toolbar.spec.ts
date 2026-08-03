@@ -50,6 +50,52 @@ test.describe('글자 모양 도구 상자', () => {
     await page.waitForTimeout(350)
     const html = await page.locator('.ProseMirror').first().innerHTML()
     expect(html).toContain('font-family')
+
+    /* 마크가 붙었는지만 보면 안 된다 — 그건 붙어 있어도 화면에는 안 나타난 적이 있다.
+       (편집기 안 모든 요소의 글꼴을 !important 로 못 박은 규칙이 인라인 서식마저 이겼다)
+       고른 글꼴이 정말 화면에 나타나는지는 잰 값으로만 알 수 있다. */
+    const shown = await page.evaluate(() => {
+      const span = document.querySelector('.ProseMirror [style*="font-family"]')
+      return span ? getComputedStyle(span).fontFamily : ''
+    })
+    expect(shown.toLowerCase()).toContain('georgia')
+  })
+
+  /* 위 시험의 뒷면 — 고른 글꼴을 살리려고 CSS 의 !important 를 걷어냈으니,
+     붙여 온 글꼴이 그 틈으로 따라 들어오지 않는지 함께 지켜야 한다. */
+  test('워드에서 붙여 온 글꼴은 따라 들어오지 않고 문서 글꼴을 따른다', async ({ page }) => {
+    await page.goto('./')
+    const editor = page.locator('.ProseMirror').first()
+    await editor.waitFor({ state: 'visible', timeout: 15000 })
+    await editor.click()
+
+    await editor.evaluate((el) => {
+      const dt = new DataTransfer()
+      dt.setData(
+        'text/html',
+        `<p><span style='font-family:"Comic Sans MS";color:#c00'>붙여온글</span></p>`,
+      )
+      el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }))
+    })
+    await page.waitForTimeout(400)
+
+    await expect(editor).toContainText('붙여온글')
+    const pasted = await page.evaluate(() => {
+      const walk = document.createTreeWalker(document.querySelector('.ProseMirror')!, NodeFilter.SHOW_TEXT)
+      let n: Node | null
+      while ((n = walk.nextNode())) {
+        if (n.textContent?.includes('붙여온글')) {
+          const el = n.parentElement!
+          return { font: getComputedStyle(el).fontFamily, color: getComputedStyle(el).color }
+        }
+      }
+      return null
+    })
+    expect(pasted).not.toBeNull()
+    // 글꼴은 문에서 벗겨져 문서 글꼴을 따른다
+    expect(pasted!.font.toLowerCase()).not.toContain('comic sans')
+    // 글꼴만 벗긴다 — 색 같은 다른 서식은 그대로 따라온다
+    expect(pasted!.color).toBe('rgb(204, 0, 0)')
   })
 
   test('크기·자간·장평·줄간격을 직접 입력해 선택 영역에 적용한다', async ({ page }) => {

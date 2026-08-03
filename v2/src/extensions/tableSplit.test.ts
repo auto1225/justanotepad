@@ -100,6 +100,57 @@ describe('중첩된 표', () => {
     expect(inner.textContent).toBe('안')
   })
 
+  /**
+   * 칸 속 표가 한 쪽보다 길면 그 표까지 파고들어 나눈다 — 그때 「행 하나」 가 둘로 갈라진다.
+   * 저장할 때 도로 한 행으로 붙지 않으면 문서가 영영 쪼개진 채로 남는다.
+   */
+  it('쪽을 넘느라 둘로 나뉜 행을 도로 한 행으로 합친다', () => {
+    const html =
+      '<table><tbody>' +
+      '<tr><td><p>바깥 1</p></td><td><p>값 1</p></td></tr>' +
+      '<tr><td><table><tbody><tr><td><p>안 1</p></td></tr><tr><td><p>안 2</p></td></tr></tbody></table></td><td><p>값 2</p></td></tr>' +
+      '</tbody></table>' +
+      '<table data-cont="1"><tbody>' +
+      '<tr data-row-cont="1"><td><table data-cont="1"><tbody><tr><td><p>안 3</p></td></tr></tbody></table></td><td><p></p></td></tr>' +
+      '<tr><td><p>바깥 3</p></td><td><p>값 3</p></td></tr>' +
+      '</tbody></table>'
+    const root = html2dom(mergeContinuedTables(html))
+    const outer = root.querySelector('table') as HTMLElement
+    const inner = root.querySelector('table table') as HTMLElement
+    expect(root.querySelectorAll('table')).toHaveLength(2)   // 바깥 하나 + 안쪽 하나
+    expect(ownRows(outer)).toHaveLength(3)                   // 바깥1 · 중첩이 든 행 · 바깥3
+    expect(ownRows(inner)).toHaveLength(3)                   // 안쪽 표는 세 행이 다시 한 몸
+    expect(inner.textContent).toBe('안 1안 2안 3')
+    expect(root.innerHTML).not.toContain('data-cont')
+    expect(root.innerHTML).not.toContain('data-row-cont')
+  })
+
+  it('나뉜 행을 합칠 때 뒤 조각의 빈 칸이 빈 문단을 끌고 오지 않는다', () => {
+    /* 뒤 조각에서 다른 칸들은 빈 칸으로 앉는다 (칸 수를 맞춰야 하므로).
+       그 빈 문단을 그대로 옮겨 붙이면 없던 빈 줄이 문서에 남는다. */
+    const html =
+      '<table><tbody>' +
+      '<tr><td><table><tbody><tr><td><p>안 1</p></td></tr></tbody></table></td><td><p>값 2</p></td></tr>' +
+      '</tbody></table>' +
+      '<table data-cont="1"><tbody>' +
+      '<tr data-row-cont="1"><td><table data-cont="1"><tbody><tr><td><p>안 2</p></td></tr></tbody></table></td><td><p></p></td></tr>' +
+      '</tbody></table>'
+    const root = html2dom(mergeContinuedTables(html))
+    const outer = root.querySelector('table') as HTMLElement
+    expect(ownRows(outer)).toHaveLength(1)                   // 두 조각이 한 행으로 붙었다
+    const cells = [...(ownRows(outer)[0]).children]
+    expect(cells).toHaveLength(2)
+    expect(cells[1].querySelectorAll('p')).toHaveLength(1)   // 「값 2」 하나뿐 — 빈 줄이 붙지 않았다
+    expect(cells[1].textContent).toBe('값 2')
+  })
+
+  it('앞에 붙일 행이 없으면 표시만 지운다 (내용을 잃지 않는다)', () => {
+    const html = '<table><tbody><tr data-row-cont="1"><td><p>홀로 남은 뒤 조각</p></td></tr></tbody></table>'
+    const merged = mergeContinuedTables(html)
+    expect(merged).toContain('홀로 남은 뒤 조각')
+    expect(merged).not.toContain('data-row-cont')
+  })
+
   it('반복 제목 행을 지울 때 안쪽 표의 행은 건드리지 않는다', () => {
     const html =
       '<table><tbody><tr><th>이름</th></tr></tbody></table>' +

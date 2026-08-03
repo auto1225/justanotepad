@@ -695,6 +695,174 @@ test.describe('줄 단위 문단 분할', () => {
     expect(속.안쪽글).toEqual([])                              // 안쪽 글이 하나도 사라지지 않았다
   })
 
+  /** 마크업을 편집기에 그대로 밀어 넣는다 (붙여넣기가 아니라 문서를 통째로 갈아 끼운다) */
+  async function 문서를(page: import('@playwright/test').Page, html: string) {
+    await page.evaluate((h) => {
+      const ed = (window as unknown as { __janEditor: { commands: { setContent: (h: string) => void } } }).__janEditor
+      ed.commands.setContent(h)
+    }, html)
+  }
+
+  /** 이 표 자신의 행만 세는 셈 (칸 속 표의 행은 남의 것이다) */
+  const 표속내기 = () => {
+    const root = document.querySelector('.ProseMirror') as HTMLElement
+    const own = (t: Element) => [...t.querySelectorAll('tr')].filter((r) => r.closest('table') === t)
+    const 바깥 = [...root.querySelectorAll('table')].filter((t) => !t.parentElement?.closest('table'))
+    const 안쪽 = [...root.querySelectorAll('table table')]
+    return {
+      바깥조각: 바깥.map((t) => own(t).length),
+      안쪽조각: 안쪽.map((t) => own(t).length),
+      나뉜행: root.querySelectorAll('tr[data-row-cont]').length,
+      글: root.textContent || '',
+    }
+  }
+
+  test('칸 속 표가 한 쪽보다 길면 그 표도 쪽을 넘긴다 — 종이를 늘리지 않는다', async ({ page }) => {
+    /* 바깥 표만 행 단위로 나뉘던 시절, 45행짜리 표를 칸에 넣으면 그 행은 쪼갤 수 없어
+       그 쪽 용지가 751px 늘어났다(실측·A4). 워드·한글은 안쪽 표도 넘긴다. */
+    await 문서를(page,
+      '<p>표 앞</p><table><tbody>' +
+      '<tr><td><p>바깥 1</p></td><td><p>값 1</p></td></tr>' +
+      '<tr><td><table><tbody>' +
+      Array.from({ length: 60 }, (_, i) => `<tr><td><p>안 ${i + 1}</p></td><td><p>속값 ${i + 1}</p></td></tr>`).join('') +
+      '</tbody></table></td><td><p>값 2</p></td></tr>' +
+      '<tr><td><p>바깥 3</p></td><td><p>값 3</p></td></tr>' +
+      '</tbody></table><p>표 뒤</p>')
+    await waitForReflow(page)
+
+    const m = await pageMetrics(page)
+    expect(m.count).toBeGreaterThan(1)
+    expect(m.grown).toBe(0)                                  // 종이를 늘려 넘침을 감추지 않는다
+    for (const p of m.pages) expect(p.overflow).toBeLessThanOrEqual(2)
+
+    const 속 = await page.evaluate(표속내기)
+    expect(속.나뉜행).toBeGreaterThanOrEqual(1)                // 행 하나가 둘로 갈렸다
+    expect(속.안쪽조각.length).toBeGreaterThan(1)              // 안쪽 표도 나뉘었다
+    expect(속.안쪽조각.reduce((a, b) => a + b, 0)).toBe(60)    // 안쪽 행을 하나도 잃지 않는다
+    expect(속.바깥조각.reduce((a, b) => a + b, 0)).toBeGreaterThanOrEqual(3)
+    for (let i = 1; i <= 60; i++) expect(속.글).toContain(`안 ${i}`)
+    expect(속.글).toContain('바깥 3')
+
+    /* 나뉜 조각의 테두리 — 겹쳐 두 줄이 되거나 사라지면 안 된다 */
+    const 테두리 = await page.evaluate(() => {
+      const root = document.querySelector('.ProseMirror') as HTMLElement
+      const own = (t: Element) => [...t.querySelectorAll('tr')].filter((r) => r.closest('table') === t)
+      return [...root.querySelectorAll('table')].map((t) => {
+        const rs = own(t)
+        const 첫 = rs[0]?.children[0] as HTMLElement
+        const 끝 = rs[rs.length - 1]?.children[0] as HTMLElement
+        const 쪽 = t.closest('.jan-page-node') as HTMLElement
+        const cs = getComputedStyle(쪽)
+        const r = (t as HTMLElement).getBoundingClientRect()
+        const pr = 쪽.getBoundingClientRect()
+        return {
+          위: getComputedStyle(첫).borderTopWidth,
+          아래: getComputedStyle(끝).borderBottomWidth,
+          위넘침: Math.round(pr.top + parseFloat(cs.paddingTop) - r.top),
+          아래넘침: Math.round(r.bottom - (pr.bottom - parseFloat(cs.paddingBottom))),
+        }
+      })
+    })
+    for (const t of 테두리) {
+      expect(t.위).toBe('1px')                 // 조각마다 제 위 테두리가 한 줄씩
+      expect(t.아래).toBe('1px')
+      expect(t.위넘침).toBeLessThanOrEqual(1)  // 다음 쪽 윗부분을 뚫고 올라가지 않는다
+      expect(t.아래넘침).toBeLessThanOrEqual(2)
+    }
+
+    /* 저장본은 한 표로 돌아온다 — 조각이 남으면 문서가 영영 쪼개진다.
+       여기서는 앱의 진짜 저장 경로(getSavableHtml)를 그대로 부른다 —
+       시험이 같은 변환을 베껴 쓰면 정작 저장이 틀려도 통과하기 때문이다 */
+    const saved = await page.evaluate(() =>
+      (window as unknown as { __janSavable: () => string }).__janSavable())
+    const merged = await page.evaluate((html) => {
+      const wrap = document.createElement('div')
+      wrap.innerHTML = html
+      const own = (t: Element) => [...t.querySelectorAll('tr')].filter((r) => r.closest('table') === t).length
+      const 바깥 = [...wrap.querySelectorAll('table')].filter((t) => !t.parentElement?.closest('table'))
+      const 안쪽 = [...wrap.querySelectorAll('table table')]
+      return {
+        바깥수: 바깥.length, 바깥행: 바깥.map(own),
+        안쪽수: 안쪽.length, 안쪽행: 안쪽.map(own),
+        cont: wrap.querySelectorAll('[data-cont], [data-row-cont]').length,
+      }
+    }, saved)
+    expect(merged).toEqual({ 바깥수: 1, 바깥행: [3], 안쪽수: 1, 안쪽행: [60], cont: 0 })
+  })
+
+  test('「쪼개지 말라」(break-inside: avoid)가 붙은 표·행은 나누지 않는다', async ({ page }) => {
+    /* style 은 문서 구조에 없어 파싱에서 통째로 벗겨진다 — 그대로 두면 조판이 이 뜻을
+       볼 길이 없다(실측: style 달린 행 0개). 파싱하는 순간 data-keep 으로 옮겨 받는다. */
+    await 문서를(page,
+      '<p>앞</p><table style="break-inside:avoid"><tbody>' +
+      Array.from({ length: 40 }, (_, i) => `<tr><td><p>행 ${i + 1}</p></td><td><p>값 ${i + 1}</p></td></tr>`).join('') +
+      '</tbody></table><p>뒤</p>')
+    await waitForReflow(page)
+
+    const 표 = await page.evaluate(() => {
+      const root = document.querySelector('.ProseMirror') as HTMLElement
+      return {
+        표수: root.querySelectorAll('table').length,
+        keep: root.querySelectorAll('.tableWrapper[data-keep], table[data-keep]').length,
+        cont: root.querySelectorAll('.tableWrapper[data-cont], table[data-cont]').length,
+      }
+    })
+    expect(표.keep).toBeGreaterThanOrEqual(1)  // 뜻이 문서까지 들어왔다
+    expect(표.표수).toBe(1)                     // 나뉘지 않았다
+    expect(표.cont).toBe(0)
+
+    /* 행에 걸면 그 행 안쪽 표까지 함께 지킨다 */
+    await 문서를(page,
+      '<p>앞</p><table><tbody>' +
+      '<tr><td><p>바깥 1</p></td><td><p>값 1</p></td></tr>' +
+      '<tr style="page-break-inside:avoid"><td><table><tbody>' +
+      Array.from({ length: 45 }, (_, i) => `<tr><td><p>안 ${i + 1}</p></td></tr>`).join('') +
+      '</tbody></table></td><td><p>값 2</p></td></tr>' +
+      '</tbody></table><p>뒤</p>')
+    await waitForReflow(page)
+
+    const 행 = await page.evaluate(() => {
+      const root = document.querySelector('.ProseMirror') as HTMLElement
+      return {
+        keep행: root.querySelectorAll('tr[data-keep]').length,
+        나뉜행: root.querySelectorAll('tr[data-row-cont]').length,
+        안쪽표수: root.querySelectorAll('table table').length,
+      }
+    })
+    expect(행.keep행).toBe(1)     // 벗겨지지 않고 문서에 남았다
+    expect(행.나뉜행).toBe(0)     // 그 행은 갈라지지 않았다
+    expect(행.안쪽표수).toBe(1)   // 안쪽 표도 통째로 남았다
+  })
+
+  test('칸 안에 격자(flex·grid)로 짠 덩이가 있어도 글을 잃지 않는다', async ({ page }) => {
+    /* <div style="display:grid"> 같은 덩이는 문서 구조에 자리가 없어 파싱에서 문단으로 풀린다.
+       그러니 우리 표 나눔의 「행 세기」 에는 애초에 걸리지 않는다 — 대신 문단이 되어
+       줄 단위로 흘러간다. 글이 사라지거나 지면을 뚫지 않는지만 지킨다. */
+    await 문서를(page,
+      '<p>앞</p><table><tbody>' +
+      '<tr><td><p>바깥 1</p></td><td><p>값 1</p></td></tr>' +
+      '<tr><td><div style="display:grid;grid-template-columns:1fr 1fr;break-inside:avoid">' +
+      Array.from({ length: 60 }, (_, i) => `<div>격자 ${i + 1}</div>`).join('') +
+      '</div></td><td><p>값 2</p></td></tr>' +
+      '</tbody></table><p>뒤</p>')
+    await waitForReflow(page)
+
+    const 글 = await page.evaluate(() => (document.querySelector('.ProseMirror') as HTMLElement).textContent || '')
+    for (let i = 1; i <= 60; i++) expect(글).toContain(`격자 ${i}`)
+    const worst = await page.evaluate(() => {
+      let over = 0
+      document.querySelectorAll('.jan-page-node').forEach((p) => {
+        const el = p as HTMLElement
+        const cs = getComputedStyle(el)
+        const r = el.getBoundingClientRect()
+        const limit = r.bottom - parseFloat(cs.paddingBottom)
+        for (const child of Array.from(el.children)) over = Math.max(over, child.getBoundingClientRect().bottom - limit)
+      })
+      return Math.round(over)
+    })
+    expect(worst).toBeLessThanOrEqual(2)
+  })
+
   test('표를 글자처럼 두거나 옆으로 글이 흐르게 한다 (한글의 글자처럼 취급 · 워드의 텍스트 배치)', async ({ page }) => {
     await page.evaluate(() => {
       const pm = document.querySelector('.ProseMirror') as HTMLElement

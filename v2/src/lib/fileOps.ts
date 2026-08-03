@@ -1,5 +1,5 @@
 import { errText } from './errText'
-import { DOC_EXPORT_CSS } from './docCss'
+import { docExportCss } from './docCss'
 import { resolveBlobRefsInHtml } from './blobRefs'
 import { JAN_EXT, JAN_MIME, isJanName, packJan, unpackJan } from './janFormat'
 
@@ -348,7 +348,7 @@ export function wrapHtml(title: string, content: string, pageSettings?: unknown)
 <head>
 <meta charset="UTF-8">${meta}
 <title>${escapeHtml(title)}</title>
-<style>${DOC_EXPORT_CSS}</style>
+<style>${docExportCss()}</style>
 </head>
 <body>
 ${content}

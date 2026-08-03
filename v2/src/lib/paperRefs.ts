@@ -1,6 +1,6 @@
 import type { Editor } from '@tiptap/react'
 import type { Node as PMNode } from '@tiptap/pm/model'
-import { paperTagLabel, type PaperRefType } from '../extensions/PaperTag'
+import { captionLang, captionWord, paperTagLabel, rememberCaptionLang, type CaptionLang, type PaperRefType, type PaperTagKind } from '../extensions/PaperTag'
 import { flash } from './flash'
 
 /**
@@ -52,23 +52,25 @@ export function insertNumberedEquation(editor: Editor, latex: string): void {
   editor.chain().focus().insertContent(html).run()
 }
 
-/** 그림 캡션 삽입 — "Fig. n. 설명" (가운데 정렬은 CSS) */
-export function insertFigureCaption(editor: Editor, text: string): void {
+/** 그림 캡션 삽입 — "그림 n. 설명" (가운데 정렬은 CSS) */
+export function insertFigureCaption(editor: Editor, text: string, label?: string): void {
   const n = countKind(editor, 'figlabel') + 1
   const key = newKey('fig')
+  const word = label || captionWord('figlabel', null)
   const html =
     `<p data-paper-block="figcap" data-paper-key="${key}">` +
-    `<span data-paper-tag="figlabel" data-key="${key}" data-n="${n}"></span> ${escHtml(text)}</p>`
+    `<span data-paper-tag="figlabel" data-key="${key}" data-n="${n}" data-label="${escAttr(word)}"></span> ${escHtml(text)}</p>`
   editor.chain().focus().insertContent(html).run()
 }
 
-/** 표 캡션 삽입 — "Table n. 설명" */
-export function insertTableCaption(editor: Editor, text: string): void {
+/** 표 캡션 삽입 — "표 n. 설명" */
+export function insertTableCaption(editor: Editor, text: string, label?: string): void {
   const n = countKind(editor, 'tablabel') + 1
   const key = newKey('tab')
+  const word = label || captionWord('tablabel', null)
   const html =
     `<p data-paper-block="tabcap" data-paper-key="${key}">` +
-    `<span data-paper-tag="tablabel" data-key="${key}" data-n="${n}"></span> ${escHtml(text)}</p>`
+    `<span data-paper-tag="tablabel" data-key="${key}" data-n="${n}" data-label="${escAttr(word)}"></span> ${escHtml(text)}</p>`
   editor.chain().focus().insertContent(html).run()
 }
 
@@ -80,7 +82,9 @@ export function insertCrossRef(editor: Editor, refType: PaperRefType, n: number)
   if (targets.length === 0) return false
   const idx = Math.max(1, Math.min(n, targets.length))
   const target = targets[idx - 1]
-  const html = `<span data-paper-tag="ref" data-ref-type="${refType}" data-key="${escAttr(target.node.attrs.refKey || '')}" data-n="${idx}"></span>`
+  /* 가리키는 캡션과 같은 낱말을 쓴다 — 캡션은 「그림 2.」 인데 참조만 「Fig. 2」 이면 안 된다 */
+  const word = String(target.node.attrs.label || captionWord('ref', refType))
+  const html = `<span data-paper-tag="ref" data-ref-type="${refType}" data-key="${escAttr(target.node.attrs.refKey || '')}" data-n="${idx}" data-label="${escAttr(word)}"></span>`
   editor.chain().focus().insertContent(html + ' ').run()
   return true
 }
@@ -99,6 +103,7 @@ export function renumberPaperTags(editor: Editor): number {
   if (tags.length === 0) return 0
   const counters: Record<string, number> = { eqnum: 0, figlabel: 0, tablabel: 0 }
   const keyToN = new Map<string, number>()
+  const keyToLabel = new Map<string, string | null>()
 
   // 1차: 번호 대상(eqnum/figlabel/tablabel)에 순서대로 n 부여
   const updates: Array<{ pos: number; attrs: Record<string, unknown> }> = []
@@ -107,15 +112,21 @@ export function renumberPaperTags(editor: Editor): number {
     if (kind in counters) {
       counters[kind] += 1
       const n = counters[kind]
-      if (t.node.attrs.refKey) keyToN.set(t.node.attrs.refKey, n)
+      if (t.node.attrs.refKey) {
+        keyToN.set(t.node.attrs.refKey, n)
+        keyToLabel.set(t.node.attrs.refKey, (t.node.attrs.label as string | null) ?? null)
+      }
       if (t.node.attrs.n !== n) updates.push({ pos: t.pos, attrs: { ...t.node.attrs, n } })
     }
   }
-  // 2차: 참조(ref)를 대상 key 의 새 번호로
+  // 2차: 참조(ref)를 대상 key 의 새 번호와 라벨로 (캡션이 「그림」 이면 참조도 「그림」)
   for (const t of tags) {
     if (t.node.attrs.kind !== 'ref') continue
     const mapped = keyToN.get(t.node.attrs.refKey)
-    if (mapped && t.node.attrs.n !== mapped) updates.push({ pos: t.pos, attrs: { ...t.node.attrs, n: mapped } })
+    if (!mapped) continue
+    const label = keyToLabel.get(t.node.attrs.refKey) ?? null
+    const 라벨다름 = keyToLabel.has(t.node.attrs.refKey) && (t.node.attrs.label ?? null) !== label
+    if (t.node.attrs.n !== mapped || 라벨다름) updates.push({ pos: t.pos, attrs: { ...t.node.attrs, n: mapped, label } })
   }
   if (updates.length > 0) {
     // attrs 만 바꾸므로 노드 크기가 변하지 않아 한 트랜잭션 안에서 위치가 유효하다
@@ -126,7 +137,35 @@ export function renumberPaperTags(editor: Editor): number {
   return updates.length
 }
 
-export { paperTagLabel }
+export { paperTagLabel, captionLang, captionWord }
+
+/**
+ * 캡션 라벨을 문서 전체에 걸쳐 한 말로 맞춘다 — 워드 「캡션 › 레이블」 을 문서 설정으로 옮긴 것.
+ *
+ * 새 캡션에만 걸면 한 문서에 「그림 1.」 과 「Fig. 2.」 가 섞인다. 그래서 이미 있는 캡션과
+ * 그것을 가리키는 참조까지 함께 갈아 끼운다 (attrs 만 바꾸므로 쪽 나눔은 흔들리지 않는다).
+ * 반환: 바뀐 태그 수
+ */
+export function setCaptionLabelLang(editor: Editor, lang: CaptionLang): number {
+  rememberCaptionLang(lang)
+  const tags = collectTags(editor)
+  const updates: Array<{ pos: number; attrs: Record<string, unknown> }> = []
+  for (const t of tags) {
+    const kind = t.node.attrs.kind as PaperTagKind
+    if (kind === 'eqnum') continue
+    const refType = (t.node.attrs.refType ?? null) as PaperRefType | null
+    const word = captionWord(kind, refType, lang)
+    if (!word || t.node.attrs.label === word) continue
+    updates.push({ pos: t.pos, attrs: { ...t.node.attrs, label: word } })
+  }
+  if (updates.length > 0) {
+    const tr = editor.state.tr
+    for (const u of updates) tr.setNodeMarkup(u.pos, undefined, u.attrs)
+    editor.view.dispatch(tr)
+  }
+  flash(`캡션 라벨 — ${lang === 'ko' ? '한국어 (그림 · 표)' : '영어 (Fig. · Table)'}${updates.length ? ` · ${updates.length}곳을 고쳤습니다` : ''}`)
+  return updates.length
+}
 
 /**
  * 번호를 손으로 다시 매기지 않아도 되게 — 문서가 바뀌면 스스로 따라간다.
