@@ -4,10 +4,11 @@ import { IMAGE_SHAPES, IMAGE_WRAPS } from '../extensions/ImageObject'
 import type { Adjust } from '../extensions/ImageObject'
 import {
   bodyWidthPx, clearCrop, compressImage, currentAdjust, currentCrop, currentImage, downloadImage,
-  fitImageToBody, removeWhiteBackground, renderedSize, resetImageFormat, resetImageSize,
+  fillBox, fitBox, fitImageToBody, removeWhiteBackground, renderedSize, resetImageFormat, resetImageSize,
   setAdjust, setAltText, setCaptionPos, setCrop, setImageAlign, setImageAttrs, setImageCaption,
   setImageShape, setImageWrap, setRotation, toggleAspectLock, toggleImageLock,
 } from '../lib/imageWord'
+import { mmToPx, pxToMm } from '../lib/units'
 
 interface Props {
   editor: Editor | null
@@ -30,8 +31,16 @@ const TABS = [
  * 마우스로 끌어서 하던 일(크기·자르기·회전)을 여기서는 숫자로 정한다.
  * 끌기로만 되는 기능은 두지 않는다는 규칙을 지키는 자리이기도 하다.
  */
+/** 크기를 어떤 자로 잴까 — 워드·한글의 크기 대화상자는 cm/mm 를 먼저 보여 준다 */
+const UNITS = [
+  { key: 'px', label: 'px', per: 1, step: 1, digits: 0 },
+  { key: 'mm', label: 'mm', per: mmToPx(1), step: 0.5, digits: 1 },
+  { key: 'cm', label: 'cm', per: mmToPx(10), step: 0.05, digits: 2 },
+] as const
+
 export function ImageDialog({ editor, tab, onClose }: Props) {
   const [active, setActive] = useState<string>(tab || 'size')
+  const [unitKey, setUnitKey] = useState<string>('px')
   const hit = currentImage(editor)
   const attrs = useMemo(() => (hit ? { ...hit.node.attrs } as Record<string, unknown> : null), [hit])
   const size = renderedSize(editor)
@@ -49,6 +58,12 @@ export function ImageDialog({ editor, tab, onClose }: Props) {
   const nh = Number(attrs.nh) || 0
   const widthPx = size?.w || 0
   const run = (fn: () => unknown) => { fn(); setTimeout(redraw, 0) }
+
+  /* px ↔ mm ↔ cm — 화면은 px 로 그리지만 사람은 종이를 mm 로 잰다 */
+  const unit = UNITS.find((u) => u.key === unitKey) || UNITS[0]
+  const toUnit = (px: number) => (px ? Number((px / unit.per).toFixed(unit.digits)) : 0)
+  const toPx = (value: number) => Math.max(16, Math.round(value * unit.per))
+  const asMm = (px: number) => (px ? `${pxToMm(px).toFixed(1)}mm` : '')
 
   /** 탭 사이를 ←→ 로도 옮겨 다닌다 */
   function onTabKey(e: React.KeyboardEvent, index: number) {
@@ -86,16 +101,24 @@ export function ImageDialog({ editor, tab, onClose }: Props) {
           {active === 'size' && (
             <>
               <div className="jan-imgdlg-row">
-                <label>너비 (px)</label>
+                <label>단위</label>
+                {UNITS.map((u) => (
+                  <button key={u.key} className={unitKey === u.key ? 'is-active' : ''} onClick={() => setUnitKey(u.key)}>{u.label}</button>
+                ))}
+                <span className="jan-imgdlg-hint">지금 {widthPx}×{size?.h || 0}px = {asMm(widthPx)}×{asMm(size?.h || 0)}</span>
+              </div>
+              <div className="jan-imgdlg-row">
+                <label>너비 ({unit.label})</label>
                 <input
-                  type="number" min={16} max={4000} value={widthPx || ''}
-                  onChange={(e) => run(() => setImageAttrs(editor, { width: `${Math.max(16, Number(e.target.value) || 16)}px`, height: null }))}
+                  aria-label="너비" type="number" min={0} step={unit.step} value={toUnit(widthPx) || ''}
+                  onChange={(e) => run(() => setImageAttrs(editor, { width: `${toPx(Number(e.target.value))}px`, height: null }))}
                 />
-                <label>높이 (px)</label>
+                <label>높이 ({unit.label})</label>
                 <input
-                  type="number" min={16} max={4000} value={size?.h || ''}
+                  aria-label="높이" type="number" min={0} step={unit.step} value={toUnit(size?.h || 0) || ''}
                   disabled={attrs.lock !== false}
-                  onChange={(e) => run(() => setImageAttrs(editor, { height: `${Math.max(16, Number(e.target.value) || 16)}px` }))}
+                  title={attrs.lock !== false ? '가로 세로 비율 고정을 풀면 따로 정할 수 있다' : ''}
+                  onChange={(e) => run(() => setImageAttrs(editor, { height: `${toPx(Number(e.target.value))}px` }))}
                 />
               </div>
               <div className="jan-imgdlg-row">
@@ -186,6 +209,14 @@ export function ImageDialog({ editor, tab, onClose }: Props) {
                   <button key={label} onClick={() => run(() => import('../lib/imageWord').then((m) => m.cropToRatio(editor, ratio, label)))}>{label}</button>
                 ))}
                 <button onClick={() => run(() => clearCrop(editor))}>자르기 지우기</button>
+              </div>
+              <div className="jan-imgdlg-row">
+                <label>상자에</label>
+                <button onClick={() => run(() => fillBox(editor))}>채우기 (꽉 차게 잘라 냄)</button>
+                <button onClick={() => run(() => fitBox(editor))}>맞춤 (전체가 들어오게)</button>
+                <span className="jan-imgdlg-hint">
+                  「크기」 탭에서 비율 고정을 풀고 너비·높이를 정한 뒤에 쓴다 — 지금 상자 {size?.w || 0}×{size?.h || 0}px
+                </span>
               </div>
               <div className="jan-imgdlg-row">
                 <label>도형에 맞춰</label>

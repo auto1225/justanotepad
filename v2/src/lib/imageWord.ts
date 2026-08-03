@@ -74,15 +74,35 @@ export function bodyWidthPx(editor: Editor | null): number {
   return Math.max(120, Math.round(page.getBoundingClientRect().width || 640))
 }
 
-/** 지금 화면에 그려진 그림의 크기 */
-export function renderedSize(editor: Editor | null): { w: number; h: number } | null {
-  const hit = currentImage(editor)
-  if (!editor || !hit) return null
-  const dom = editor.view.nodeDOM(hit.pos)
-  const el = dom instanceof HTMLElement ? (dom.tagName === 'IMG' ? dom : dom.querySelector('img')) : null
+/**
+ * 화면에서 「그림 상자」 노릇을 하는 요소 — 크기를 재고 손잡이를 붙일 자리.
+ *
+ * 자른 그림은 안쪽 img 가 상자보다 크다(잘려 나갈 만큼 넘쳐 있다). 그것을 재면
+ * 자르기 전 크기가 나와 속성 창의 너비·높이와 손잡이 테두리가 함께 어긋난다.
+ * 캡션이 붙은 그림도 마찬가지로 바깥 span 에는 캡션 글까지 들어 있어 높이가 더 나온다.
+ * 그래서 잘라 내는 span → 그림 → 바깥 span 차례로 찾는다.
+ */
+export function imageBoxEl(editor: Editor | null, pos: number): HTMLElement | null {
+  if (!editor) return null
+  const dom = editor.view.nodeDOM(pos)
+  if (!(dom instanceof HTMLElement)) return null
+  if (dom.tagName === 'IMG') return dom
+  return dom.querySelector<HTMLElement>('.jan-img-clip') || dom.querySelector<HTMLElement>('img') || dom
+}
+
+/** 그 자리 그림 상자의 화면 크기 */
+function boxSizeAt(editor: Editor | null, pos: number): { w: number; h: number } | null {
+  const el = imageBoxEl(editor, pos)
   if (!el) return null
   const r = el.getBoundingClientRect()
   return { w: Math.round(r.width), h: Math.round(r.height) }
+}
+
+/** 지금 화면에 그려진 그림 상자의 크기 */
+export function renderedSize(editor: Editor | null): { w: number; h: number } | null {
+  const hit = currentImage(editor)
+  if (!editor || !hit) return null
+  return boxSizeAt(editor, hit.pos)
 }
 
 export function setImageWidth(editor: Editor | null, width: string | null, note?: string): boolean {
@@ -143,22 +163,76 @@ export function currentCrop(editor: Editor | null): Crop {
   return parseCrop(hit?.node.attrs.crop) || { t: 0, r: 0, b: 0, l: 0 }
 }
 
+const NO_CROP: Crop = { t: 0, r: 0, b: 0, l: 0 }
+
+/**
+ * 길이를 곱해서 돌려준다 — px 도 % 도 단위를 지키며 줄인다.
+ *
+ * 「본문 너비에 맞춤」 을 한 그림은 너비가 100% 다. % 를 건드리지 않고 두었더니
+ * 자를수록 상자는 그대로인 채 그림만 확대되어, 자르기 손잡이가 커서를 따라오지
+ * 못하고 오른쪽 끝에 붙박여 있었다 (무거운 문서의 그림이 모두 그렇다).
+ * % 끼리도 비율은 그대로 곱해지므로 단위만 지켜 주면 된다 — 100% → 60% 는
+ * 본문에 대한 몫이 줄 뿐, 그림의 배율은 그대로다.
+ */
+function scaleLen(value: unknown, factor: number): string | null {
+  const m = /^(-?[\d.]+)(px|%)$/.exec(String(value ?? '').trim())
+  if (!m || !Number.isFinite(factor) || factor <= 0 || Math.abs(factor - 1) < 1e-6) return null
+  /* 소수 둘째 자리까지 남긴다. 정수로 반올림하면 한 걸음마다 최대 0.5px 씩 어긋나고,
+     자르기는 방향키로 스무 번 서른 번 조금씩 하는 일이라 그 부스러기가 쌓인다 —
+     자른 만큼 되돌려도 320px 이 325px 로 돌아오지 않았다. */
+  const n = Math.max(m[2] === '%' ? 1 : 8, Number(m[1]) * factor)
+  return `${Math.round(n * 100) / 100}${m[2]}`
+}
+
+/**
+ * 자르기를 새로 건다 — 워드처럼 보이는 상자가 잘린 만큼 줄어든다.
+ *
+ * 워드에서 자르기는 그림을 확대하지 않는다. 남는 몫이 kw 배로 줄면 상자도 kw 배로 줄어
+ * 그림의 배율이 그대로 남는다. 크기를 손으로 정해 둔 그림(width:300px)은 그 값을 함께
+ * 줄여 줘야 그렇게 된다 — 안 그러면 상자가 그대로라 자를수록 그림만 확대된다.
+ * 너비를 %로 준 그림(본문 너비에 맞춤)은 셈할 수 없어 그대로 둔다.
+ */
+function cropPatch(editor: Editor | null, hit: ImageHit, crop: Crop): Record<string, unknown> {
+  const before = parseCrop(hit.node.attrs.crop) || NO_CROP
+  const empty = !crop.t && !crop.r && !crop.b && !crop.l
+  const patch: Record<string, unknown> = { crop: empty ? null : cropToString(crop) }
+  const fw = (1 - crop.l - crop.r) / (1 - before.l - before.r)
+  const fh = (1 - crop.t - crop.b) / (1 - before.t - before.b)
+  const w = scaleLen(hit.node.attrs.width, fw)
+  if (w) patch.width = w
+  else if (hit.node.attrs.width == null && Math.abs(fw - 1) > 1e-6) {
+    /* 너비를 손으로 정한 적이 없는 그림은 화면에 그려진 상자를 못박고 그만큼 줄인다.
+       그냥 원본 너비에서 셈하면 안 된다 — 본문보다 넓은 그림은 max-width:100% 에 걸려
+       화면에서는 이미 줄어 있기 때문이다. 강의 노트의 그림은 원본이 1640px 인데 본문은
+       730px 이라, 절반 넘게 잘라 낼 때까지 상자가 꿈쩍도 하지 않아 자르기 손잡이가
+       오른쪽 끝에 붙박여 커서를 따라오지 못했다. */
+    const box = boxSizeAt(editor, hit.pos)
+    if (box?.w) patch.width = `${Math.max(8, Math.round(box.w * fw * 100) / 100)}px`
+  }
+  const h = scaleLen(hit.node.attrs.height, fh)
+  if (h) patch.height = h
+  return patch
+}
+
+export function setCrop(editor: Editor | null, crop: Crop, note?: string): boolean {
+  const hit = currentImage(editor)
+  if (!hit) return false
+  return setImageAttrs(editor, cropPatch(editor, hit, crop), note)
+}
+
 /** 한쪽을 조금 더/덜 자른다 (되돌리면 원본이 그대로 돌아온다 — 비파괴) */
 export function cropSide(editor: Editor | null, side: keyof Crop, delta: number): boolean {
   const crop = { ...currentCrop(editor) }
   crop[side] = Math.min(0.9, Math.max(0, crop[side] + delta))
   if (crop.l + crop.r >= 0.95 || crop.t + crop.b >= 0.95) return false
-  const empty = !crop.t && !crop.r && !crop.b && !crop.l
-  return setImageAttrs(editor, { crop: empty ? null : cropToString(crop) })
-}
-
-export function setCrop(editor: Editor | null, crop: Crop, note?: string): boolean {
-  const empty = !crop.t && !crop.r && !crop.b && !crop.l
-  return setImageAttrs(editor, { crop: empty ? null : cropToString(crop) }, note)
+  return setCrop(editor, crop)
 }
 
 export function clearCrop(editor: Editor | null): boolean {
-  return setImageAttrs(editor, { crop: null, shape: null }, '자르기를 지웠다 — 원본 그대로')
+  const hit = currentImage(editor)
+  if (!hit) return false
+  /* 자르기를 풀면 상자가 잘려 나갔던 몫만큼 다시 늘어난다 (그림의 배율은 그대로) */
+  return setImageAttrs(editor, { ...cropPatch(editor, hit, NO_CROP), shape: null }, '자르기를 지웠다 — 원본 그대로')
 }
 
 /** 가로세로 비율에 맞춰 가운데를 남기고 자른다 (워드의 「가로 세로 비율」) */
@@ -178,6 +252,54 @@ export function cropToRatio(editor: Editor | null, ratio: number, label: string)
   const keep = cur / ratio
   const side = (1 - keep) / 2
   return setCrop(editor, { t: side, r: 0, b: side, l: 0 }, `${label} 비율로 잘랐다`)
+}
+
+/**
+ * 워드의 자르기 ▸ 「채우기」 — 상자는 그대로 두고 그림이 상자에 꽉 차게 잘라 낸다.
+ * 상자의 가로세로비에 맞춰 가운데를 남기므로 그림이 찌그러지지 않는다.
+ *
+ * 상자와 그림의 비율이 같으면 잘라 낼 것이 없다. 그래서 높이를 손으로 정해 둔
+ * 그림에서만 뜻이 있다 — 비율 고정을 풀고 너비·높이를 준 다음에 쓰는 단추다.
+ */
+export function fillBox(editor: Editor | null): boolean {
+  const hit = currentImage(editor)
+  const size = renderedSize(editor)
+  if (!hit || !size || !size.w || !size.h) return false
+  const nw = Number(hit.node.attrs.nw) || 0
+  const nh = Number(hit.node.attrs.nh) || 0
+  if (!nw || !nh) { flash('그림 크기를 아직 읽지 못했다 — 잠시 뒤 다시 하라'); return false }
+  const boxRatio = size.w / size.h
+  const picRatio = nw / nh
+  const crop: Crop = { t: 0, r: 0, b: 0, l: 0 }
+  if (picRatio > boxRatio) {
+    const side = (1 - boxRatio / picRatio) / 2
+    crop.l = side; crop.r = side
+  } else if (picRatio < boxRatio) {
+    const side = (1 - picRatio / boxRatio) / 2
+    crop.t = side; crop.b = side
+  }
+  /* setCrop 은 자른 만큼 상자를 줄인다 — 채우기는 상자를 지켜야 하므로 크기를 되돌려 준다 */
+  return setImageAttrs(
+    editor,
+    { crop: crop.t || crop.l ? cropToString(crop) : null, width: `${size.w}px`, height: `${size.h}px` },
+    '상자에 꽉 차게 잘랐다',
+  )
+}
+
+/** 워드의 자르기 ▸ 「맞춤」 — 자르기를 풀고 그림 전체가 상자 안에 들어오게 줄인다 */
+export function fitBox(editor: Editor | null): boolean {
+  const hit = currentImage(editor)
+  const size = renderedSize(editor)
+  if (!hit || !size || !size.w || !size.h) return false
+  const nw = Number(hit.node.attrs.nw) || 0
+  const nh = Number(hit.node.attrs.nh) || 0
+  if (!nw || !nh) { flash('그림 크기를 아직 읽지 못했다 — 잠시 뒤 다시 하라'); return false }
+  const scale = Math.min(size.w / nw, size.h / nh)
+  return setImageAttrs(
+    editor,
+    { crop: null, width: `${Math.max(8, Math.round(nw * scale))}px`, height: null },
+    '상자 안에 그림 전체가 들어오게 맞췄다',
+  )
 }
 
 /* ── 회전·대칭 ──────────────────────────────────────── */

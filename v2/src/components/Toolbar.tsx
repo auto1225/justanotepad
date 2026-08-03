@@ -54,7 +54,7 @@ import {
 } from '../lib/shapeWord'
 import {
   RECOLORS, applyRecolor, clearCrop, compressImage, copyImageFormat, cropToRatio, downloadImage,
-  fitImageToBody, fitImageToCell, flipImage, moveImage, numberImageCaptions, pasteImageFormat,
+  fillBox, fitBox, fitImageToBody, fitImageToCell, flipImage, moveImage, numberImageCaptions, pasteImageFormat,
   removeWhiteBackground, resetImageFormat, resetImageSize, rotateImage, scaleImage, selectNextImage,
   setImageAlign, setImageAttrs, setImageBorder, setImageShape, setImageStyle, setImageWidth,
   setImageWrap, setRotation, toggleAspectLock, toggleImageLock,
@@ -2701,6 +2701,8 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowLeft')go(-1);else if(e.
       ([label, ratio]): MenuItem => ({ label: label + ' 비율로 자르기', short: label, icon: 'page-break', onClick: () => run(() => { cropToRatio(editor, ratio, label) }) })
     ),
     ...IMAGE_SHAPES.map((sh): MenuItem => ({ label: sh.label + ' 모양으로 자르기', short: sh.label, icon: 'page-break', onClick: () => run(() => { setImageShape(editor, sh.key, sh.label) }) })),
+    { label: '상자에 꽉 차게 잘라 내기 (채우기)', short: '채우기', icon: 'maximize', onClick: () => run(() => { fillBox(editor) }) },
+    { label: '상자 안에 전체가 들어오게 (맞춤)', short: '맞춤', icon: 'minimize', onClick: () => run(() => { fitBox(editor) }) },
     { label: '자르기 지우기 (원본 그대로)', short: '자르기 해제', icon: 'refresh-cw', hint: 'Alt+X', onClick: () => run(() => { clearCrop(editor) }) },
 
     { divider: '배치', label: '' },

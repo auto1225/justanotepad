@@ -6897,8 +6897,10 @@ body:has(.jan-ribbon-dropdown) .jan-help-tip { display: none; }
 .ProseMirror img { max-width: 100%; height: auto; }
 .ProseMirror .jan-img { max-width: 100%; }
 .ProseMirror .jan-img-el { max-width: 100%; }
-/* 자르기·캡션이 붙은 그림은 감싼 span 이 크기를 쥔다 */
+/* 자르기·캡션이 붙은 그림은 감싼 span 이 크기를 쥔다 —
+   안쪽 그림은 잘려 나갈 만큼 상자 밖으로 넘쳐야 하므로 빗장을 푼다 */
 .ProseMirror .jan-img-clip > .jan-img-el { max-width: none; }
+.ProseMirror .jan-img-deco { max-width: 100%; }
 
 /* 가로 맞춤 — 워드의 「맞춤」 */
 .ProseMirror img[data-align='center'],
@@ -6925,12 +6927,21 @@ body:has(.jan-ribbon-dropdown) .jan-help-tip { display: none; }
 
 /* 손잡이 — 마우스용 장식, 보조기술에는 숨어 있다 */
 .jan-img-handles { position: fixed; inset: 0; pointer-events: none; z-index: 560; }
+/* 창이 떠 있는 동안에는 개체 손잡이와 도구막대를 감춘다.
+   둘 다 문서 위에 떠 있는 장식이라 창보다 위에 그려지는데(560 · 610 대 200),
+   그러면 「그림 속성」 창 글씨 위로 도구막대가 얹혀 어느 것이 위인지 알 수 없다. */
+body:has(.jan-modal-overlay) .jan-img-handles,
+body:has(.jan-modal-overlay) .jan-object-bar { display: none; }
 .jan-ih-frame {
   position: fixed;
   border: 1px solid var(--jan-accent, #3b82f6);
   pointer-events: none;
 }
 .jan-ih-frame.is-crop { border: 1px dashed #f59e0b; box-shadow: 0 0 0 9999px rgba(0, 0, 0, .06); }
+/* 자르기 미리보기 — 잘려 나가는 부분은 흐리게 깔고, 남는 부분만 또렷하게 덮는다 */
+.jan-ih-ghost { position: fixed; opacity: .3; filter: grayscale(30%); pointer-events: none; max-width: none; }
+.jan-ih-keep { position: fixed; overflow: hidden; pointer-events: none; }
+.jan-ih-keep > img { position: absolute; max-width: none; }
 .jan-ih-dot {
   position: fixed;
   width: 11px; height: 11px;

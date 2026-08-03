@@ -1,6 +1,8 @@
 import { Image } from '@tiptap/extension-image'
 import { NodeSelection, Plugin, PluginKey } from '@tiptap/pm/state'
 import { dropPoint } from '@tiptap/pm/transform'
+import { Fragment, Slice } from '@tiptap/pm/model'
+import type { EditorView } from '@tiptap/pm/view'
 
 /**
  * 그림 개체 — 워드의 「그림 서식」 탭에 있는 것들을 담는 노드.
@@ -136,21 +138,47 @@ function transformOf(attrs: Record<string, unknown>): string {
   return bits.join(' ')
 }
 
-/** 자르기를 감싸는 span 과 안쪽 img 의 스타일로 푼다 */
-function cropStyles(crop: Crop, boxWidth: string | null, nw: number, nh: number) {
+/**
+ * 자르기를 두 겹의 스타일로 푼다 — 보이는 만큼의 상자와, 그 안에 넘치게 놓인 그림.
+ *
+ * 워드는 자르면 상자 자체가 줄어든다. 그래서 상자는 남는 몫(kw·kh)만큼만 잡고,
+ * 그림은 상자보다 1/kw·1/kh 배 크게 놓아 잘라 낸 부분이 상자 밖으로 나가게 한다.
+ *
+ * 예전에는 그림을 흐름 안에 두고 margin 으로 밀었는데 두 군데가 어긋나 있었다.
+ *  하나. 위로 미는 몫에 1/kh 가 한 번 더 곱해져 있었다. 위아래를 4분의 1씩 자르면
+ *        60px 만 올려야 하는데 120px 을 올려 엉뚱한 띠가 보였고, 많이 자르면 그림이
+ *        상자 위로 통째로 빠져나가 흰 자리만 남았다.
+ *  둘.  넘치게 놓아야 할 그림에 max-width:100% 가 걸려 가로로는 아예 넘치지 못했다
+ *        (그 빗장을 푸는 규칙은 span.jan-img-clip 안쪽에만 있었는데, 캡션 없는 그림은
+ *        그 span 을 쓰지 않고 있었다). 그러면 상자만 비율대로 길어지고 그림은 그대로라
+ *        320×240 그림을 좌우 30% 자를 때 상자가 320×600 이 되어 아래에 360px 흰 공백이
+ *        남았다 — 「자르면 아래에 흰 자리가 생긴다」 가 이것이다.
+ *
+ * 이제 그림을 상자 안에 절대 자리로 놓는다. 왼쪽·위로 미는 몫은 상자의 너비·높이에
+ * 견준 백분율이라, 상자가 늘거나 줄어도(본문 너비에 맞춤·손잡이 끌기) 저절로 따라온다.
+ */
+function cropStyles(crop: Crop, boxWidth: string | null, boxHeight: string | null, nw: number, nh: number) {
   const kw = 1 - crop.l - crop.r
   const kh = 1 - crop.t - crop.b
-  const inner = `width:${(100 / kw).toFixed(3)}%;margin-left:${(-crop.l / kw * 100).toFixed(3)}%;`
-  // 세로는 그림 비율을 알아야 px 로 자를 수 있다. 모르면 가로만 자른다.
-  let wrap = 'display:inline-block;overflow:hidden;vertical-align:bottom;'
-  if (boxWidth) wrap += `width:${boxWidth};`
-  let innerV = ''
-  if (nw > 0 && nh > 0) {
-    const ratio = nh / nw
-    wrap += `aspect-ratio:${(kw / (kh * ratio)).toFixed(4)};`
-    innerV = `margin-top:${(-crop.t / kh * (100 * ratio / kw)).toFixed(3)}%;height:auto;`
+  let wrap = 'display:inline-block;overflow:hidden;vertical-align:bottom;max-width:100%;'
+  /* 원본 크기를 아직 모르면 세로로는 자를 수 없다 — 높이는 그림이 정하게 두고 가로만 자른다.
+     (그림이 물리면 janImageNatural 이 nw·nh 를 적어 주고 여기로 다시 온다) */
+  if (!(nw > 0 && nh > 0)) {
+    if (boxWidth) wrap += `width:${boxWidth};`
+    const inner = 'display:block;max-width:none;height:auto;'
+      + `width:${(100 / kw).toFixed(3)}%;margin-left:${(-crop.l / kw * 100).toFixed(3)}%;`
+    return { wrap, inner }
   }
-  return { wrap, inner: inner + innerV }
+  wrap += 'position:relative;'
+  /* 너비를 손으로 정하지 않았으면 원본에서 남는 몫이 곧 상자 너비다 — 자를수록 줄어든다 */
+  wrap += `width:${boxWidth || `${Math.round(nw * kw)}px`};`
+  /* 높이까지 손으로 정했으면(비율 고정을 푼 경우) 그대로 쓰고, 아니면 비율이 정한다 */
+  if (boxHeight) wrap += `height:${boxHeight};`
+  else wrap += `aspect-ratio:${(nw * kw).toFixed(3)}/${(nh * kh).toFixed(3)};`
+  const inner = 'position:absolute;max-width:none;'
+    + `left:${(-crop.l / kw * 100).toFixed(3)}%;top:${(-crop.t / kh * 100).toFixed(3)}%;`
+    + `width:${(100 / kw).toFixed(3)}%;height:${(100 / kh).toFixed(3)}%;`
+  return { wrap, inner }
 }
 
 const styleDecl: Record<string, string> = {
@@ -170,8 +198,14 @@ const styleDecl: Record<string, string> = {
   perspective: 'box-shadow:0 10px 24px rgba(0,0,0,.25);',
 }
 
-/** img 자체에 걸리는 스타일 (테두리·효과·보정·회전) */
-function imgStyle(attrs: Record<string, unknown>, inCrop: boolean): string {
+/**
+ * 잘라 낸 뒤에도 보이는 상자에 걸려야 하는 꾸밈 — 테두리·그림자·둥근 모서리·도형·회전.
+ *
+ * 자를 때는 이것들이 바깥 상자로 나간다. 안쪽 그림에 붙이면 테두리가 잘려 나간 자리에
+ * 그려져 아예 보이지 않고, 회전은 상자보다 훨씬 큰 그림을 제 가운데로 돌려 엉뚱한 데를
+ * 비춘다. 워드는 자른 결과에 테두리를 두르고 자른 결과를 돌린다.
+ */
+function decorStyle(attrs: Record<string, unknown>): string {
   let css = ''
   const preset = typeof attrs.style === 'string' ? styleDecl[attrs.style] : ''
   if (preset) css += preset
@@ -185,14 +219,27 @@ function imgStyle(attrs: Record<string, unknown>, inCrop: boolean): string {
     const shape = IMAGE_SHAPES.find((s) => s.key === attrs.shape)
     if (shape) css += `clip-path:${shape.clip};`
   }
+  const tf = transformOf(attrs)
+  if (tf) css += `transform:${tf};`
+  return css
+}
+
+/** 그림 알맹이에만 걸리는 것 — 색 보정과 투명도 (자르든 안 자르든 그림에 붙는다) */
+function pixelStyle(attrs: Record<string, unknown>): string {
+  let css = ''
   const filter = adjustToFilter(parseAdjust(attrs.adjust))
   if (filter) css += `filter:${filter};`
   if (attrs.opacity != null && Number(attrs.opacity) < 100) css += `opacity:${Number(attrs.opacity) / 100};`
-  const tf = transformOf(attrs)
-  if (tf) css += `transform:${tf};`
-  if (!inCrop && attrs.width) css += `width:${attrs.width};`
-  if (!inCrop && attrs.height) css += `height:${attrs.height};`
-  else if (!inCrop && attrs.width) css += 'height:auto;'
+  return css
+}
+
+/** img 자체에 걸리는 스타일 — 자를 때는 꾸밈이 바깥으로 나가고 알맹이 효과만 남는다 */
+function imgStyle(attrs: Record<string, unknown>, inCrop: boolean): string {
+  if (inCrop) return pixelStyle(attrs)
+  let css = decorStyle(attrs) + pixelStyle(attrs)
+  if (attrs.width) css += `width:${attrs.width};`
+  if (attrs.height) css += `height:${attrs.height};`
+  else if (attrs.width) css += 'height:auto;'
   return css
 }
 
@@ -206,6 +253,23 @@ function wrapStyle(attrs: Record<string, unknown>): string {
   if (wrap === 'front') return 'position:absolute;z-index:5;'
   if (wrap === 'inline') return 'display:inline-block;vertical-align:middle;margin:0 2px;'
   return '' // topbottom — 기본 블록 흐름 (정렬은 data-align 이 CSS 로 처리)
+}
+
+/** 끌기 시작한 그림의 자리 — 문서가 바뀌면 함께 옮겨 간다 */
+const dragFromKey = new PluginKey<number | null>('janImageDragFrom')
+
+/** 화면의 img 요소가 문서의 어느 자리인지 (그림 노드가 아니면 null) */
+function imagePosFromDom(view: EditorView, target: EventTarget | null): number | null {
+  const el = target as HTMLElement | null
+  if (!el || el.nodeType !== 1 || el.tagName !== 'IMG') return null
+  let raw: number
+  try { raw = view.posAtDOM(el, 0) } catch { return null }
+  for (const p of [raw, raw - 1, raw + 1]) {
+    if (p < 0) continue
+    const node = view.state.doc.nodeAt(p)
+    if (node && node.type.name === 'image') return p
+  }
+  return null
 }
 
 export const ImageObject = Image.extend({
@@ -344,7 +408,7 @@ export const ImageObject = Image.extend({
     let inner = ''
     let box = 'display:inline-block;vertical-align:bottom;'
     if (crop) {
-      const cs = cropStyles(crop, (a.width as string) || null, Number(a.nw) || 0, Number(a.nh) || 0)
+      const cs = cropStyles(crop, (a.width as string) || null, (a.height as string) || null, nw, nh)
       inner = cs.inner
       box = cs.wrap
     } else if (a.width) {
@@ -352,11 +416,17 @@ export const ImageObject = Image.extend({
     }
     imgAttrs.style = reserve + inner + imgStyle(a, !!crop)
 
+    /* 자른 그림은 두 겹이다. 안쪽 span.jan-img-clip 이 넘치는 부분을 잘라 내고,
+       그 바깥 span 이 꾸밈(테두리·액자 여백·그림자·회전·도형)을 쓴다. 꾸밈을 잘라 내는
+       span 에 함께 두면 액자의 흰 여백이 그림에 덮여 사라진다 — 잘린 그림 안에서는
+       그림이 절대 자리로 놓여 안쪽 여백까지 차지하기 때문이다. */
     const imgPart: unknown[] = crop
-      ? ['span', { class: 'jan-img-clip', style: box }, ['img', imgAttrs]]
+      ? ['span', { class: 'jan-img-deco', style: `display:inline-block;vertical-align:bottom;max-width:100%;${decorStyle(a)}` },
+          ['span', { class: 'jan-img-clip', style: box }, ['img', imgAttrs]]]
       : ['img', imgAttrs]
     if (!caption) {
-      return ['span', { class: 'jan-img', style: box + wrapStyle(a) + shift, 'data-align': (a.align as string) || '' }, ['img', imgAttrs]] as never
+      const outer = crop ? 'display:inline-block;vertical-align:bottom;max-width:100%;' : box
+      return ['span', { class: 'jan-img', style: outer + wrapStyle(a) + shift, 'data-align': (a.align as string) || '' }, imgPart] as never
     }
 
     const pos = (a.capPos as string) || 'bottom'
@@ -379,37 +449,108 @@ export const ImageObject = Image.extend({
     return [
       ...(this.parent?.() || []),
       new Plugin({
-        key: new PluginKey('janImageMove'),
+        key: dragFromKey,
+        /* 끌기 시작한 그림이 지금 어디 있는지 — 문서가 바뀌어도 따라 옮긴다.
+           고름(selection)에 기대면 안 된다: 그림을 곧바로 끌면 개체 고름이 아닐 수 있고,
+           끄는 사이 노드가 다시 그려지면서 글자 고름으로 떨어지기도 한다. */
+        state: {
+          init: () => null as number | null,
+          apply(tr, value) {
+            const set = tr.getMeta(dragFromKey) as number | null | undefined
+            if (set !== undefined) return set
+            return value == null ? null : tr.mapping.map(value)
+          },
+        },
+        /**
+         * 놓는 순간을 가로채기 단계(capture)에서 잡는다.
+         *
+         * 편집기 안에서 drop 을 듣는 플러그인이 여럿이고(재어 보니 아홉), 우리 것은 그 가운데
+         * 일흔두 번째다. 앞선 것이 먼저 처리하면 우리 차례는 오지 않는다 — 그래서 「우리가
+         * 직접 옮긴다」 는 고침이 걸리지 않고 브라우저 기본 동작이 그대로 일어났다.
+         * 가로채기 단계는 거품이 올라오기 전이라 차례를 다툴 일이 없다.
+         */
+        view(editorView) {
+          const onDrop = (event: Event) => {
+            const view = editorView
+            const from = dragFromKey.getState(view.state)
+            if (from == null) return
+            const node = view.state.doc.nodeAt(from)
+            if (!node || node.type.name !== 'image') return
+            const drag = event as DragEvent
+            const at = view.posAtCoords({ left: drag.clientX, top: drag.clientY })
+            if (!at) return
+            const slice = new Slice(Fragment.from(node), 0, 0)
+            const target = dropPoint(view.state.doc, at.pos, slice)
+            if (target == null) return
+
+            /* Ctrl(윈도) · Alt(맥) 을 누른 채 놓으면 워드처럼 복사다 — 그때만 원본을 남긴다 */
+            const copy = drag.ctrlKey || drag.altKey
+            const tr = view.state.tr
+            if (!copy) tr.delete(from, from + node.nodeSize)
+            const where = tr.mapping.map(target)
+            tr.insert(where, node)
+            const landed = tr.doc.nodeAt(where)
+            /* 옮긴 뒤에도 고른 채로 둔다 — 워드처럼 바로 이어서 다룰 수 있게 */
+            if (landed && landed.type.name === 'image') tr.setSelection(NodeSelection.create(tr.doc, where))
+            tr.setMeta(dragFromKey, null)
+            view.dispatch(tr)
+            /* 아무도 손대지 못하게 여기서 끝낸다 */
+            event.preventDefault()
+            event.stopPropagation()
+            if ('stopImmediatePropagation' in event) event.stopImmediatePropagation()
+          }
+          editorView.dom.addEventListener('drop', onDrop, true)
+          return {
+            destroy() { editorView.dom.removeEventListener('drop', onDrop, true) },
+          }
+        },
         props: {
+          handleDOMEvents: {
+            dragstart(view, event) {
+              const pos = imagePosFromDom(view, (event as DragEvent).target)
+              view.dispatch(view.state.tr.setMeta(dragFromKey, pos).setMeta('addToHistory', false))
+              return false
+            },
+            dragend(view) {
+              if (dragFromKey.getState(view.state) != null) {
+                view.dispatch(view.state.tr.setMeta(dragFromKey, null).setMeta('addToHistory', false))
+              }
+              return false
+            },
+          },
+
           /**
            * 그림을 끌어 옮기는 일은 우리가 직접 한다 — 지우기와 넣기를 한 트랜잭션에.
            *
            * 브라우저의 끌어놓기에 맡기면, 집어 든 자리를 기억했다가 놓을 때 거기를 지운다.
            * 그런데 끄는 사이 쪽이 다시 짜여 그림이 다른 자리로 가면 원래 자리를 못 찾아
-           * 지우지 못하고 넣기만 한다 — 그림이 둘이 된다. 여백에 닿을 때, 표 선에 닿을 때,
+           * 지우지 못하고 넣기만 한다 — 그림이 둘이 된다. 여백에 닿을 때 · 표 선에 닿을 때 ·
            * 쪽을 넘길 때가 모두 쪽이 다시 짜이는 순간이라 꼭 그때 벌어졌다.
            *
-           * 우리가 하면 지금 문서에서 그 그림이 어디 있는지 보고 지우므로, 그 사이 무슨 일이
-           * 있었든 상관없다. 한 트랜잭션이라 둘이 될 수가 없다.
+           * 우리는 끌기 시작한 자리를 위 state 가 문서 변화를 따라 옮겨 주므로, 놓는 순간
+           * 그 그림이 어디 있든 정확히 그것을 지운다. 한 트랜잭션이라 둘이 될 수가 없다.
            */
           handleDrop(view, event, slice, moved) {
             if (!moved) return false
-            const sel = view.state.selection
-            if (!(sel instanceof NodeSelection) || sel.node.type.name !== 'image') return false
+            const from = dragFromKey.getState(view.state)
+            if (from == null) return false
+            const node = view.state.doc.nodeAt(from)
+            if (!node || node.type.name !== 'image') return false
+
             const drag = event as DragEvent
             const at = view.posAtCoords({ left: drag.clientX, top: drag.clientY })
             if (!at) return false
             const target = dropPoint(view.state.doc, at.pos, slice)
             if (target == null) return false
 
-            const node = sel.node
             const tr = view.state.tr
-            tr.delete(sel.from, sel.to)
+            tr.delete(from, from + node.nodeSize)
             const where = tr.mapping.map(target)
             tr.insert(where, node)
-            /* 옮긴 뒤에도 고른 채로 둔다 — 워드처럼 바로 이어서 다룰 수 있게 */
             const landed = tr.doc.nodeAt(where)
+            /* 옮긴 뒤에도 고른 채로 둔다 — 워드처럼 바로 이어서 다룰 수 있게 */
             if (landed && landed.type.name === 'image') tr.setSelection(NodeSelection.create(tr.doc, where))
+            tr.setMeta(dragFromKey, null)
             view.dispatch(tr)
             event.preventDefault()
             return true
