@@ -390,8 +390,16 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
           if (seq !== contentSaveSeqByMemo.current[memoId]) return
           updateMemo(memoId, { content: storedHtml })
           if (storedHtml !== html && activeMemoIdRef.current === memoId && !targetEditor.isDestroyed) {
-            /* 저장 뒤 되돌려 넣는 것 — 사람이 고친 게 아니니 변경 표시를 남기지 않는다 */
-            targetEditor.chain().setMeta('janTrackSkip', true).setContent(storedHtml, { emitUpdate: false }).run()
+            /* 저장 뒤 되돌려 넣는 것 — 사람이 고친 게 아니니 변경 표시도, 되돌리기도 남기지 않는다.
+               예전에는 변경 표시만 껐다. 그러면 이 통째 교체(replace 0-6402)가 이력에 한 걸음으로
+               쌓여, 그림이 든 문서를 열자마자 「되돌릴 것」 이 하나 생겼다. 첫 Ctrl+Z 가 그림을
+               저장소로 옮기기 전 문서를 도로 불러오는 셈이라, 사람이 보기에는 아무것도 안 했는데
+               한 번이 헛돌았다. 옮기기는 같은 문서를 다른 주소로 적은 것일 뿐 고침이 아니다. */
+            targetEditor.chain()
+              .setMeta('janTrackSkip', true)
+              .setMeta('addToHistory', false)
+              .setContent(storedHtml, { emitUpdate: false })
+              .run()
             resolveBlobRefsInElement(targetEditor.view.dom).catch(() => {})
           }
         })
@@ -1021,8 +1029,15 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
          돌아온다. 거기서 목록을 비웠더니 창 나누기를 켜는 순간 사람이 쓰던 되돌리기가
          통째로 날아갔다 (실측: 되돌림 3 → 0). 그래서 문서가 바뀐 때로만 좁힌다. */
       const 다른문서 = loadedMemoIdRef.current !== currentId
+      /* 이 맞춤 자체는 어느 경우에도 되돌릴 것이 아니다 — 사람이 한 고침이 아니라
+         저장소와 화면을 맞춰 놓는 일이다. 목록을 비우는 것과는 다른 이야기다:
+         비우기는 「남의 문서 이력을 지운다」 라 문서가 바뀐 때만 해야 하지만,
+         쌓지 않기는 언제나 옳다. 예전에는 이것을 안 해서, 그림이 든 문서를 열고
+         저장소로 옮긴 결과가 되돌아 앉는 순간 「되돌릴 것」 이 하나 생겼다
+         (실측: 연 직후 되돌림 1 — replace 0-6402 통째 교체가 이력에 앉아 있었다). */
       editor.chain()
         .setMeta('janTrackSkip', true)
+        .setMeta('addToHistory', false)
         .setContent(memoContent, { emitUpdate: false })
         .command(({ tr, state }) => (다른문서 ? clearUndoHistory(tr, state) : false) || true)
         .run()

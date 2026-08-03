@@ -2,6 +2,7 @@ import { Image } from '@tiptap/extension-image'
 import { NodeSelection, Plugin, PluginKey } from '@tiptap/pm/state'
 import { dropPoint } from '@tiptap/pm/transform'
 import { Fragment, Slice } from '@tiptap/pm/model'
+import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import type { EditorView } from '@tiptap/pm/view'
 
 /**
@@ -288,6 +289,60 @@ function wrapStyle(attrs: Record<string, unknown>): string {
 /** 끌기 시작한 그림의 자리 — 문서가 바뀌면 함께 옮겨 간다 */
 const dragFromKey = new PluginKey<number | null>('janImageDragFrom')
 
+/** 못 물린 그림들의 주소 — 화면에 「표시할 수 없습니다」 자리를 남기는 표시를 붙이는 데 쓴다 */
+const brokenKey = new PluginKey<BrokenState>('janImageBroken')
+
+interface BrokenState { srcs: Set<string>; decos: DecorationSet }
+
+/** 지금 이 그림을 「못 물렸다」 로 볼 것인가 — 주소가 없거나, 불러오다 튕겼거나 */
+function isBrokenSrc(src: unknown, broken: Set<string>): boolean {
+  if (typeof src !== 'string' || src === '') return true
+  return broken.has(src)
+}
+
+/** 못 물린 그림마다 data-jan-broken 을 얹는다 (글 속으로는 파고들지 않는다 — 그림은 블록이다) */
+function brokenDecos(doc: import('@tiptap/pm/model').Node, broken: Set<string>): DecorationSet {
+  const found: Decoration[] = []
+  doc.descendants((node, pos) => {
+    if (node.type.name === 'image') {
+      if (isBrokenSrc(node.attrs.src, broken)) {
+        found.push(Decoration.node(pos, pos + node.nodeSize, { 'data-jan-broken': '1' }))
+      }
+      return false
+    }
+    return node.isBlock
+  })
+  return found.length ? DecorationSet.create(doc, found) : DecorationSet.empty
+}
+
+/**
+ * 놓은 자리의 문서 위치 — 그 자리가 문서 밖이면 가장 가까운 붙일 자리를 찾는다.
+ *
+ * `posAtCoords` 는 글이 없는 자리(쪽 사이 빈틈, 쪽 옆 그림자 자리, 편집기 바깥 여백)에서
+ * null 을 준다. 예전에는 그때 그냥 빠져나왔는데, 그러면 preventDefault 를 안 하므로
+ * 브라우저와 ProseMirror 의 기본 놓기가 그대로 돌아 그림이 둘이 되는 길이 열렸다.
+ * 워드는 아무 데나 놓아도 가장 가까운 자리에 넣는다 — 그 흉내를 낸다.
+ */
+function posOrNearest(view: EditorView, x: number, y: number): number | null {
+  const 재기 = (px: number, py: number) => {
+    try { return view.posAtCoords({ left: px, top: py }) } catch { return null }
+  }
+  const 곧바로 = 재기(x, y)
+  if (곧바로) return 곧바로.pos
+
+  const rect = view.dom.getBoundingClientRect()
+  const cx = Math.min(Math.max(x, rect.left + 4), rect.right - 4)
+  const cy = Math.min(Math.max(y, rect.top + 4), rect.bottom - 4)
+  /* 가로로 먼저 끌어들이고(쪽 옆 그림자 자리), 세로로 조금씩 위아래를 더듬는다
+     (쪽 사이 빈틈은 위쪽이 앞 쪽의 끝, 아래쪽이 다음 쪽의 처음이다) */
+  for (const dy of [0, -8, 8, -20, 20, -44, 44, -80, 80]) {
+    const py = Math.min(Math.max(cy + dy, rect.top + 4), rect.bottom - 4)
+    const hit = 재기(cx, py)
+    if (hit) return hit.pos
+  }
+  return null
+}
+
 /** 화면의 img 요소가 문서의 어느 자리인지 (그림 노드가 아니면 null) */
 function imagePosFromDom(view: EditorView, target: EventTarget | null): number | null {
   const el = target as HTMLElement | null
@@ -448,8 +503,11 @@ export const ImageObject = Image.extend({
     /* 비율만 일러 주면 모자란다 — 빈 그림은 1×1 이라 폭이 1px 로 잡히고, 비율을 지켜 봐야
        높이도 1px 이다. 원래 폭까지 함께 일러 줘야 진짜 그림이 왔을 때와 같은 자리가 된다
        (본문보다 넓은 그림은 본문 폭에 맞춘다 — 물린 뒤와 똑같이). 뒤에 오는 imgStyle 이
-       사람이 정한 크기를 덮어쓰므로, 손으로 크기를 준 그림은 그 값이 이긴다. */
-    const reserve = isStoreRef && !crop && nw > 0 && nh > 0
+       사람이 정한 크기를 덮어쓰므로, 손으로 크기를 준 그림은 그 값이 이긴다.
+       예전에는 저장소 주소(jan-blob://)일 때만 걸렸다. 그런데 밖에서 온 http(s) 그림의
+       주소가 깨지면 브라우저가 알맹이를 0×0 으로 잡아 상자가 통째로 쪼그라든다 —
+       원래 크기를 알고 있다면(data-nw·nh) 주소가 무엇이든 그 자리를 지켜야 한다. */
+    const reserve = !crop && nw > 0 && nh > 0
       ? `width:min(100%,${nw}px);aspect-ratio:${nw}/${nh};`
       : ''
 
@@ -535,11 +593,27 @@ export const ImageObject = Image.extend({
             const node = view.state.doc.nodeAt(from)
             if (!node || node.type.name !== 'image') return
             const drag = event as DragEvent
-            const at = view.posAtCoords({ left: drag.clientX, top: drag.clientY })
-            if (!at) return
+
+            /* 여기부터는 우리가 끌던 그림이 확실하다 — 무슨 일이 있어도 브라우저와 ProseMirror 의
+               기본 놓기가 돌게 두면 안 된다. 그 기본 길은 집어 든 자리를 기억했다가 놓을 때 거기를
+               지우는데, 끄는 사이 쪽이 다시 짜여 그림이 옮겨지면 못 지우고 넣기만 해 둘이 된다. */
+            const 끝내기 = () => {
+              event.preventDefault()
+              event.stopPropagation()
+              if ('stopImmediatePropagation' in event) event.stopImmediatePropagation()
+              /* ProseMirror 의 drop 처리기가 하던 뒷정리를 대신한다.
+                 우리가 전파를 끊으므로 그쪽 finally 가 돌지 않고, 놓은 그림은 새 요소로 다시
+                 그려져 원래 요소가 문서에서 떨어져 나간다 — 브라우저가 그 떨어진 요소에 보내는
+                 dragend 는 편집기까지 올라오지 못해 view.dragging 이 영영 남는다.
+                 그러면 조판 엔진이 「끌고 있는 중」 으로 보고 쪽 나눔을 통째로 멈춘다. */
+              ;(view as unknown as { dragging?: unknown }).dragging = null
+            }
+
+            const at = posOrNearest(view, drag.clientX, drag.clientY)
             const slice = new Slice(Fragment.from(node), 0, 0)
-            const target = dropPoint(view.state.doc, at.pos, slice)
-            if (target == null) return
+            /* 붙일 자리를 못 찾으면 옮기지 않고 제자리에 둔다 — 그래도 기본 놓기는 막는다 */
+            const target = at == null ? null : dropPoint(view.state.doc, at, slice)
+            if (target == null) { 끝내기(); return }
 
             /* Ctrl(윈도) · Alt(맥) 을 누른 채 놓으면 워드처럼 복사다 — 그때만 원본을 남긴다 */
             const copy = drag.ctrlKey || drag.altKey
@@ -552,10 +626,7 @@ export const ImageObject = Image.extend({
             if (landed && landed.type.name === 'image') tr.setSelection(NodeSelection.create(tr.doc, where))
             tr.setMeta(dragFromKey, null)
             view.dispatch(tr)
-            /* 아무도 손대지 못하게 여기서 끝낸다 */
-            event.preventDefault()
-            event.stopPropagation()
-            if ('stopImmediatePropagation' in event) event.stopImmediatePropagation()
+            끝내기()
           }
           editorView.dom.addEventListener('drop', onDrop, true)
           return {
@@ -596,10 +667,10 @@ export const ImageObject = Image.extend({
             if (!node || node.type.name !== 'image') return false
 
             const drag = event as DragEvent
-            const at = view.posAtCoords({ left: drag.clientX, top: drag.clientY })
-            if (!at) return false
-            const target = dropPoint(view.state.doc, at.pos, slice)
-            if (target == null) return false
+            const at = posOrNearest(view, drag.clientX, drag.clientY)
+            /* 자리를 못 찾아도 기본 놓기에 넘기지 않는다 — 그 길이 그림을 둘로 만든다 */
+            const target = at == null ? null : dropPoint(view.state.doc, at, slice)
+            if (target == null) { event.preventDefault(); return true }
 
             const tr = view.state.tr
             tr.delete(from, from + node.nodeSize)
@@ -613,6 +684,65 @@ export const ImageObject = Image.extend({
             event.preventDefault()
             return true
           },
+        },
+      }),
+      /**
+       * 못 물린 그림 자리 지키기 — 워드의 「그림을 표시할 수 없습니다」.
+       *
+       * 주소가 깨졌거나 아예 비어 있으면 브라우저는 알맹이를 0×0 으로 잡는다.
+       * 그러면 상자가 통째로 쪼그라들어(재어 보니 빈 주소는 높이 0px) 사람이 그 그림을
+       * 다시 클릭해 지울 수도, 주소를 고칠 수도 없다 — 문서에서 영영 못 꺼낸다.
+       * 그래서 표시를 붙여 최소 치수와 가상 테두리가 걸리게 한다(CSS: [data-jan-broken]).
+       *
+       * 표시는 DOM 을 직접 건드리지 않고 데코레이션으로 얹는다. ProseMirror 가 관리하는
+       * 요소에 속성을 손으로 붙이면 그쪽 DOMObserver 가 「밖에서 고쳤다」 로 읽어 다시
+       * 그리고, 다시 그린 그림이 또 error 를 내어 맴돌 수 있다.
+       */
+      new Plugin<BrokenState>({
+        key: brokenKey,
+        state: {
+          init: (_, state) => ({ srcs: new Set<string>(), decos: brokenDecos(state.doc, new Set()) }),
+          apply(tr, value, _old, next) {
+            const 알림 = tr.getMeta(brokenKey) as { src: string; broken: boolean } | undefined
+            let srcs = value.srcs
+            if (알림 && srcs.has(알림.src) !== 알림.broken) {
+              srcs = new Set(srcs)
+              if (알림.broken) srcs.add(알림.src)
+              else srcs.delete(알림.src)
+            }
+            if (srcs === value.srcs && !tr.docChanged) return value
+            return { srcs, decos: brokenDecos(next.doc, srcs) }
+          },
+        },
+        props: {
+          decorations(state) { return brokenKey.getState(state)?.decos ?? null },
+        },
+        view(editorView) {
+          const 적기 = (event: Event, broken: boolean) => {
+            const el = event.target as HTMLElement | null
+            if (!el || el.tagName !== 'IMG') return
+            const pos = imagePosFromDom(editorView, el)
+            if (pos == null) return
+            const src = editorView.state.doc.nodeAt(pos)?.attrs.src
+            /* 저장소 주소는 화면에 1×1 빈 그림을 놓고 나중에 물린다 — 못 물린 것이 아니다 */
+            if (typeof src !== 'string' || !src || src.startsWith('jan-blob://')) return
+            const now = brokenKey.getState(editorView.state)
+            if (!now || now.srcs.has(src) === broken) return
+            editorView.dispatch(
+              editorView.state.tr.setMeta(brokenKey, { src, broken }).setMeta('addToHistory', false)
+            )
+          }
+          const onError = (e: Event) => 적기(e, true)
+          const onLoad = (e: Event) => 적기(e, false)
+          /* load·error 는 거품이 일지 않으므로 잡는 단계(capture)에서 듣는다 */
+          editorView.dom.addEventListener('error', onError, true)
+          editorView.dom.addEventListener('load', onLoad, true)
+          return {
+            destroy() {
+              editorView.dom.removeEventListener('error', onError, true)
+              editorView.dom.removeEventListener('load', onLoad, true)
+            },
+          }
         },
       }),
       new Plugin({

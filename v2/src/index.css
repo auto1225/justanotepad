@@ -6941,6 +6941,28 @@ body:has(.jan-ribbon-dropdown) .jan-help-tip { display: none; }
 .ProseMirror .jan-img-cap[data-cap-pos='left'],
 .ProseMirror .jan-img-cap[data-cap-pos='right'] { max-width: 40%; text-align: left; }
 
+/* 못 물린 그림 — 워드의 「그림을 표시할 수 없습니다」 자리.
+   주소가 깨지거나 비면 브라우저가 알맹이를 0×0 으로 잡아 상자가 통째로 쪼그라든다
+   (재어 보니 빈 주소는 640×0px). 그러면 사람이 그 그림을 다시 클릭해 지울 수도,
+   주소를 고칠 수도 없다 — 문서에서 영영 못 꺼낸다. 그래서 자리를 남긴다.
+   원래 크기를 아는 그림은 노드가 인라인으로 width·aspect-ratio 를 내보내므로
+   그 값이 이겨 제 크기 그대로 자리를 지킨다. */
+.ProseMirror img.jan-img-el[data-jan-broken],
+.ProseMirror [data-jan-broken] img.jan-img-el {
+  width: auto;
+  min-width: 96px;
+  min-height: 72px;
+  box-sizing: border-box;
+  border: 1px dashed var(--jan-border, #b7bcc4);
+  background-color: var(--jan-broken-bg, #f2f3f5);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238a909a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4.5' width='18' height='15' rx='2'/%3E%3Cpath d='M3 15.5l4.5-4.5 3.5 3.5 3-3 7 7'/%3E%3Ccircle cx='8.6' cy='9.2' r='1.3'/%3E%3Cpath d='M4.5 20L19.5 4' stroke='%23c0523f'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: min(40px, 60%) min(40px, 60%);
+}
+.jan-theme-dark .ProseMirror img.jan-img-el[data-jan-broken],
+.jan-theme-dark .ProseMirror [data-jan-broken] img.jan-img-el { background-color: #2a2c30; }
+
 /* 고른 그림은 테두리로 표시한다 (ProseMirror 의 기본 선택 배경은 그림에서 잘 안 보인다) */
 .ProseMirror img.ProseMirror-selectednode,
 .ProseMirror .jan-img.ProseMirror-selectednode { outline: 2px solid var(--jan-accent, #3b82f6); outline-offset: 2px; }

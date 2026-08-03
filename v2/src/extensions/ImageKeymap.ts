@@ -1,5 +1,5 @@
 import { Extension } from '@tiptap/core'
-import { NodeSelection } from '@tiptap/pm/state'
+import { NodeSelection, TextSelection } from '@tiptap/pm/state'
 import { flash } from '../lib/flash'
 import {
   clearCrop, copyImageFormat, cropSide, currentImage, fitImageToBody, flipImage, moveImage,
@@ -62,6 +62,27 @@ export const ImageKeymap = Extension.create({
       const next = WRAPS[(WRAPS.indexOf(cur) + dir + WRAPS.length) % WRAPS.length]
       const note = `배치: ${WRAP_NAMES[next]}`
       return hit.node.type.name === 'image' ? setImageWrap(editor, next, note) : setShapeWrap(editor, next, note)
+    }
+
+    /**
+     * 그림을 고른 채 Enter — 워드는 고른 그림이 사라지고 그 자리에 새 문단이 선다.
+     *
+     * ProseMirror 의 기본(createParagraphNear)은 그림을 **남기고** 그 아래에 문단을
+     * 하나 더 만든다. 재어 보니 그림 1개·문단 23→24개로, 글자를 쳤을 때
+     * (그림이 지워지고 그 자리에 글자가 들어감)와도 어긋났다.
+     */
+    const enterOnImage = () => {
+      const { state, view } = editor
+      const sel = state.selection
+      if (!(sel instanceof NodeSelection) || sel.node.type.name !== 'image') return false
+      const para = state.schema.nodes.paragraph
+      if (!para) return false
+      const tr = state.tr.replaceSelectionWith(para.create(), false)
+      /* 새 문단 안에 글자 자리를 놓는다 — 워드처럼 바로 이어서 칠 수 있게 */
+      const inside = Math.min(sel.from + 1, tr.doc.content.size)
+      tr.setSelection(TextSelection.near(tr.doc.resolve(inside)))
+      view.dispatch(tr.scrollIntoView())
+      return true
     }
 
     const ask = (name: string) => {
@@ -144,6 +165,9 @@ export const ImageKeymap = Extension.create({
       'Alt-c': onNear(() => ask('caption')),
       'Alt-a': onNear(() => ask('alt')),
       'Alt-t': onNear(() => ask('adjust')),
+
+      /* ── 고른 그림 위에서 Enter — 워드처럼 그림이 사라지고 새 문단이 선다 ── */
+      Enter: enterOnImage,
 
       /* ── 무엇을 쓸 수 있는지 ── */
       'Alt-/': bothNear(helpFlash, helpFlash),
