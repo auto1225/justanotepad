@@ -35,6 +35,17 @@ export function splitTableAt(table: PMNode, rowIndex: number): { head: PMNode; t
 }
 
 /**
+ * 이 표 자신의 행 — 칸 안에 든 표(중첩)의 행은 남의 것이다.
+ *
+ * querySelectorAll('tr') 은 칸 속 표의 행까지 함께 걷어 온다. 그 수로 나눌 자리를 세면
+ * 바깥 행이 실제보다 많은 줄 알고 지면 밖까지 남겨 두고, 합칠 때 쓰면 안쪽 표의 행을
+ * 바깥 표 끝에 옮겨 붙여 안쪽 표를 빈 껍데기로 만든다.
+ */
+export function ownRows(table: Element): HTMLElement[] {
+  return [...table.querySelectorAll('tr')].filter((r) => r.closest('table') === table) as HTMLElement[]
+}
+
+/**
  * 남은 자리(roomPx)에 몇 행까지 들어가는지 센다.
  * 화면에 그려진 행 높이를 그대로 읽는다 — 계산으로 짐작하면 한두 줄씩 어긋난다.
  */
@@ -42,13 +53,18 @@ export function rowsThatFit(view: EditorView, tablePos: number, roomPx: number, 
   const dom = view.nodeDOM(tablePos)
   const el = dom instanceof HTMLElement ? (dom.querySelector('table') || dom) : null
   if (!el) return 0
-  const rows = [...el.querySelectorAll('tr')]
+  const rows = ownRows(el)
   if (rows.length < 2) return 0
   const top = el.getBoundingClientRect().top
+  /* 남은 자리는 블록의 여백 바깥에서부터 잰 값이다. 표의 위·아래 여백도 그 자리를 먹으므로
+     빼고 나서야 「행이 몇 개 들어가는가」 가 맞는다 — 안 빼면 한 행이 더 들어가는 줄 알고
+     그만큼 지면 밖으로 삐져나온다 (그 쪽만 용지가 늘어난다). */
+  const cs = window.getComputedStyle(el)
+  const room = roomPx - (parseFloat(cs.marginTop) || 0) - (parseFloat(cs.marginBottom) || 0)
   let fit = 0
   for (const row of rows) {
     const bottom = (row.getBoundingClientRect().bottom - top) / (scale || 1)
-    if (bottom > roomPx) break
+    if (bottom > room) break
     fit++
   }
   return fit
@@ -79,22 +95,32 @@ export function mergeContinuedTables(html: string): string {
   const doc = new DOMParser().parseFromString(`<div id="r">${html}</div>`, 'text/html')
   const root = doc.getElementById('r')
   if (!root) return html
+  /* 쪽 경계에서 나뉜 것은 언제나 바깥(최상위) 표다 — 칸 속 표는 나뉘지 않으니 건너뛴다 */
+  const nextTarget = () =>
+    [...root.querySelectorAll('table[data-cont]')].find((t) => !t.parentElement?.closest('table')) || null
+  /* 이 표 자신의 몸통 — 첫 tbody 를 그냥 집으면 첫 칸에 든 안쪽 표의 몸통을 집는다 */
+  const ownBody = (table: Element) =>
+    [...table.querySelectorAll('tbody')].find((b) => b.parentElement === table) || table
+
   let guard = 0
-  let target = root.querySelector('table[data-cont]')
+  let target = nextTarget()
   while (target && guard++ < 500) {
     // 앞에 있는 표를 찾는다 (사이에 쪽 래퍼가 벗겨져 문단이 끼어 있을 수 있다)
     let prev: Element | null = target.previousElementSibling
     while (prev && prev.tagName !== 'TABLE') prev = prev.previousElementSibling
     if (prev) {
-      const body = prev.querySelector('tbody') || prev
-      target.querySelectorAll('tr[data-repeated]').forEach((row) => row.remove())
-      const rows = target.querySelectorAll('tr')
-      rows.forEach((row) => body.appendChild(row))
+      const body = ownBody(prev)
+      // 제 행만 옮긴다 — 칸 속 표의 행까지 걷어 오면 안쪽 표가 빈 껍데기가 된다
+      const rows = ownRows(target)
+      rows.forEach((row) => {
+        if (row.hasAttribute('data-repeated')) row.remove()
+        else body.appendChild(row)
+      })
       target.remove()
     } else {
       target.removeAttribute('data-cont')
     }
-    target = root.querySelector('table[data-cont]')
+    target = nextTarget()
   }
   return root.innerHTML
 }

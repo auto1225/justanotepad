@@ -45,6 +45,55 @@ function putBlock(editor: Editor, kind: string, html: string): 'replaced' | 'ins
 /** 이 목록에 속한 줄임을 알리는 표시 */
 const field = (kind: string) => ` data-jan-field="${kind}"`
 
+/**
+ * 오른쪽 끝 쪽 칸 — 반드시 janFieldPage 노드로 넣는다.
+ * <span class="jan-toc-page"> 는 문서 구조에 없어 저장할 때 벗겨지고,
+ * 그러면 번호가 제목 글에 그대로 달라붙는다 («제1장 제목5»).
+ */
+const pageCell = (label: string | number) => `<span data-jan-page-num="1">${esc(String(label ?? ''))}</span>`
+
+/**
+ * 심어 둔 목록의 쪽 칸을 지금 쪽으로 고쳐 쓴다 — 목차 자신이 만든 오차를 지우는 두 번째 걸음.
+ *
+ * 쪽 번호는 목록을 넣기 「전」 화면에서 읽는다. 그런데 목록이 차지한 만큼 뒤가 밀리므로,
+ * 목차를 문서 앞에 넣으면 열여섯 제목 가운데 열다섯이 한 쪽씩 어긋났다.
+ * 그래서 쪽 나눔이 앉기를 기다렸다가 번호만 다시 적는다. attrs 만 바꾸므로
+ * 문서 크기가 그대로여서 쪽이 다시 흔들리지 않는다 (되돌리기에도 남기지 않는다).
+ */
+function fixPagesWhenSettled(editor: Editor, kind: string, pagesNow: () => Array<string | number>): void {
+  let 지난모양 = ''
+  let 남은횟수 = 24
+  const 한걸음 = () => {
+    if (editor.isDestroyed) return
+    const 모양 = `${editor.view.dom.querySelectorAll('[data-jan-page]').length}|${editor.state.doc.content.size}`
+    if (모양 !== 지난모양 && 남은횟수-- > 0) {   // 아직 쪽이 움직인다 — 더 기다린다
+      지난모양 = 모양
+      window.setTimeout(한걸음, 250)
+      return
+    }
+    const 쪽들 = pagesNow()
+    const 칸들: Array<{ pos: number; text: string }> = []
+    editor.state.doc.descendants((node, pos, parent) => {
+      if (node.type.name !== 'janFieldPage') return
+      if (parent?.attrs?.janField !== kind) return
+      칸들.push({ pos, text: String(node.attrs.text ?? '') })
+    })
+    if (칸들.length !== 쪽들.length) return  // 그 사이 문서가 달라졌다 — 손대지 않는다
+    let tr = null as null | ReturnType<typeof editor.state.tr.setNodeMarkup>
+    칸들.forEach((칸, i) => {
+      const next = String(쪽들[i] ?? '')
+      if (next === 칸.text) return
+      const node = editor.state.doc.nodeAt(칸.pos)
+      if (!node) return
+      tr = (tr ?? editor.state.tr).setNodeMarkup(칸.pos, undefined, { ...node.attrs, text: next })
+    })
+    if (!tr) return
+    ;(tr as { setMeta: (k: string, v: unknown) => void }).setMeta('addToHistory', false)
+    editor.view.dispatch(tr)
+  }
+  window.setTimeout(한걸음, 250)
+}
+
 /** 제목 글에서 이어 쓸 수 있는 앵커 이름 */
 export function headingAnchor(text: string): string {
   return 'h-' + text.trim().toLowerCase().replace(/[^\w가-힣]+/g, '-').replace(/^-|-$/g, '').slice(0, 60)
@@ -79,12 +128,15 @@ export function putToc(editor: Editor, opts: { maxLevel?: number; pageNumbers?: 
   const maxLevel = opts.maxLevel ?? 3
   const items = collectHeadings(editor, maxLevel)
   if (!items.length) { flash(`목차로 삼을 제목(H1~H${maxLevel})이 없습니다`); return false }
+  const 쪽보임 = opts.pageNumbers !== false
   const rows = items.map((i) => {
-    const dots = opts.pageNumbers === false ? '' : `<span class="jan-toc-page">${i.page || ''}</span>`
+    const dots = 쪽보임 ? pageCell(i.page || '') : ''
     return `<p${field('toc')} data-indent="${Math.min(8, i.level - 1)}" class="jan-toc-row"><a href="#${escAttr(headingAnchor(i.text))}">${esc(i.text)}</a>${dots}</p>`
   }).join('')
   const html = `<p${field('toc')} class="jan-toc-head"><strong>${esc(opts.title || '목차')}</strong></p>${rows}`
   const how = putBlock(editor, 'toc', html)
+  /* 목차가 밀어낸 만큼 쪽이 달라진다 — 앉은 뒤에 번호만 다시 적는다 */
+  if (쪽보임) fixPagesWhenSettled(editor, 'toc', () => collectHeadings(editor, maxLevel).map((i) => i.page || ''))
   flash(how === 'replaced' ? `목차를 새로 만들었습니다 (${items.length}개)` : `제목 ${items.length}개로 목차를 만들었습니다`)
   return true
 }
@@ -285,6 +337,19 @@ export function putBibliography(editor: Editor, sources: Source[], style: CiteSt
 
 /* ── 캡션 목차 (그림·표 목차) ─────────────────────────── */
 
+/**
+ * 캡션 줄에서 설명만 뽑는다.
+ *
+ * 캡션은 «Fig. 1. 첫째 그림» 이다 — 앞의 라벨은 paperTag 노드가 그린 글이라 글자열로
+ * 벗기려 하면 («그림|표 n.» 을 찾는 정규식이라) 하나도 걸리지 않아 «그림 1. Fig. 1. 첫째 그림»
+ * 처럼 번호가 두 번 적혔다. 라벨 노드 자체를 떼어 내면 라벨 모양이 무엇이든 정확히 벗겨진다.
+ */
+function captionText(el: Element): string {
+  const copy = el.cloneNode(true) as Element
+  copy.querySelectorAll('[data-paper-tag], [data-jan-page-num]').forEach((tag) => tag.remove())
+  return (copy.textContent || '').replace(/^(그림|표|Fig\.?|Table)\s*\d+\s*[.:]?\s*/i, '').trim()
+}
+
 export function putCaptionList(editor: Editor, kind: 'figure' | 'table'): boolean {
   if (editor.isDestroyed) return false
   const root = editor.view.dom
@@ -294,9 +359,11 @@ export function putCaptionList(editor: Editor, kind: 'figure' | 'table'): boolea
   if (!caps.length) { flash(`${word} 캡션이 없습니다 — 캡션을 먼저 넣어 주세요`); return false }
   const key = kind === 'figure' ? 'figlist' : 'tablist'
   const rows = caps.map((el, i) =>
-    `<p${field(key)} class="jan-toc-row">${word} ${i + 1}. ${esc((el.textContent || '').replace(/^(그림|표)\s*\d+[.:]?\s*/, '').trim())}<span class="jan-toc-page">${pageOf(editor, el) || ''}</span></p>`).join('')
+    `<p${field(key)} class="jan-toc-row">${word} ${i + 1}. ${esc(captionText(el))}${pageCell(pageOf(editor, el) || '')}</p>`).join('')
   const html = `<p${field(key)}><strong>${word} 목차</strong></p>${rows}`
   const how = putBlock(editor, key, html)
+  fixPagesWhenSettled(editor, key, () =>
+    [...editor.view.dom.querySelectorAll(sel)].map((el) => pageOf(editor, el) || ''))
   flash(how === 'replaced' ? `${word} 목차를 새로 만들었습니다` : `${word} ${caps.length}개로 목차를 만들었습니다`)
   return true
 }
@@ -332,7 +399,7 @@ export function putIndex(editor: Editor): boolean {
   })
   const rows = [...map.entries()]
     .sort((a, b) => a[0].localeCompare(b[0], 'ko'))
-    .map(([term, pages]) => `<p${field('index')} class="jan-index-row">${esc(term)}<span class="jan-toc-page">${[...pages].sort((x, y) => x - y).join(', ')}</span></p>`)
+    .map(([term, pages]) => `<p${field('index')} class="jan-index-row">${esc(term)}${pageCell([...pages].sort((x, y) => x - y).join(', '))}</p>`)
     .join('')
   const html = `<p${field('index')}><strong>색인</strong></p>${rows}`
   const how = putBlock(editor, 'index', html)
@@ -377,7 +444,7 @@ export function putAuthorityList(editor: Editor): boolean {
   const body = [...byKind.entries()].map(([kind, items]) =>
     `<p${field('auth')} class="jan-auth-kind"><strong>${esc(kind)}</strong></p>` +
     [...items.entries()].sort((a, b) => a[0].localeCompare(b[0], 'ko')).map(([label, pages]) =>
-      `<p${field('auth')} class="jan-index-row">${esc(label)}<span class="jan-toc-page">${[...pages].sort((x, y) => x - y).join(', ')}</span></p>`).join('')
+      `<p${field('auth')} class="jan-index-row">${esc(label)}${pageCell([...pages].sort((x, y) => x - y).join(', '))}</p>`).join('')
   ).join('')
   const html = `<p${field('auth')}><strong>근거 목차</strong></p>${body}`
   const how = putBlock(editor, 'auth', html)

@@ -33,4 +33,10 @@ export const DOC_EXPORT_CSS = `
   p[data-paper-block="ref"] { text-indent: -1.5em; padding-left: 1.5em; font-size: 0.9em; margin: 0.3em 0; }
   .jan-paper-tag-figlabel, .jan-paper-tag-tablabel { font-weight: 700; }
   sup.paper-fn-ref, sup.paper-cite { font-size: 0.75em; vertical-align: super; line-height: 0; }
+  /* 심어 둔 목록(목차·그림/표 목차·색인·근거) — 쪽 번호는 오른쪽 끝, 사이는 점선으로 잇는다.
+     화면과 같은 규칙이다 (index.css). 없으면 내보낸 파일에서 번호가 제목 글에 달라붙는다. */
+  p[data-jan-field="toc"], p[data-jan-field="figlist"], p[data-jan-field="tablist"],
+  p[data-jan-field="index"], p[data-jan-field="auth"] { display: flex; align-items: baseline; }
+  p[data-jan-field] > a { flex: 0 1 auto; min-width: 0; }
+  .jan-toc-page { margin-left: 6px; padding-left: 8px; flex: 1; text-align: right; color: #6b7684; font-size: 0.9em; border-bottom: 1px dotted #d0d6de; }
 `

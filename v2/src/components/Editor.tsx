@@ -19,7 +19,7 @@ import { SmartArtObject } from '../extensions/SmartArtObject'
 import { SignatureObject } from '../extensions/SignatureObject'
 import { CrossRef } from '../extensions/CrossRef'
 import { RefTargets } from '../extensions/RefTargets'
-import { FieldBlocks } from '../extensions/FieldBlocks'
+import { FieldBlocks, FieldPageNum } from '../extensions/FieldBlocks'
 import { AuthorityMark, IndexMark } from '../extensions/RefMarks'
 import { DeleteMark, InsertMark, TrackChanges } from '../extensions/TrackChanges'
 import { EditGuard } from '../extensions/EditGuard'
@@ -467,6 +467,7 @@ export function Editor({ sidebar }: { sidebar?: React.ReactNode }) {
       CrossRef,
       RefTargets,
       FieldBlocks,
+      FieldPageNum,
       IndexMark,
       AuthorityMark,
       InsertMark,

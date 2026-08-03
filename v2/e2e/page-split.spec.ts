@@ -646,6 +646,55 @@ test.describe('줄 단위 문단 분할', () => {
     expect(merged).toEqual({ tables: 1, rows: 41, cont: 0, repeated: 0 })
   })
 
+  test('칸 안에 표가 든 표도 제 행만 세어 나뉜다 — 안쪽 표의 행을 제 행으로 세지 않는다', async ({ page }) => {
+    /* 나눌 자리는 "이 표의 행이 몇 개까지 들어가는가" 로 정한다. 그런데 행을 셀 때
+       querySelectorAll('tr') 로 세면 칸 속 표의 행까지 함께 세어, 바깥 행이 실제보다
+       많은 줄 알고 그만큼 앞 쪽에 더 남긴다. 그 몫이 그대로 지면 밖으로 넘친다. */
+    await page.evaluate(() => {
+      const pm = document.querySelector('.ProseMirror') as HTMLElement
+      pm.focus()
+      const rows: string[] = []
+      for (let i = 1; i <= 45; i++) {
+        if (i === 20) {
+          rows.push('<tr><td><p>행 20</p><table><tbody>' +
+            '<tr><td><p>안A</p></td><td><p>안B</p></td></tr>' +
+            '<tr><td><p>안C</p></td><td><p>안D</p></td></tr>' +
+            '<tr><td><p>안E</p></td><td><p>안F</p></td></tr>' +
+            '</tbody></table></td><td><p>값 20</p></td></tr>')
+        } else {
+          rows.push(`<tr><td><p>행 ${i}</p></td><td><p>값 ${i}</p></td></tr>`)
+        }
+      }
+      const dt = new DataTransfer()
+      dt.setData('text/html', '<p>표 앞</p><table><tbody>' + rows.join('') + '</tbody></table><p>표 뒤</p>')
+      pm.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }))
+    })
+    await waitForReflow(page)
+
+    const m = await pageMetrics(page)
+    expect(m.count).toBeGreaterThan(1)
+    expect(m.grown).toBe(0)                       // 종이를 늘려 넘김을 감추지 않는다
+    for (const p of m.pages) expect(p.overflow).toBeLessThanOrEqual(2)
+
+    const 속 = await page.evaluate(() => {
+      const root = document.querySelector('.ProseMirror') as HTMLElement
+      /* 이 표 자신의 행만 — 칸 속 표의 행은 남의 것이다 */
+      const own = (t: Element) => [...t.querySelectorAll('tr')].filter((r) => r.closest('table') === t).length
+      const 바깥 = [...root.querySelectorAll('table')].filter((t) => !t.parentElement?.closest('table'))
+      const 안쪽 = root.querySelectorAll('table table')
+      return {
+        조각별행수: 바깥.map(own),
+        안쪽표수: 안쪽.length,
+        안쪽행수: 안쪽.length ? own(안쪽[0]) : 0,
+        안쪽글: ['안A', '안B', '안C', '안D', '안E', '안F'].filter((s) => !(root.textContent || '').includes(s)),
+      }
+    })
+    expect(속.조각별행수.reduce((a, b) => a + b, 0)).toBe(45) // 행을 하나도 잃지 않는다
+    expect(속.안쪽표수).toBe(1)                                // 안쪽 표가 살아 있다
+    expect(속.안쪽행수).toBe(3)                                // 안쪽 표의 행도 그대로
+    expect(속.안쪽글).toEqual([])                              // 안쪽 글이 하나도 사라지지 않았다
+  })
+
   test('표를 글자처럼 두거나 옆으로 글이 흐르게 한다 (한글의 글자처럼 취급 · 워드의 텍스트 배치)', async ({ page }) => {
     await page.evaluate(() => {
       const pm = document.querySelector('.ProseMirror') as HTMLElement

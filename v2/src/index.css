@@ -7679,10 +7679,17 @@ body:has(.jan-modal-overlay) .jan-bubble-toolbar { display: none; }
 
 /* ── 자료 탭이 심는 목록들 (목차·색인·참고 문헌·근거 목차) ─────────── */
 
-.jan-toc-row, .jan-index-row { display: flex; align-items: baseline; gap: 6px; }
-.jan-toc-row > a, .jan-index-row { flex: 1; min-width: 0; }
+/* 줄에 붙인 class 는 문서 구조에 없어 저장·재파싱에서 벗겨진다 —
+   살아남는 것은 data-jan-field 뿐이므로 조판을 그것에 건다.
+   (참고 문헌·미주는 매달린 들여쓰기를 쓰므로 이 가로 배치에서 뺀다) */
+.jan-toc-row, .jan-index-row,
+p[data-jan-field="toc"], p[data-jan-field="figlist"], p[data-jan-field="tablist"],
+p[data-jan-field="index"], p[data-jan-field="auth"] { display: flex; align-items: baseline; }
+.jan-toc-row > a, p[data-jan-field] > a { flex: 0 1 auto; min-width: 0; }
+/* gap 은 쓰지 않는다 — 편집기가 줄 끝에 넣는 보이지 않는 표식(separator·trailingBreak)까지
+   칸 사이로 세어 쪽 번호가 오른쪽 끝에 닿지 못한다. 틈은 쪽 칸의 왼쪽 여백으로 준다. */
 .jan-toc-page {
-  margin-left: auto; padding-left: 8px;
+  margin-left: 6px; padding-left: 8px;
   color: var(--jan-dim, #6b7684); font-size: 0.9em; font-variant-numeric: tabular-nums;
   border-bottom: 1px dotted #d0d6de; flex: 1; text-align: right;
 }
